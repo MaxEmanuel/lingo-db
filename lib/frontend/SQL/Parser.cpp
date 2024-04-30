@@ -2514,7 +2514,7 @@ mlir::Type frontend::sql::Parser::createBaseTypeFromColumnType(mlir::MLIRContext
    if (colType.base == "int") return mlir::IntegerType::get(context, asInt(colType.modifiers.at(0)));
    if (colType.base == "index") return mlir::IndexType::get(context);
    if (colType.base == "float") return asInt(colType.modifiers.at(0)) == 32 ? mlir::FloatType::getF32(context) : mlir::FloatType::getF64(context);
-   if (colType.base == "tfloat") return mlir::FloatType::getF16(context);
+   if (colType.base == "tfloat") return mlir::FloatType::getBF16(context);
    if (colType.base == "date") return mlir::db::DateType::get(context, mlir::db::symbolizeDateUnitAttr(std::get<std::string>(colType.modifiers.at(0))).value());
    if (colType.base == "string") return mlir::db::StringType::get(context);
    if (colType.base == "char") return mlir::db::CharType::get(context, asInt(colType.modifiers.at(0)));
