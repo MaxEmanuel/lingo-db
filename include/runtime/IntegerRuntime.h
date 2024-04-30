@@ -8,7 +8,8 @@ struct IntegerRuntime {
    static int16_t round16(int16_t value, int64_t roundByScale);
    static int8_t round8(int8_t value, int64_t roundByScale);
    static int64_t sqrt(int64_t);
-   static int64_t randomInRange(int64_t from,int64_t to);
+   /* static int64_t randomInRange(int64_t from,int64_t to); */
+   static int32_t randomInRange(int32_t from,int32_t to);
 };
 } // namespace runtime
 #endif // RUNTIME_INTEGERRUNTIME_H

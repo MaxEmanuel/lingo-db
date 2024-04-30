@@ -23,7 +23,13 @@ int64_t runtime::IntegerRuntime::sqrt(int64_t value) {
    return std::sqrt(value);
 }
 
-int64_t runtime::IntegerRuntime::randomInRange(int64_t from, int64_t to) {
+/* int64_t runtime::IntegerRuntime::randomInRange(int64_t from, int64_t to) {
+   static std::mt19937 gen(0);
+   std::uniform_int_distribution<> distr(from, to - 1);
+   return distr(gen);
+} */
+
+int32_t runtime::IntegerRuntime::randomInRange(int32_t from, int32_t to) {
    static std::mt19937 gen(0);
    std::uniform_int_distribution<> distr(from, to - 1);
    return distr(gen);

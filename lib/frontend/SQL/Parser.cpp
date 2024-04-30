@@ -330,6 +330,17 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       auto to = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->tail->data.ptr_value), context);
       return builder.create<mlir::db::RuntimeCall>(loc, str.getType(), "Substring", mlir::ValueRange({str, from, to})).getRes();
    }
+   if (funcName == "random") {
+      mlir::Value value1, value2;
+      if (funcCall->args_) {
+         value1 = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
+         value2 = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->tail->data.ptr_value), context);
+      } else {
+         value1 = builder.create<mlir::arith::ConstantIntOp>(builder.getUnknownLoc(), INT_MIN, builder.getI32Type());
+         value2 = builder.create<mlir::arith::ConstantIntOp>(builder.getUnknownLoc(), INT_MAX, builder.getI32Type());
+      }
+      return builder.create<mlir::db::RuntimeCall>(loc, value1.getType(), "Random", mlir::ValueRange({value1, value2})).getRes();
+   }
    if (funcName == "abs") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
       return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), getBaseType(val.getType()).isa<mlir::db::DecimalType>() ? "AbsDecimal" : "AbsInt", val).getRes();
@@ -1345,6 +1356,7 @@ std::shared_ptr<runtime::TableMetaData> frontend::sql::Parser::translateTableMet
    tableMetaData->setNumRows(0);
    return tableMetaData;
 }
+// This function creates the corresponding columnType object depending on the user input (in CREATE TABLE())
 runtime::ColumnType frontend::sql::Parser::createColumnType(std::string datatypeName, bool isNull, std::vector<std::variant<size_t, std::string>> typeModifiers) {
    datatypeName = llvm::StringSwitch<std::string>(datatypeName)
                      .Case("bpchar", "char")
@@ -1359,6 +1371,9 @@ runtime::ColumnType frontend::sql::Parser::createColumnType(std::string datatype
    if (datatypeName == "int8") {
       datatypeName = "int";
       typeModifiers.push_back(64ull);
+   }
+   if (datatypeName == "tfloat") {
+      typeModifiers.push_back(16ull);
    }
    if (datatypeName == "float4") {
       datatypeName = "float";
@@ -2486,6 +2501,7 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
    }
    return std::make_pair(tree, targetInfo);
 }
+// This function maps the entered datatype to the corresponding mlir counterpart (mlir datatype)
 mlir::Type frontend::sql::Parser::createBaseTypeFromColumnType(mlir::MLIRContext* context, const runtime::ColumnType& colType) {
    auto asInt = [](std::variant<size_t, std::string> intOrStr) -> size_t {
       if (std::holds_alternative<size_t>(intOrStr)) {
@@ -2498,6 +2514,7 @@ mlir::Type frontend::sql::Parser::createBaseTypeFromColumnType(mlir::MLIRContext
    if (colType.base == "int") return mlir::IntegerType::get(context, asInt(colType.modifiers.at(0)));
    if (colType.base == "index") return mlir::IndexType::get(context);
    if (colType.base == "float") return asInt(colType.modifiers.at(0)) == 32 ? mlir::FloatType::getF32(context) : mlir::FloatType::getF64(context);
+   if (colType.base == "tfloat") return mlir::FloatType::getF16(context);
    if (colType.base == "date") return mlir::db::DateType::get(context, mlir::db::symbolizeDateUnitAttr(std::get<std::string>(colType.modifiers.at(0))).value());
    if (colType.base == "string") return mlir::db::StringType::get(context);
    if (colType.base == "char") return mlir::db::CharType::get(context, asInt(colType.modifiers.at(0)));

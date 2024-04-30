@@ -297,5 +297,8 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    builtinRegistry->add("CombineHashes").matchesTypes({RuntimeFunction::onlyIndex, RuntimeFunction::onlyIndex}, resTypeIsIndex).needsWrapping().implementedAs([](mlir::OpBuilder& rewriter, mlir::ValueRange loweredArguments, mlir::TypeRange originalArgumentTypes, mlir::Type resType, const mlir::TypeConverter* typeConverter, mlir::Location loc) -> mlir::Value {
       return rewriter.create<mlir::util::HashCombine>(loc, rewriter.getIndexType(), loweredArguments[0], loweredArguments[1]);
    });
+
+   builtinRegistry->add("Random").implementedAs(rt::IntegerRuntime::randomInRange).matchesTypes({RuntimeFunction::intLike, RuntimeFunction::intLike}, RuntimeFunction::matchesArgument());
+
    return builtinRegistry;
 }
