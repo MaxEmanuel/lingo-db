@@ -1,6 +1,7 @@
 #include "runtime/FloatRuntime.h"
 #include <cassert>
 #include <cmath>
+#include <time.h>
 
 double runtime::FloatRuntime::sqrt(double x) {
    return ::sqrt(x);
@@ -22,4 +23,8 @@ double runtime::FloatRuntime::exp(double x) {
 }
 double runtime::FloatRuntime::erf(double x) {
    return ::erf(x);
+}
+double runtime::FloatRuntime::random(){
+   srand(time(NULL));
+   return ((double) rand() / (double) RAND_MAX);
 }

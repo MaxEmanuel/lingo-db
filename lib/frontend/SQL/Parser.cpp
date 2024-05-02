@@ -331,15 +331,9 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       return builder.create<mlir::db::RuntimeCall>(loc, str.getType(), "Substring", mlir::ValueRange({str, from, to})).getRes();
    }
    if (funcName == "random") {
-      mlir::Value value1, value2;
-      if (funcCall->args_) {
-         value1 = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
-         value2 = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->tail->data.ptr_value), context);
-      } else {
-         value1 = builder.create<mlir::arith::ConstantIntOp>(builder.getUnknownLoc(), INT_MIN, builder.getI32Type());
-         value2 = builder.create<mlir::arith::ConstantIntOp>(builder.getUnknownLoc(), INT_MAX, builder.getI32Type());
-      }
-      return builder.create<mlir::db::RuntimeCall>(loc, value1.getType(), "Random", mlir::ValueRange({value1, value2})).getRes();
+      //mlir::Value lowerBound = builder.create<mlir::arith::ConstantIntOp>(builder.getUnknownLoc(), 0.0f, builder.getF64Type());
+      //mlir::Value upperBound = builder.create<mlir::arith::ConstantIntOp>(builder.getUnknownLoc(), 1.0f, builder.getF64Type());
+      return builder.create<mlir::db::RuntimeCall>(loc, builder.getF64Type(), "Random", mlir::ValueRange({})).getRes();
    }
    if (funcName == "abs") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);

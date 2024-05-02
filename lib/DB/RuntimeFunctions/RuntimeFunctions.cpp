@@ -298,7 +298,7 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
       return rewriter.create<mlir::util::HashCombine>(loc, rewriter.getIndexType(), loweredArguments[0], loweredArguments[1]);
    });
 
-   builtinRegistry->add("Random").implementedAs(rt::IntegerRuntime::randomInRange).matchesTypes({RuntimeFunction::intLike, RuntimeFunction::intLike}, RuntimeFunction::matchesArgument());
+   builtinRegistry->add("Random").implementedAs(rt::FloatRuntime::random).matchesTypes({}, resTypeIsF64);
 
    return builtinRegistry;
 }
