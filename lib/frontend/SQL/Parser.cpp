@@ -1437,6 +1437,12 @@ std::pair<std::string, std::shared_ptr<runtime::ColumnMetaData>> frontend::sql::
       }
    }
    std::string name = columnDef->colname_;
+   
+   // Proof if entered type is an array
+   if (typeName->array_bounds_){
+      auto* arrayType = reinterpret_cast<A_ArrayExpr*>(typeName->array_bounds_->head->data.ptr_value);
+      auto dimensions = typeName->array_bounds_->length;
+   }
    std::string datatypeName = reinterpret_cast<value*>(typeName->names_->tail->data.ptr_value)->val_.str_;
    auto columnMetaData = std::make_shared<runtime::ColumnMetaData>();
    columnMetaData->setColumnType(createColumnType(datatypeName, !isNotNull, typeModifiers));
