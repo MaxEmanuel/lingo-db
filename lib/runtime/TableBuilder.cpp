@@ -153,7 +153,7 @@ class TableBuilder {
    void addInt16(bool isValid, int16_t);
    void addInt32(bool isValid, int32_t);
    void addInt64(bool isValid, int64_t);
-   void addTFloat(bool isValid, _Float16);
+   void addTFloat(bool isValid, __bfloat16);
    void addFloat32(bool isValid, float);
    void addFloat64(bool isValid, double);
    void addDecimal(bool isValid, __int128);
@@ -191,12 +191,13 @@ void TableBuilder::addBool(bool isValid, bool value) {
    }
 }
 
-void TableBuilder::addTFloat(bool isValid, _Float16 value) {
+void TableBuilder::addTFloat(bool isValid, __bfloat16 value) {
    auto* typedBuilder = getBuilder<arrow::NumericBuilder<arrow::HalfFloatType>>();
    if (!isValid) {
       handleStatus(typedBuilder->AppendNull());
    } else {
-      handleStatus(typedBuilder->Append(value));
+      uint16_t* savedValue = reinterpret_cast<uint16_t*>(&value);
+      handleStatus(typedBuilder->Append(*savedValue));
    }
 }
 
@@ -264,7 +265,7 @@ RESULT_TABLE_FORWARD(addInt8, int8_t);
 RESULT_TABLE_FORWARD(addInt16, int16_t);
 RESULT_TABLE_FORWARD(addInt32, int32_t);
 RESULT_TABLE_FORWARD(addInt64, int64_t);
-RESULT_TABLE_FORWARD(addTFloat, _Float16);
+RESULT_TABLE_FORWARD(addTFloat, __bfloat16);
 RESULT_TABLE_FORWARD(addFloat32, float);
 RESULT_TABLE_FORWARD(addFloat64, double);
 RESULT_TABLE_FORWARD(addDecimal, __int128);
