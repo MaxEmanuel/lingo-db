@@ -196,7 +196,7 @@ void TableBuilder::addTFloat(bool isValid, __bfloat16 value) {
    if (!isValid) {
       handleStatus(typedBuilder->AppendNull());
    } else {
-      uint16_t* savedValue = reinterpret_cast<uint16_t*>(&value);
+      uint16_t* savedValue = std::bit_cast<uint16_t*>(&value);
       handleStatus(typedBuilder->Append(*savedValue));
    }
 }
