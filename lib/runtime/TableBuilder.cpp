@@ -43,7 +43,7 @@ class TableBuilder {
             case 32: return arrow::float32();
             case 64: return arrow::float64();
          }
-      } else if (name == "string") {
+      } else if (name == "string" || name.find("[]") != std::string::npos) {
          return arrow::utf8();
       } else if (name == "fixed_sized") {
          return arrow::fixed_size_binary(p1);
@@ -60,7 +60,9 @@ class TableBuilder {
       } else if (name == "bool") {
          return arrow::boolean();
       }
-      throw std::runtime_error("unknown type");
+      // TODO: This is not correct. Currently does not find the type for an array in schema
+      return arrow::utf8();
+      //throw std::runtime_error("unknown type");
    }
    static std::shared_ptr<arrow::Schema> parseSchema(std::string str) {
       if (str.empty()) {

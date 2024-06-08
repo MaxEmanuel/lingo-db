@@ -962,7 +962,7 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
                auto* castNode = reinterpret_cast<TypeCast*>(node);
                auto* typeName = reinterpret_cast<value*>(castNode->type_name_->names_->tail->data.ptr_value)->val_.str_;
                auto toCast = translateExpression(builder, castNode->arg_, context);
-               auto columnType = createColumnType(typeName, false, getTypeModList(castNode->type_name_->typmods_));
+               auto columnType = createColumnType(typeName, false, getTypeModList(castNode->type_name_->typmods_), castNode->type_name_->array_bounds_);
                auto resType = createTypeFromColumnType(builder.getContext(), columnType);
                if (auto constOp = mlir::dyn_cast_or_null<mlir::db::ConstantOp>(toCast.getDefiningOp())) {
                   if (auto intervalType = resType.dyn_cast<mlir::db::IntervalType>()) {
@@ -1345,7 +1345,7 @@ std::shared_ptr<runtime::TableMetaData> frontend::sql::Parser::translateTableMet
    tableMetaData->setNumRows(0);
    return tableMetaData;
 }
-runtime::ColumnType frontend::sql::Parser::createColumnType(std::string datatypeName, bool isNull, std::vector<std::variant<size_t, std::string>> typeModifiers) {
+runtime::ColumnType frontend::sql::Parser::createColumnType(std::string datatypeName, bool isNull, std::vector<std::variant<size_t, std::string>> typeModifiers, List* arrayBounds) {
    datatypeName = llvm::StringSwitch<std::string>(datatypeName)
                      .Case("bpchar", "char")
                      .Case("varchar", "string")
@@ -1400,6 +1400,12 @@ runtime::ColumnType frontend::sql::Parser::createColumnType(std::string datatype
          typeModifiers.push_back("daytime");
       }
    }
+   // Proof if the entered type is an array
+   if (arrayBounds) {
+      auto dimensions = static_cast<size_t>(arrayBounds->length);
+      datatypeName += "[]";
+      typeModifiers.push_back(dimensions);
+   }
    runtime::ColumnType columnType;
    columnType.base = datatypeName;
    columnType.nullable = isNull;
@@ -1430,7 +1436,7 @@ std::pair<std::string, std::shared_ptr<runtime::ColumnMetaData>> frontend::sql::
    std::string name = columnDef->colname_;
    std::string datatypeName = reinterpret_cast<value*>(typeName->names_->tail->data.ptr_value)->val_.str_;
    auto columnMetaData = std::make_shared<runtime::ColumnMetaData>();
-   columnMetaData->setColumnType(createColumnType(datatypeName, !isNotNull, typeModifiers));
+   columnMetaData->setColumnType(createColumnType(datatypeName, !isNotNull, typeModifiers, typeName->array_bounds_));
    return {name, columnMetaData};
 }
 std::vector<std::variant<size_t, std::string>> frontend::sql::Parser::getTypeModList(List* typeMods) {
@@ -2504,6 +2510,10 @@ mlir::Type frontend::sql::Parser::createBaseTypeFromColumnType(mlir::MLIRContext
    if (colType.base == "decimal") return mlir::db::DecimalType::get(context, asInt(colType.modifiers.at(0)), asInt(colType.modifiers.at(1)));
    if (colType.base == "interval") return mlir::db::IntervalType::get(context, std::get<std::string>(colType.modifiers.at(0)) == "daytime" ? mlir::db::IntervalUnitAttr::daytime : mlir::db::IntervalUnitAttr::months);
    if (colType.base == "timestamp") return mlir::db::TimestampType::get(context, mlir::db::TimeUnitAttr::second);
+   if (colType.base.find("[]") != std::string::npos){
+      auto dimensions = asInt(colType.modifiers.at(colType.modifiers.size() - 1));
+      return mlir::db::ArrayType::get(context, dimensions, colType.base);
+   }
    assert(false);
    return mlir::Type();
 }

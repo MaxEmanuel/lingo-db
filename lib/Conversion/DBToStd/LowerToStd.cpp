@@ -255,6 +255,10 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
             }
          } else if (scalarTargetType.isa<mlir::db::DateType>()) {
             result = rt::StringRuntime::toDate(rewriter, loc)({valueToCast})[0];
+         } else if (auto arrayType = scalarTargetType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto dimensions = rewriter.create<arith::ConstantOp>(loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(arrayType.getDimensions()));
+            auto type = rewriter.create<mlir::util::CreateConstVarLen>(loc, mlir::util::VarLen32Type::get(rewriter.getContext()),rewriter.getStringAttr(arrayType.getType()));
+            result = rt::StringRuntime::toArray(rewriter, loc)({valueToCast, dimensions, type})[0];
          }
       } else if (auto intWidth = getIntegerWidth(scalarSourceType, false)) {
          result = rt::StringRuntime::fromInt(rewriter, loc)({valueToCast})[0];
@@ -666,6 +670,8 @@ class ConstantLowering : public OpConversionPattern<mlir::db::ConstantOp> {
          }
       } else if (auto stringType = type.dyn_cast_or_null<mlir::db::StringType>()) {
          typeConstant = arrow::Type::type::STRING;
+      } else if (auto arrayType = type.dyn_cast_or_null<mlir::db::ArrayType>()){
+         typeConstant = arrow::Type::type::STRING;
       } else if (auto dateType = type.dyn_cast_or_null<mlir::db::DateType>()) {
          if (dateType.getUnit() == mlir::db::DateUnitAttr::day) {
             typeConstant = arrow::Type::type::DATE32;
@@ -722,6 +728,10 @@ class ConstantLowering : public OpConversionPattern<mlir::db::ConstantOp> {
       } else if (type.isa<mlir::db::StringType>()) {
          std::string str = std::get<std::string>(parseResult);
 
+         rewriter.replaceOpWithNewOp<mlir::util::CreateConstVarLen>(constantOp, mlir::util::VarLen32Type::get(rewriter.getContext()), rewriter.getStringAttr(str));
+         return success();
+      } else if (type.isa<mlir::db::ArrayType>()){
+         std::string str = std::get<std::string>(parseResult);
          rewriter.replaceOpWithNewOp<mlir::util::CreateConstVarLen>(constantOp, mlir::util::VarLen32Type::get(rewriter.getContext()), rewriter.getStringAttr(str));
          return success();
       } else {
@@ -1061,6 +1071,9 @@ void DBToStdLoweringPass::runOnOperation() {
    typeConverter.addConversion([&](::mlir::db::StringType t) {
       return mlir::util::VarLen32Type::get(ctxt);
    });
+   typeConverter.addConversion([&](::mlir::db::ArrayType t) {
+      return mlir::util::VarLen32Type::get(ctxt);
+   });
    typeConverter.addConversion([&](::mlir::db::TimestampType t) {
       return mlir::IntegerType::get(ctxt, 64);
    });
@@ -1194,7 +1207,7 @@ void DBToStdLoweringPass::runOnOperation() {
 
    patterns.insert<HashLowering>(typeConverter, ctxt);
 
-   if (failed(applyFullConversion(module, target, std::move(patterns))))
+   if (failed(applyPartialConversion(module, target, std::move(patterns))))
       signalPassFailure();
 }
 

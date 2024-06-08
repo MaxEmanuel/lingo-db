@@ -1,10 +1,12 @@
 #include "runtime/StringRuntime.h"
+#include "runtime/ArrayRuntime.h"
 #include "arrow/util/formatting.h"
 #include "arrow/util/value_parsing.h"
 #include "runtime/helpers.h"
 
 #include <arrow/type.h>
 #include <arrow/util/decimal.h>
+#include <vector>
 
 //taken from NoisePage
 // src: https://github.com/cmu-db/noisepage/blob/c2635d3360dd24a9f7a094b4b8bcd131d99f2d4b/src/execution/sql/operators/like_operators.cpp
@@ -267,6 +269,14 @@ runtime::VarLen32 runtime::StringRuntime::fromDate(int64_t date) {
    static arrow_vendored::date::sys_days epoch = arrow_vendored::date::sys_days{arrow_vendored::date::jan / 1 / 1970};
    auto asString = arrow_vendored::date::format("%F", epoch + std::chrono::nanoseconds{date});
    return runtime::VarLen32(reinterpret_cast<uint8_t*>(asString.data()), asString.length());
+}
+
+runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dimensions, VarLen32 type) {
+   if (type.str() == "int[]") {
+      std::vector<int32_t> result;
+      runtime::ArrayRuntime::toArray(str, result);
+   }
+   return str;
 }
 
 extern "C" runtime::VarLen32 createVarLen32(uint8_t* ptr, uint32_t len) { //NOLINT(clang-diagnostic-return-type-c-linkage)

@@ -282,7 +282,7 @@ struct Parser {
    void translateInsertStmt(mlir::OpBuilder& builder, InsertStmt* stmt);
 
    //creates a column type from the given information
-   runtime::ColumnType createColumnType(std::string datatypeName, bool isNull, std::vector<std::variant<size_t, std::string>> typeModifiers);
+   runtime::ColumnType createColumnType(std::string datatypeName, bool isNull, std::vector<std::variant<size_t, std::string>> typeModifiers, List* arrayBounds);
 
    //translate a column definition in a create statment
    std::pair<std::string, std::shared_ptr<runtime::ColumnMetaData>> translateColumnDef(ColumnDef* columnDef);
