@@ -18,7 +18,16 @@ struct StringRuntime {
    static NO_SIDE_EFFECTS double toFloat64(VarLen32 str);
    static NO_SIDE_EFFECTS __int128 toDecimal(VarLen32 str, int32_t reqScale);
    static NO_SIDE_EFFECTS int64_t toDate(VarLen32 str);
+
+   /**
+    * This static funcion proofs if the entered array corresponds with the specification of the column
+    * with regard to number of dimensions and specified type
+    * @param str The array as string being a VarLen32 object
+    * @param dimensions The number of dimensions specified in the column description
+    * @param type The type as string specified in the column description
+    */
    static NO_SIDE_EFFECTS VarLen32 toArray(VarLen32 str, int dimensions, VarLen32 type);
+
    static VarLen32 fromDate(int64_t);
    static VarLen32 fromInt(int64_t);
    static VarLen32 fromFloat32(float);

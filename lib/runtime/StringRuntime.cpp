@@ -272,9 +272,32 @@ runtime::VarLen32 runtime::StringRuntime::fromDate(int64_t date) {
 }
 
 runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dimensions, VarLen32 type) {
+   std::vector<std::unique_ptr<std::vector<std::unique_ptr<int32_t>>>> result;
    if (type.str() == "int[]") {
-      std::vector<int32_t> result;
-      runtime::ArrayRuntime::toArray(str, result);
+      if (dimensions == 2) {
+         runtime::ArrayRuntime::toMatrix(str, result);
+      } else {
+         std::vector<std::unique_ptr<int32_t>> result;
+         runtime::ArrayRuntime::toVector(str, result);
+      }
+   } else if (type.str() == "float[]") {
+      if (dimensions == 2) {
+         std::vector<std::unique_ptr<std::vector<std::unique_ptr<float>>>> result;
+         runtime::ArrayRuntime::toMatrix(str, result);
+      } else {
+         std::vector<std::unique_ptr<float>> result;
+         runtime::ArrayRuntime::toVector(str, result);
+      }
+   } else if (type.str() == "double[]") {
+      if (dimensions == 2) {
+         std::vector<std::unique_ptr<std::vector<std::unique_ptr<double>>>> result;
+         runtime::ArrayRuntime::toMatrix(str, result);
+      } else {
+         std::vector<std::unique_ptr<double>> result;
+         runtime::ArrayRuntime::toVector(str, result);
+      }
+   } else {
+      throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
    }
    return str;
 }
