@@ -5,29 +5,34 @@
 #include <algorithm>
 
 
-#define CAST_STRING_TO_VECTOR(TYPE_NAME, CAST_OP)                                                                       \
-   void runtime::ArrayRuntime::toVector(runtime::VarLen32 array, std::vector<std::unique_ptr<TYPE_NAME>>& container) {  \
-        std::string content = array.str();                                                                              \
-        /* Delete all spaces */                                                                                         \
-        content.erase(std::remove_if(content.begin(), content.end(), ::isspace), content.end());                        \
-        /* Delete outer spaces ({}) */                                                                                  \
-        content = content.substr(1, content.size() - 2);                                                                \
-        std::stringstream stringStream(content);                                                                        \
-        std::string singleValue;                                                                                        \
-        /* Iterate over each single value */                                                                            \
-        while(std::getline(stringStream, singleValue, ',')) {                                                           \
-            /* Try a cast with the given cast operation */                                                              \
-            try {                                                                                                       \
-                if (singleValue == "NULL" || singleValue == "null" || singleValue == "Null"){                           \
-                    container.push_back(nullptr);                                                                       \
-                } else {                                                                                                \
-                    container.push_back(std::make_unique<TYPE_NAME>(std::CAST_OP(singleValue)));                        \
-                }                                                                                                       \
-            } catch (const std::invalid_argument& e){                                                                   \
-                throw std::runtime_error("The array value - " + singleValue + " - does not have the correct type");     \
-            }                                                                                                           \
-                                                                                                                        \
-        }                                                                                                               \
+#define CAST_STRING_TO_VECTOR(TYPE_NAME, CAST_OP)                                                                           \
+   void runtime::ArrayRuntime::toVector(runtime::VarLen32 array, std::vector<std::unique_ptr<TYPE_NAME>>& container) {      \
+        std::string content = array.str();                                                                                  \
+        /* Proof if the array is only a null-value */                                                                       \
+        if (content == "NULL" || content == "null" || content == "Null") {                                                  \
+            container.push_back(nullptr);                                                                                   \
+        } else {                                                                                                            \
+            /* Delete all spaces */                                                                                         \
+            content.erase(std::remove_if(content.begin(), content.end(), ::isspace), content.end());                        \
+            /* Delete outer brackets ({}) */                                                                                \
+            content = content.substr(1, content.size() - 2);                                                                \
+            std::stringstream stringStream(content);                                                                        \
+            std::string singleValue;                                                                                        \
+            /* Iterate over each single value */                                                                            \
+            while(std::getline(stringStream, singleValue, ',')) {                                                           \
+                try {                                                                                                       \
+                    /* Proof if a single element is the null-value */                                                       \
+                    if (singleValue == "NULL" || singleValue == "null" || singleValue == "Null"){                           \
+                        container.push_back(nullptr);                                                                       \
+                    } else {                                                                                                \
+                        /* Try a cast with the given cast operation */                                                      \
+                        container.push_back(std::make_unique<TYPE_NAME>(std::CAST_OP(singleValue)));                        \
+                    }                                                                                                       \
+                } catch (const std::invalid_argument& e){                                                                   \
+                    throw std::runtime_error("The array value - " + singleValue + " - does not have the correct type");     \
+                }                                                                                                           \
+            }                                                                                                               \
+        }                                                                                                                   \
    }
 
 CAST_STRING_TO_VECTOR(int32_t, stoi)
@@ -35,27 +40,37 @@ CAST_STRING_TO_VECTOR(int64_t, stoll)
 CAST_STRING_TO_VECTOR(float, stof)
 CAST_STRING_TO_VECTOR(double, stod)
 
-void runtime::ArrayRuntime::toVector(VarLen32 array, std::vector<std::string>& container) {
+void runtime::ArrayRuntime::toVector(VarLen32 array, std::vector<std::unique_ptr<std::string>>& container) {
     std::string content = array.str();
-    /* Delete outer spaces ({}) */ 
-    content = content.substr(1, content.size() - 2);
-    std::stringstream stringStream(content);
-    std::string singleValue;
-    bool isElement = false;
-    /* Iterate over each single value */
-    while(std::getline(stringStream, singleValue, '"')) {
-        if (isElement) {
-            container.push_back(singleValue.substr(1, singleValue.size() - 2));
-        } else {
-            singleValue.erase(std::remove_if(singleValue.begin(), singleValue.end(), ::isspace), singleValue.end());
-            // Proof if some non-string elements were skipped (e.g. {"Hello World", 1, "Test"} whereby '1' has no quotation marks) 
-            if (singleValue.size() > 2) {
-                throw std::runtime_error("The array value - " + singleValue.substr(1, singleValue.size() - 2) + " - does not have the correct type");
+    // Proof if the array is only a null-value
+    if (content == "NULL" || content == "null" || content == "Null") {                                                 
+            container.push_back(nullptr);                                                                                  
+    } else {
+        // Delete outer brackets ({}) 
+        content = content.substr(1, content.size() - 2);
+        std::stringstream stringStream(content);
+        std::string singleValue;
+        bool isElement = false;
+        // Iterate over each single value
+        while(std::getline(stringStream, singleValue, '"')) {
+            if (isElement) {
+                container.push_back(std::make_unique<std::string>(singleValue));
+            } else {
+                singleValue.erase(std::remove_if(singleValue.begin(), singleValue.end(), ::isspace), singleValue.end());
+                // Proof if a single element is the null-value
+                if (singleValue.find("Null") != std::string::npos || singleValue.find("NULL") != std::string::npos|| singleValue.find("null") != std::string::npos){
+                    container.push_back(nullptr);
+                }
+                // Proof if some non-string elements were skipped (e.g. {"Hello World", 1, "Test"} whereby '1' has no quotation marks) 
+                else if (singleValue.size() > 2) {
+                    throw std::runtime_error("The array value - " + singleValue + " - does not have the correct type");
+                }
             }
+            // Every second '"' contains only the seperator of the elements
+            isElement = !isElement;
         }
-        // Every second '"' contains only the seperator of the elements
-        isElement = !isElement;
     }
+    
 }
 
 #define CAST_STRING_TO_MATRIX(TYPE_NAME)                                                                                                                \

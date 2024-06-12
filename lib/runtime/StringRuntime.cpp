@@ -271,7 +271,7 @@ runtime::VarLen32 runtime::StringRuntime::fromDate(int64_t date) {
    return runtime::VarLen32(reinterpret_cast<uint8_t*>(asString.data()), asString.length());
 }
 
-runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dimensions, VarLen32 type) {
+runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dimensions, runtime::VarLen32 type) {
    std::vector<std::unique_ptr<std::vector<std::unique_ptr<int32_t>>>> result;
    if (type.str() == "int[]") {
       if (dimensions == 2) {
@@ -296,6 +296,9 @@ runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dim
          std::vector<std::unique_ptr<double>> result;
          runtime::ArrayRuntime::toVector(str, result);
       }
+   } else if (type.str() == "string[]") {
+      std::vector<std::unique_ptr<std::string>> result;
+      runtime::ArrayRuntime::toVector(str, result);
    } else {
       throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
    }

@@ -45,7 +45,7 @@ namespace runtime
          * @param array The array as string being a VarLen32 object
          * @param container The std::vector container to which the elements should be added 
          */
-        static void toVector(VarLen32 array, std::vector<std::string>& container);
+        static void toVector(VarLen32 array, std::vector<std::unique_ptr<std::string>>& container);
 
         /**
          * This static function allows to cast an string (containing a array with arrays) to a std::vector with two dimension whereby 
