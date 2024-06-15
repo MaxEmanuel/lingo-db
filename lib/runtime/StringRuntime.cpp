@@ -279,6 +279,7 @@ runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dim
       } else {
          std::vector<std::unique_ptr<int32_t>> result;
          runtime::ArrayRuntime::toVector(str, result);
+         return runtime::ArrayRuntime::fromVector(result);
       }
    } else if (type.str() == "int64[]") {
       if (dimensions == 2) {
@@ -287,6 +288,7 @@ runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dim
       } else {
          std::vector<std::unique_ptr<int64_t>> result;
          runtime::ArrayRuntime::toVector(str, result);
+         return runtime::ArrayRuntime::fromVector(result);
       }
    } else if (type.str() == "float[]") {
       if (dimensions == 2) {
@@ -295,6 +297,7 @@ runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dim
       } else {
          std::vector<std::unique_ptr<float>> result;
          runtime::ArrayRuntime::toVector(str, result);
+         return runtime::ArrayRuntime::fromVector(result);
       }
    } else if (type.str() == "double[]") {
       if (dimensions == 2) {
@@ -303,6 +306,7 @@ runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dim
       } else {
          std::vector<std::unique_ptr<double>> result;
          runtime::ArrayRuntime::toVector(str, result);
+         return runtime::ArrayRuntime::fromVector(result);
       }
    } else if (type.str() == "string[]") {
       if (dimensions == 2) {
@@ -311,6 +315,7 @@ runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dim
       } else {
          std::vector<std::unique_ptr<std::string>> result;
          runtime::ArrayRuntime::toVector(str, result);
+         return runtime::ArrayRuntime::fromVector(result);
       }
    } else {
       throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");

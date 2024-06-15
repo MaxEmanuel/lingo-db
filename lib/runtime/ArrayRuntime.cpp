@@ -2,6 +2,7 @@
 #include "runtime/ArrayRuntime.h"
 #include <string>
 #include <sstream>
+#include <cstring>
 #include <algorithm>
 
 
@@ -138,4 +139,42 @@ void runtime::ArrayRuntime::toMatrix(runtime::VarLen32 array, std::vector<std::u
         runtime::ArrayRuntime::toVector(vectorAsVarLen, *vector);
         container.push_back(std::move(vector)); 
     }
+}
+
+#define CAST_VECTOR_TO_STRING(TYPE_NAME)                                                                            \
+    runtime::VarLen32 runtime::ArrayRuntime::fromVector(std::vector<std::unique_ptr<TYPE_NAME>>& container) {       \
+        std::string result = "{";                                                                                   \
+        for (auto& element : container) {                                                                           \
+            if (element == nullptr) {                                                                               \
+                result += "null, ";                                                                                 \
+            } else {                                                                                                \
+                result += std::to_string(*element) + ", ";                                                          \
+            }                                                                                                       \
+        }                                                                                                           \
+        result = result.substr(0, result.size() - 2);                                                               \
+        result += "}";                                                                                              \
+        char* data = new char[result.length()];                                                                     \
+        memcpy(data, result.data(), result.length());                                                               \
+        return runtime::VarLen32((uint8_t*) data, result.length());                                                 \
+    }
+
+CAST_VECTOR_TO_STRING(int32_t)
+CAST_VECTOR_TO_STRING(int64_t)
+CAST_VECTOR_TO_STRING(float)
+CAST_VECTOR_TO_STRING(double)
+
+runtime::VarLen32 runtime::ArrayRuntime::fromVector(std::vector<std::unique_ptr<std::string>>& container) {
+    std::string result = "{";        
+    for (auto& element : container) {
+        if (element == nullptr) {    
+            result += "null, ";      
+        } else {                     
+            result += *element + ", ";
+        }                                             
+    }                                                 
+    result = result.substr(0, result.size() - 2);     
+    result += "}";                                    
+    char* data = new char[result.length()];           
+    memcpy(data, result.data(), result.length());     
+    return runtime::VarLen32((uint8_t*) data, result.length());
 }

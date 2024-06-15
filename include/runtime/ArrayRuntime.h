@@ -42,6 +42,20 @@ namespace runtime
         static void toMatrix(VarLen32 array, std::vector<std::unique_ptr<std::vector<std::unique_ptr<double>>>>& container);
 
         static void toMatrix(VarLen32 array, std::vector<std::unique_ptr<std::vector<std::unique_ptr<std::string>>>>& container);
+
+        /**
+         * This static function converts a std::vector with single int32_t elements to a VarLen32 object.
+         * @param container The std::vector which contains the elements
+         */
+        static runtime::VarLen32 fromVector(std::vector<std::unique_ptr<int32_t>>& container);
+
+        static runtime::VarLen32 fromVector(std::vector<std::unique_ptr<int64_t>>& container);
+
+        static runtime::VarLen32 fromVector(std::vector<std::unique_ptr<float>>& container);
+
+        static runtime::VarLen32 fromVector(std::vector<std::unique_ptr<double>>& container);
+
+        static runtime::VarLen32 fromVector(std::vector<std::unique_ptr<std::string>>& container);
     };
 } // namespace runtime
 
