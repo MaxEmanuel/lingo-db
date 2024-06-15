@@ -272,12 +272,20 @@ runtime::VarLen32 runtime::StringRuntime::fromDate(int64_t date) {
 }
 
 runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dimensions, runtime::VarLen32 type) {
-   std::vector<std::unique_ptr<std::vector<std::unique_ptr<int32_t>>>> result;
-   if (type.str() == "int[]") {
+   if (type.str() == "int32[]") {
       if (dimensions == 2) {
+         std::vector<std::unique_ptr<std::vector<std::unique_ptr<int32_t>>>> result;
          runtime::ArrayRuntime::toMatrix(str, result);
       } else {
          std::vector<std::unique_ptr<int32_t>> result;
+         runtime::ArrayRuntime::toVector(str, result);
+      }
+   } else if (type.str() == "int64[]") {
+      if (dimensions == 2) {
+         std::vector<std::unique_ptr<std::vector<std::unique_ptr<int64_t>>>> result;
+         runtime::ArrayRuntime::toMatrix(str, result);
+      } else {
+         std::vector<std::unique_ptr<int64_t>> result;
          runtime::ArrayRuntime::toVector(str, result);
       }
    } else if (type.str() == "float[]") {

@@ -1403,6 +1403,15 @@ runtime::ColumnType frontend::sql::Parser::createColumnType(std::string datatype
    // Proof if the entered type is an array
    if (arrayBounds) {
       auto dimensions = static_cast<size_t>(arrayBounds->length);
+      // Add some additional information with integer to be able of distinguishing between int32_t and int64_t
+      if (typeModifiers.size() != 0) {
+         auto size = std::get<size_t>(typeModifiers[0]);
+         if (size == 32ull && datatypeName == "int") {
+            datatypeName += "32";
+         } else if (size == 64ull && datatypeName == "int"){
+            datatypeName += "64";
+         }
+      }
       datatypeName += "[]";
       typeModifiers.push_back(dimensions);
    }
