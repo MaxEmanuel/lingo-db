@@ -276,6 +276,7 @@ runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dim
       if (dimensions == 2) {
          std::vector<std::unique_ptr<std::vector<std::unique_ptr<int32_t>>>> result;
          runtime::ArrayRuntime::toMatrix(str, result);
+         return runtime::ArrayRuntime::fromMatrix(result);
       } else {
          std::vector<std::unique_ptr<int32_t>> result;
          runtime::ArrayRuntime::toVector(str, result);
@@ -285,6 +286,7 @@ runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dim
       if (dimensions == 2) {
          std::vector<std::unique_ptr<std::vector<std::unique_ptr<int64_t>>>> result;
          runtime::ArrayRuntime::toMatrix(str, result);
+         return runtime::ArrayRuntime::fromMatrix(result);
       } else {
          std::vector<std::unique_ptr<int64_t>> result;
          runtime::ArrayRuntime::toVector(str, result);
@@ -294,6 +296,7 @@ runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dim
       if (dimensions == 2) {
          std::vector<std::unique_ptr<std::vector<std::unique_ptr<float>>>> result;
          runtime::ArrayRuntime::toMatrix(str, result);
+         return runtime::ArrayRuntime::fromMatrix(result);
       } else {
          std::vector<std::unique_ptr<float>> result;
          runtime::ArrayRuntime::toVector(str, result);
@@ -303,6 +306,7 @@ runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dim
       if (dimensions == 2) {
          std::vector<std::unique_ptr<std::vector<std::unique_ptr<double>>>> result;
          runtime::ArrayRuntime::toMatrix(str, result);
+         return runtime::ArrayRuntime::fromMatrix(result);
       } else {
          std::vector<std::unique_ptr<double>> result;
          runtime::ArrayRuntime::toVector(str, result);
@@ -312,6 +316,7 @@ runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dim
       if (dimensions == 2) {
          std::vector<std::unique_ptr<std::vector<std::unique_ptr<std::string>>>> result;
          runtime::ArrayRuntime::toMatrix(str, result);
+         return runtime::ArrayRuntime::fromMatrix(result);
       } else {
          std::vector<std::unique_ptr<std::string>> result;
          runtime::ArrayRuntime::toVector(str, result);
