@@ -93,7 +93,7 @@ void runtime::ArrayRuntime::toVector(VarLen32 array, std::vector<std::unique_ptr
                         singleVector = singleVector.substr(1, singleVector.size() - 1);                                                                 \
                     }                                                                                                                                   \
                     if (singleVector[0] != '{') {                                                                                                       \
-                        throw std::runtime_error("The elements of the array does not correspond to the number of dimensions specification");            \
+                        throw std::runtime_error("The elements of the array does not correspond with the specification of the dimensions number");      \
                     }                                                                                                                                   \
                     /* Add the deleted "}" from the "getline" function */                                                                               \
                     singleVector = singleVector + '}';                                                                                                  \
@@ -111,11 +111,31 @@ CAST_STRING_TO_MATRIX(int64_t)
 CAST_STRING_TO_MATRIX(float)
 CAST_STRING_TO_MATRIX(double)
 
-void runtime::ArrayRuntime::toMatrix(runtime::VarLen32 array, std::vector<std::vector<std::string>>& container) {
+void runtime::ArrayRuntime::toMatrix(runtime::VarLen32 array, std::vector<std::unique_ptr<std::vector<std::unique_ptr<std::string>>>>& container) {
     std::string content = array.str();
-    /* Remove outer brackets ({}) */
+    // Remove outer brackets ({})
     content = content.substr(1, content.size() - 2);
     std::stringstream stringStream(content);
     std::string singleVector;
-    //TODO
+    // Iterate over each vector element of the matrix
+    while (std::getline(stringStream, singleVector, '}')) {
+        std::unique_ptr<std::vector<std::unique_ptr<std::string>>> vector = std::make_unique<std::vector<std::unique_ptr<std::string>>>();
+        auto startIndex = singleVector.find('{');
+        // If the opening bracket is missing, the dimension of the input is not valid
+        if (startIndex == std::string::npos) {
+            throw std::runtime_error("The elements of the array does not correspond with the specification of the dimensions number");
+        }
+        // It is possible that there is a NULL value that was skipped (has no {})
+        if (singleVector.find("NULL") < startIndex || singleVector.find("Null") < startIndex || singleVector.find("null") < startIndex) {
+            container.push_back(nullptr);
+        }
+        // Remove every character before '{'
+        singleVector = singleVector.substr(startIndex, singleVector.size() - 1);
+        // Add the deleted "}" from the "getline" function
+        singleVector = singleVector + '}';
+        // Call the toVector function for a std::string
+        runtime::VarLen32 vectorAsVarLen(reinterpret_cast<const uint8_t*>(singleVector.data()), singleVector.size());
+        runtime::ArrayRuntime::toVector(vectorAsVarLen, *vector);
+        container.push_back(std::move(vector)); 
+    }
 }

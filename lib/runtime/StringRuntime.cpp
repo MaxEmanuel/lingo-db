@@ -297,8 +297,13 @@ runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dim
          runtime::ArrayRuntime::toVector(str, result);
       }
    } else if (type.str() == "string[]") {
-      std::vector<std::unique_ptr<std::string>> result;
-      runtime::ArrayRuntime::toVector(str, result);
+      if (dimensions == 2) {
+         std::vector<std::unique_ptr<std::vector<std::unique_ptr<std::string>>>> result;
+         runtime::ArrayRuntime::toMatrix(str, result);
+      } else {
+         std::vector<std::unique_ptr<std::string>> result;
+         runtime::ArrayRuntime::toVector(str, result);
+      }
    } else {
       throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
    }
