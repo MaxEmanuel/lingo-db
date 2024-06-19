@@ -11,6 +11,9 @@
 
 namespace runtime
 {
+    struct ArrayRuntime{
+        static runtime::VarLen32 concat(runtime::VarLen32 array1, int dim1, runtime::VarLen32 type1, runtime::VarLen32 array2, int dim2, runtime::VarLen32 type2);
+    };
 
     /**
      * This class represents an array for any primitive numeric type (e.g. int32_t, int64_t, float, etc.)
@@ -27,12 +30,12 @@ namespace runtime
         public:
         Array(runtime::VarLen32 array, int dimensions) : dimensions(dimensions) {
             std::string content = array.str();
+            this->vector = std::vector<std::unique_ptr<T>>();
+            this->matrix = std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>>();
             // According to the given dimension create the corresponding object
             if (dimensions == 1) {
-                this->vector = std::vector<std::unique_ptr<T>>();
                 this->toVector(content, this->vector);
             } else if (dimensions == 2) {
-                this->matrix = std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>>();
                 this->toMatrix(content);
             } else {
                 throw std::runtime_error("More than 2 dimensions are currently not supported");
@@ -54,6 +57,26 @@ namespace runtime
             char* data = new char[result.length()];           
             memcpy(data, result.data(), result.length());     
             return runtime::VarLen32((uint8_t*) data, result.length());
+        };
+
+        void concat(runtime::Array<T>* secondArray) {
+            if (this->dimensions == 2) {
+                for (auto& element : *(secondArray->getMatrix())) {
+                    this->matrix.push_back(std::move(element));
+                }
+            } else {
+                for (auto& element : *(secondArray->getVector())) {
+                    this->vector.push_back(std::move(element));
+                }
+            }
+        };
+
+        std::vector<std::unique_ptr<T>>* getVector(){
+            return &this->vector;
+        };
+
+        std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>>* getMatrix(){
+            return &this->matrix;
         };
 
         private:
@@ -193,12 +216,12 @@ namespace runtime
         public:
         ArrayString(runtime::VarLen32 array, int dimensions) : dimensions(dimensions) {
             std::string content = array.str();
+            this->vector = std::vector<std::unique_ptr<std::string>>();
+            this->matrix = std::vector<std::unique_ptr<std::vector<std::unique_ptr<std::string>>>>();
             // According to the given dimension create the corresponding object
             if (dimensions == 1) {
-                this->vector = std::vector<std::unique_ptr<std::string>>();
                 this->toVector(content, this->vector);
             } else if (dimensions == 2) {
-                this->matrix = std::vector<std::unique_ptr<std::vector<std::unique_ptr<std::string>>>>();
                 this->toMatrix(content);
             } else {
                 throw std::runtime_error("More than 2 dimensions are currently not supported");
@@ -221,6 +244,26 @@ namespace runtime
             memcpy(data, result.data(), result.length());     
             return runtime::VarLen32((uint8_t*) data, result.length());
         };
+
+        /* void concat(ArrayString& secondArray) {
+            if (this->dimensions == 2) {
+                for (auto& element : secondArray.getMatrix()) {
+                    this->matrix.push_back(std::move(element));
+                }
+            } else {
+                for (auto& element : secondArray.getVector()) {
+                    this->vector.push_back(std::move(element));
+                }
+            }
+        };
+
+        std::vector<std::unique_ptr<std::string>> getVector(){
+            return this->vector;
+        };
+
+        std::vector<std::unique_ptr<std::vector<std::unique_ptr<std::string>>>> getMatrix(){
+            return this->matrix;
+        }; */
 
         private:
 
@@ -327,10 +370,6 @@ namespace runtime
             result += "}";
             return result;
         };
-    };
-
-    struct ArrayRuntime{
-
     };
     
 } // namespace runtime

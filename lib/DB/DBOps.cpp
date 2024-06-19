@@ -71,6 +71,8 @@ std::tuple<arrow::Type::type, uint32_t, uint32_t> convertTypeToArrow(mlir::Type 
       }
    } else if (auto stringType = type.dyn_cast_or_null<mlir::db::StringType>()) {
       typeConstant = arrow::Type::type::STRING;
+   } else if (auto arrayType = type.dyn_cast_or_null<mlir::db::ArrayType>()) {
+      typeConstant = arrow::Type::type::STRING;
    } else if (auto dateType = type.dyn_cast_or_null<mlir::db::DateType>()) {
       if (dateType.getUnit() == mlir::db::DateUnitAttr::day) {
          typeConstant = arrow::Type::type::DATE32;
