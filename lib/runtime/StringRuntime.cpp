@@ -273,55 +273,20 @@ runtime::VarLen32 runtime::StringRuntime::fromDate(int64_t date) {
 
 runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dimensions, runtime::VarLen32 type) {
    if (type.str() == "int32[]") {
-      if (dimensions == 2) {
-         std::vector<std::unique_ptr<std::vector<std::unique_ptr<int32_t>>>> result;
-         runtime::ArrayRuntime::toMatrix(str, result);
-         return runtime::ArrayRuntime::fromMatrix(result);
-      } else {
-         std::vector<std::unique_ptr<int32_t>> result;
-         runtime::ArrayRuntime::toVector(str, result);
-         return runtime::ArrayRuntime::fromVector(result);
-      }
+      runtime::Array<int32_t> array(str, dimensions);
+      return array.toString();
    } else if (type.str() == "int64[]") {
-      if (dimensions == 2) {
-         std::vector<std::unique_ptr<std::vector<std::unique_ptr<int64_t>>>> result;
-         runtime::ArrayRuntime::toMatrix(str, result);
-         return runtime::ArrayRuntime::fromMatrix(result);
-      } else {
-         std::vector<std::unique_ptr<int64_t>> result;
-         runtime::ArrayRuntime::toVector(str, result);
-         return runtime::ArrayRuntime::fromVector(result);
-      }
+      runtime::Array<int64_t> array(str, dimensions);
+      return array.toString();
    } else if (type.str() == "float[]") {
-      if (dimensions == 2) {
-         std::vector<std::unique_ptr<std::vector<std::unique_ptr<float>>>> result;
-         runtime::ArrayRuntime::toMatrix(str, result);
-         return runtime::ArrayRuntime::fromMatrix(result);
-      } else {
-         std::vector<std::unique_ptr<float>> result;
-         runtime::ArrayRuntime::toVector(str, result);
-         return runtime::ArrayRuntime::fromVector(result);
-      }
+      runtime::Array<float> array(str, dimensions);
+      return array.toString();
    } else if (type.str() == "double[]") {
-      if (dimensions == 2) {
-         std::vector<std::unique_ptr<std::vector<std::unique_ptr<double>>>> result;
-         runtime::ArrayRuntime::toMatrix(str, result);
-         return runtime::ArrayRuntime::fromMatrix(result);
-      } else {
-         std::vector<std::unique_ptr<double>> result;
-         runtime::ArrayRuntime::toVector(str, result);
-         return runtime::ArrayRuntime::fromVector(result);
-      }
+      runtime::Array<double> array(str, dimensions);
+      return array.toString();
    } else if (type.str() == "string[]") {
-      if (dimensions == 2) {
-         std::vector<std::unique_ptr<std::vector<std::unique_ptr<std::string>>>> result;
-         runtime::ArrayRuntime::toMatrix(str, result);
-         return runtime::ArrayRuntime::fromMatrix(result);
-      } else {
-         std::vector<std::unique_ptr<std::string>> result;
-         runtime::ArrayRuntime::toVector(str, result);
-         return runtime::ArrayRuntime::fromVector(result);
-      }
+      runtime::ArrayString array(str, dimensions);
+      return array.toString();
    } else {
       throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
    }
