@@ -12,15 +12,22 @@
 namespace runtime
 {
 
+    /**
+     * This class represents an array for any primitive numeric type (e.g. int32_t, int64_t, float, etc.)
+     */
     template<typename T>
     class Array {
+        // Attribute which stores a single vector
         std::vector<std::unique_ptr<T>> vector;
+        // Attribute which stores a single matrix
         std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>> matrix;
+        // Attribute which decides if result is a vector or a matrix
         int dimensions;
 
         public:
         Array(runtime::VarLen32 array, int dimensions) : dimensions(dimensions) {
             std::string content = array.str();
+            // According to the given dimension create the corresponding object
             if (dimensions == 1) {
                 this->vector = std::vector<std::unique_ptr<T>>();
                 this->toVector(content, this->vector);
@@ -32,6 +39,9 @@ namespace runtime
             }
         };
 
+        /*
+        * This method converts the given array into a string (stored as VarLen32 object) 
+        */
         runtime::VarLen32 toString() {
             std::string result;
 
@@ -47,6 +57,14 @@ namespace runtime
         };
 
         private:
+
+        /**
+         * This method converts the given string into a std::vector containing std::unique_ptr to the corresponding elements. If the array contains 
+         * null values, they will be represented as nullptr. If the string contains elements which cannot be converted to the specified type a 
+         * runtime_error will be thrown.
+         * @param array         The string which should be converted
+         * @param container     A reference to the vector where the elements should be added
+         */
         void toVector(std::string array, std::vector<std::unique_ptr<T>>& container) {
             // Delete spaces if content is not std::string
             array.erase(std::remove_if(array.begin(), array.end(), ::isspace), array.end());
@@ -55,8 +73,12 @@ namespace runtime
             std::stringstream stringStream(array);
             std::string singleValue;
             while(std::getline(stringStream, singleValue, ',')) {
-                if (singleValue.find("Null") != std::string::npos || singleValue.find("NULL") != std::string::npos|| singleValue.find("null") != std::string::npos){
+                // If one of these null-strings occur, add nullptr
+                if (singleValue.find("Null") != std::string::npos || 
+                    singleValue.find("NULL") != std::string::npos || 
+                    singleValue.find("null") != std::string::npos){
                     container.push_back(nullptr);
+                // Otherwise convert value to specified type and add it
                 } else {
                     T value = this->castToNumber(singleValue);
                     container.push_back(std::make_unique<T>(value));
@@ -64,6 +86,10 @@ namespace runtime
             }
         };
 
+        /**
+         * This method converts a string value to its specified type. If the value cannot be converted it will throw a runtime_error
+         * @param element   The element which should be converted
+         */
         T castToNumber(std::string element) {
             if (std::is_same<T, int32_t>::value) {
                 return std::stoi(element);
@@ -78,6 +104,13 @@ namespace runtime
             }
         };
 
+
+        /**
+         * This methods converts a string into a matrix (std::vector with std::unique_ptr containing std::vector). If the array contains 
+         * null values, they will be represented as nullptr. If the string contains elements which cannot be converted to the specified type a 
+         * runtime_error will be thrown.
+         * @param array     The string which should be converted
+         */
         void toMatrix(std::string array) {
             // Remove all spaces
             array.erase(std::remove_if(array.begin(), array.end(), ::isspace), array.end());
@@ -87,25 +120,33 @@ namespace runtime
             std::string singleVector;
             // Iterate over each vector element of the matrix
             while (std::getline(stringStream, singleVector, '}')) {
-                if (singleVector == "NULL" || singleVector == "Null" || singleVector == "null"){
+                auto startIndex = singleVector.find('{');
+                // It is possible that there is a NULL value that was skipped (has no {})
+                if (singleVector.find("NULL") < startIndex || singleVector.find("Null") < startIndex || singleVector.find("null") < startIndex) {
                     this->matrix.push_back(nullptr);
-                } else {
-                    std::unique_ptr<std::vector<std::unique_ptr<T>>> vector = std::make_unique<std::vector<std::unique_ptr<T>>>();
-                    // Delete "," if it is in front
-                    if (singleVector[0] == ',') {
-                        singleVector = singleVector.substr(1, singleVector.size() - 1);
+                    // Proof if the find null value is the last entry of that matrix
+                    if (startIndex == std::string::npos) {
+                        break;
                     }
-                    if (singleVector[0] != '{') {
-                        throw std::runtime_error("The elements of the array does not correspond with the specification of the dimensions number");
-                    }
-                    // Add the deleted "}" from the "getline" function
-                    singleVector = singleVector + '}';
-                    this->toVector(singleVector, *vector);
-                    this->matrix.push_back(std::move(vector)); 
-                }                
+                }
+                // If the opening bracket is missing, the dimension of the input is not valid
+                if (startIndex == std::string::npos) {
+                    throw std::runtime_error("The elements of the array does not correspond with the specification of the dimensions number");
+                }
+                std::unique_ptr<std::vector<std::unique_ptr<T>>> vector = std::make_unique<std::vector<std::unique_ptr<T>>>();
+                // Remove every character before '{'
+                singleVector = singleVector.substr(startIndex, singleVector.size());
+                // Add the deleted "}" from the "getline" function
+                singleVector = singleVector + '}';
+                this->toVector(singleVector, *vector);
+                this->matrix.push_back(std::move(vector));                 
             }
         };
 
+        /**
+         * This method converts a vector object into a string.
+         * @param container     The std::vector which should be converted into a string
+         */
         std::string vectorToString(std::vector<std::unique_ptr<T>>& container) {
             std::string result = "{";
             for (auto& element : container) {
@@ -120,6 +161,9 @@ namespace runtime
             return result;
         };
 
+        /**
+         * This method converts a matrix into a string.
+         */
         std::string matrixToString() {
             std::string result = "{";
             for (auto& element : this->matrix) {
@@ -135,14 +179,21 @@ namespace runtime
         };
     };
     
+    /**
+     * This class represents an array for the std::string type
+     */
     class ArrayString {
+        // Attribute which stores a single vector
         std::vector<std::unique_ptr<std::string>> vector;
+        // Attribute which stores a single matrix
         std::vector<std::unique_ptr<std::vector<std::unique_ptr<std::string>>>> matrix;
+        // Attribute which decides if result is a vector or a matrix
         int dimensions;
 
         public:
         ArrayString(runtime::VarLen32 array, int dimensions) : dimensions(dimensions) {
             std::string content = array.str();
+            // According to the given dimension create the corresponding object
             if (dimensions == 1) {
                 this->vector = std::vector<std::unique_ptr<std::string>>();
                 this->toVector(content, this->vector);
@@ -154,6 +205,9 @@ namespace runtime
             }
         };
 
+        /*
+        * This method converts the given array into a string (stored as VarLen32 object) 
+        */
         runtime::VarLen32 toString() {
             std::string result;
 
@@ -169,11 +223,20 @@ namespace runtime
         };
 
         private:
+
+        /**
+         * This method converts the given string into a std::vector containing std::unique_ptr to the corresponding elements. If the array contains 
+         * null values, they will be represented as nullptr. If the string contains elements which cannot be converted to the specified type a 
+         * runtime_error will be thrown.
+         * @param array         The string which should be converted
+         * @param container     A reference to the vector where the elements should be added
+         */
         void toVector(std::string array, std::vector<std::unique_ptr<std::string>>& container) {
             // Delete outer brackets ({})
             array = array.substr(1, array.size() - 2);
             std::stringstream stringStream(array);
             std::string singleValue;
+            // Because the " symbol is the delimiter every second value is a valid string
             bool isElement = false;
             while(std::getline(stringStream, singleValue, '"')) {
                 if (isElement) {
@@ -193,6 +256,12 @@ namespace runtime
             }
         };
 
+        /**
+         * This methods converts a string into a matrix (std::vector with std::unique_ptr containing std::vector). If the array contains 
+         * null values, they will be represented as nullptr. If the string contains elements which cannot be converted to the specified type a 
+         * runtime_error will be thrown.
+         * @param array     The string which should be converted
+         */
         void toMatrix(std::string array) {
             // Remove outer brackets ({})
             array = array.substr(1, array.size() - 2);
@@ -202,16 +271,20 @@ namespace runtime
             while (std::getline(stringStream, singleVector, '}')) {
                 std::unique_ptr<std::vector<std::unique_ptr<std::string>>> vector = std::make_unique<std::vector<std::unique_ptr<std::string>>>();
                 auto startIndex = singleVector.find('{');
+                // It is possible that there is a NULL value that was skipped (has no {})
+                if (singleVector.find("NULL") < startIndex || singleVector.find("Null") < startIndex || singleVector.find("null") < startIndex) {
+                    this->matrix.push_back(nullptr);
+                    // Proof if the null value is the last entry
+                    if (startIndex == std::string::npos) {
+                        break;
+                    }
+                }
                 // If the opening bracket is missing, the dimension of the input is not valid
                 if (startIndex == std::string::npos) {
                     throw std::runtime_error("The elements of the array does not correspond with the specification of the dimensions number");
                 }
-                // It is possible that there is a NULL value that was skipped (has no {})
-                if (singleVector.find("NULL") < startIndex || singleVector.find("Null") < startIndex || singleVector.find("null") < startIndex) {
-                    this->matrix.push_back(nullptr);
-                }
                 // Remove every character before '{'
-                singleVector = singleVector.substr(startIndex, singleVector.size() - 1);
+                singleVector = singleVector.substr(startIndex, singleVector.size());
                 // Add the deleted "}" from the "getline" function
                 singleVector = singleVector + '}';
                 // Call the toVector function for a std::string
@@ -220,6 +293,10 @@ namespace runtime
             }
         };
 
+        /**
+         * This method converts a vector object into a string.
+         * @param container     The std::vector which should be converted into a string
+         */
         std::string vectorToString(std::vector<std::unique_ptr<std::string>>& container) {
             std::string result = "{";
             for (auto& element : container) {
@@ -234,6 +311,9 @@ namespace runtime
             return result;
         };
 
+        /**
+         * This method converts a matrix into a string.
+         */
         std::string matrixToString() {
             std::string result = "{";
             for (auto& element : this->matrix) {
