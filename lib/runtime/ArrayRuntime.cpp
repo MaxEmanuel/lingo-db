@@ -10,10 +10,10 @@ runtime::VarLen32 runtime::ArrayRuntime::concat(runtime::VarLen32 array1, int di
     }
 
     if (type1.str() == "int32[]") {
-        runtime::Array<int32_t> finalArray(array1, dim1);
+        /* runtime::Array<int32_t> finalArray(array1, dim1);
         runtime::Array<int32_t> tmpArray(array2, dim2);
         finalArray.concat(&tmpArray);
-        return finalArray.toString();
+        return finalArray.toString(); */
     /* }  else if (type1.str() == "int64[]") {
         runtime::Array<int64_t> finalArray(array1, dim1);
         runtime::Array<int64_t> tmpArray(array2, dim2);

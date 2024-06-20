@@ -273,20 +273,20 @@ runtime::VarLen32 runtime::StringRuntime::fromDate(int64_t date) {
 
 runtime::VarLen32 runtime::StringRuntime::toArray(runtime::VarLen32 str, int dimensions, runtime::VarLen32 type) {
    if (type.str() == "int32[]") {
-      runtime::Array<int32_t> array(str, dimensions);
-      return array.toString();
+      runtime::Array<int32_t> array(str, dimensions, &runtime::Array<int32_t>::stringToInt32);
+      return array.toString(&runtime::Array<int32_t>::numericToString<int32_t>);
    } else if (type.str() == "int64[]") {
-      runtime::Array<int64_t> array(str, dimensions);
-      return array.toString();
+      runtime::Array<int64_t> array(str, dimensions, &runtime::Array<int64_t>::stringToInt64);
+      return array.toString(&runtime::Array<int64_t>::numericToString<int64_t>);
    } else if (type.str() == "float[]") {
-      runtime::Array<float> array(str, dimensions);
-      return array.toString();
+      runtime::Array<float> array(str, dimensions, &runtime::Array<float>::stringToFloat);
+      return array.toString(&runtime::Array<float>::numericToString<float>);
    } else if (type.str() == "double[]") {
-      runtime::Array<double> array(str, dimensions);
-      return array.toString();
+      runtime::Array<double> array(str, dimensions, &runtime::Array<double>::stringToDouble);
+      return array.toString(&runtime::Array<double>::numericToString<double>);
    } else if (type.str() == "string[]") {
-      runtime::ArrayString array(str, dimensions);
-      return array.toString();
+      runtime::Array<std::string> array(str, dimensions, &runtime::Array<std::string>::stringToArrayString);
+      return array.toString(&runtime::Array<std::string>::arrayStringToString);
    } else {
       throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
    }
