@@ -9,6 +9,7 @@
 #include <cstring>
 #include <algorithm>
 #include <functional>
+#include <stdexcept>
 
 namespace runtime
 {
@@ -28,7 +29,7 @@ namespace runtime
     };
 
     /**
-     * This class represents an array for any primitive numeric type (e.g. int32_t, int64_t, float, etc.)
+     * This class represents an array for any type (e.g. int32_t, int64_t, float, etc.)
      */
     template<typename T>
     class Array {
@@ -40,6 +41,17 @@ namespace runtime
         int dimensions;
 
         public:
+        /**
+         * Construct an Array object.
+         * @param array         The content as string inside a VarLen32 object
+         * @param dimensions    How many dimensions the array has
+         * @param func          A function which can convert an element to the corresponding type -T
+         * @throw std::runtime_error    - If the containing array does not match with the given dimensions value of if the
+         *                                dimensions value is larger than 2. If an element could not converted to type T 
+         *                                with the given convertion function.
+         * 
+         * 
+         */
         Array(runtime::VarLen32 array, int dimensions, std::function<T(std::string)> func) : dimensions(dimensions) {
             std::string content = array.str();
             this->vector = std::vector<std::unique_ptr<T>>();
@@ -54,9 +66,10 @@ namespace runtime
             }
         };
 
-        /*
-        * This method converts the given array into a string (stored as VarLen32 object) 
-        */
+        /**
+         * This method converts the given array into a string (stored as VarLen32 object) 
+         * @param func  The function which should be used to convert an element of type T to a std::string
+         */
         runtime::VarLen32 toString(std::function<std::string(T)> func) {
             std::string result;
 
@@ -66,17 +79,25 @@ namespace runtime
                 result = this->vectorToString(this->vector, func);
             }
 
+            // These are necessary steps to create a VarLen32 object
             char* data = new char[result.length()];           
             memcpy(data, result.data(), result.length());     
             return runtime::VarLen32((uint8_t*) data, result.length());
         };
 
+        /**
+         * This method adds the elements of the given array.
+         * @param secondArray   A pointer to the Array object which elements should be added 
+         */
         void concat(runtime::Array<T>* secondArray) {
+            // Add a vector to this matrix
             if (this->dimensions > secondArray->getDimensions()){
                 auto vector = std::make_unique<std::vector<std::unique_ptr<T>>>(std::move(*(secondArray->getVector())));
                 this->matrix.push_back(std::move(vector));
+            // Add a matrix to this vector
             } else if (this->dimensions < secondArray->getDimensions()) {
                 for (auto& vector : *(secondArray->getMatrix())){
+                    // Null-values of a matrix will be ignored
                     if (vector != nullptr) {
                         for (auto& element : *vector) {
                             this->vector.push_back(std::move(element));
@@ -84,55 +105,88 @@ namespace runtime
                     }
                 }
             } else {
+                // If merging 2 matrices
                 if (this->dimensions == 2) {
-                for (auto& element : *(secondArray->getMatrix())) {
-                    this->matrix.push_back(std::move(element));
+                    for (auto& element : *(secondArray->getMatrix())) {
+                        this->matrix.push_back(std::move(element));
+                    }
+                // If merging 2 vectors
+                } else {
+                    for (auto& element : *(secondArray->getVector())) {
+                        this->vector.push_back(std::move(element));
+                    }
                 }
-            } else {
-                for (auto& element : *(secondArray->getVector())) {
-                    this->vector.push_back(std::move(element));
-                }
-            }
             }
         };
 
+        /**
+         * This method returns a pointer to its vector
+         */
         std::vector<std::unique_ptr<T>>* getVector(){
             return &this->vector;
         };
 
+        /**
+         * This method returns a pointer to its matrix
+         */
         std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>>* getMatrix(){
             return &this->matrix;
         };
 
+        /**
+         * This method returns its dimension value
+         */
         int getDimensions(){
             return this->dimensions;
         }
 
+        /**
+         * This static method converts a std::string into a int32_t
+         */
         static int32_t stringToInt32(std::string value) {
             return std::stoi(value);
         };
 
+
+        /**
+         * This static method converts a std::string into a int64_t
+         */
         static int64_t stringToInt64(std::string value) {
             return std::stoll(value);
         };
 
+        /**
+         * This static method converts a std::string into a float
+         */
         static float stringToFloat(std::string value) {
             return std::stof(value);
         };
 
+        /**
+         * This static method converts a std::string into a double
+         */
         static double stringToDouble(std::string value) {
             return std::stod(value);
         };
 
+        /**
+         * This static method converts a std::string into a std::string
+         */
         static std::string stringToArrayString(std::string value) {
             return value;
         };
 
+        /**
+         * This static method converts a primitive numeric value into a std::string
+         */
         template<typename R>
         static std::string numericToString(R value) {
             return std::to_string(value);
         };
 
+        /**
+         * This static method converts a std::string into a std::string, but with adding quotation marks
+         */
         static std::string arrayStringToString(std::string value) {
             return '"' + value + '"';
         };
@@ -141,10 +195,11 @@ namespace runtime
 
         /**
          * This method converts the given string into a std::vector containing std::unique_ptr to the corresponding elements. If the array contains 
-         * null values, they will be represented as nullptr. If the string contains elements which cannot be converted to the specified type a 
-         * runtime_error will be thrown.
+         * null values, they will be represented as nullptr. 
          * @param array         The string which should be converted
          * @param container     A reference to the vector where the elements should be added
+         * @param func          A function which is used to convert the elements to the corresponding type T.
+         * @throws runtime_error    - If the string contains elements which cannot be converted to the specified type
          */
         void toVector(std::string array, std::vector<std::unique_ptr<T>>& container, std::function<T(std::string)> func) {
             // Delete outer brackets ({})
@@ -161,15 +216,20 @@ namespace runtime
                     container.push_back(nullptr);
                 // Otherwise convert value to specified type and add it
                 } else {
-                    if (std::is_same<T, std::string>::value && isElement) {
-                        T value = func(singleValue);
-                        container.push_back(std::make_unique<T>(value));
-                    } else if (!std::is_same<T, std::string>::value) {
-                        singleValue.erase(std::remove_if(singleValue.begin(), singleValue.end(), ::isspace), singleValue.end());
-                        T value = func(singleValue);
-                        container.push_back(std::make_unique<T>(value));
+                    try {
+                        if (std::is_same<T, std::string>::value && isElement) {
+                            T value = func(singleValue);
+                            container.push_back(std::make_unique<T>(value));
+                        } else if (!std::is_same<T, std::string>::value) {
+                            singleValue.erase(std::remove_if(singleValue.begin(), singleValue.end(), ::isspace), singleValue.end());
+                            T value = func(singleValue);
+                            container.push_back(std::make_unique<T>(value));
+                        }
+                    } catch (const std::invalid_argument& exception) {
+                        throw std::runtime_error(singleValue + " cannot be converted");
                     }
                 }
+                // This is necessary if T == std::string, because of using other delimiter
                 isElement = !isElement;
             }
         };
@@ -180,6 +240,8 @@ namespace runtime
          * null values, they will be represented as nullptr. If the string contains elements which cannot be converted to the specified type a 
          * runtime_error will be thrown.
          * @param array     The string which should be converted
+         * @param container The container in which the elements should be added
+         * @param func      The function which should be used to convert an element to type T
          */
         void toMatrix(std::string array, std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>>& container, std::function<T(std::string)> func) {
             // Remove outer brackets ({})
@@ -199,7 +261,7 @@ namespace runtime
                 }
                 // If the opening bracket is missing, the dimension of the input is not valid
                 if (startIndex == std::string::npos) {
-                    throw std::runtime_error("The elements of the array does not correspond with the specification of the dimensions number");
+                    throw std::runtime_error(array + " has not expected dimension of " + std::to_string(this->dimensions));
                 }
                 std::unique_ptr<std::vector<std::unique_ptr<T>>> vector = std::make_unique<std::vector<std::unique_ptr<T>>>();
                 // Remove every character before '{'
@@ -214,6 +276,7 @@ namespace runtime
         /**
          * This method converts a vector object into a string.
          * @param container     The std::vector which should be converted into a string
+         * @param func          The function which should be used for conversion
          */
         std::string vectorToString(std::vector<std::unique_ptr<T>>& container, std::function<std::string(T)> func) {
             std::string result = "{";
@@ -231,6 +294,8 @@ namespace runtime
 
         /**
          * This method converts a matrix into a string.
+         * @param container     The std::vector which should be converted into a string
+         * @param func          The function which should be used for conversion
          */
         std::string matrixToString(std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>>& container, std::function<std::string(T)> func) {
             std::string result = "{";
