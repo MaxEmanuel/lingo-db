@@ -13,6 +13,17 @@
 namespace runtime
 {
     struct ArrayRuntime{
+        /**
+        * This function concatenates two arrays. It will be able to concatenate a vector (array2) into a matrix (array1) and vice versa add all
+        * single elements to the vector. If both arrays have different types or one of the given arrays as VarLen32 cannot be converted 
+        * to a Array object, it will throw an runtime_error. 
+        * @param array1     The array which should be extended with more elements
+        * @param dim1       The dimension value of the first array
+        * @param type1      The type of the elements in the first array
+        * @param array2     The array which should be moved to the first array
+        * @param dim2       The dimension value of the second array
+        * @param type2      The type the elements in the second array
+        */
         static runtime::VarLen32 concat(runtime::VarLen32 array1, int dim1, runtime::VarLen32 type1, runtime::VarLen32 array2, int dim2, runtime::VarLen32 type2);
     };
 
@@ -61,7 +72,19 @@ namespace runtime
         };
 
         void concat(runtime::Array<T>* secondArray) {
-            if (this->dimensions == 2) {
+            if (this->dimensions > secondArray->getDimensions()){
+                auto vector = std::make_unique<std::vector<std::unique_ptr<T>>>(std::move(*(secondArray->getVector())));
+                this->matrix.push_back(std::move(vector));
+            } else if (this->dimensions < secondArray->getDimensions()) {
+                for (auto& vector : *(secondArray->getMatrix())){
+                    if (vector != nullptr) {
+                        for (auto& element : *vector) {
+                            this->vector.push_back(std::move(element));
+                        }
+                    }
+                }
+            } else {
+                if (this->dimensions == 2) {
                 for (auto& element : *(secondArray->getMatrix())) {
                     this->matrix.push_back(std::move(element));
                 }
@@ -69,6 +92,7 @@ namespace runtime
                 for (auto& element : *(secondArray->getVector())) {
                     this->vector.push_back(std::move(element));
                 }
+            }
             }
         };
 
@@ -79,6 +103,10 @@ namespace runtime
         std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>>* getMatrix(){
             return &this->matrix;
         };
+
+        int getDimensions(){
+            return this->dimensions;
+        }
 
         static int32_t stringToInt32(std::string value) {
             return std::stoi(value);

@@ -141,6 +141,15 @@ struct SQLTypeInference {
       bool floatPresent = left.isa<mlir::FloatType>() || right.isa<mlir::FloatType>();
       bool decimalPresent = left.isa<mlir::db::DecimalType>() || right.isa<mlir::db::DecimalType>();
       bool datePresent = left.isa<mlir::db::DateType>() || right.isa<mlir::db::DateType>();
+      bool arrayPresent = left.isa<mlir::db::ArrayType>() || right.isa<mlir::db::ArrayType>();
+      if (arrayPresent) {
+         if (auto leftType = left.dyn_cast_or_null<mlir::db::ArrayType>()){
+            return mlir::db::ArrayType::get(left.getContext(), leftType.getDimensions(), leftType.getType());
+         } else {
+            auto rightType = right.dyn_cast_or_null<mlir::db::ArrayType>();
+            return mlir::db::ArrayType::get(right.getContext(), rightType.getDimensions(), rightType.getType());
+         }
+      }
       if (datePresent) return getHigherDateType(left, right);
       if (stringPresent) return mlir::db::StringType::get(left.getContext());
       if (charPresent) return left == right ? left : mlir::db::StringType::get(left.getContext());
@@ -191,6 +200,15 @@ struct SQLTypeInference {
          return toCommonBaseTypes(builder, values);
       }
    }
+
+   static mlir::Type getType(mlir::Value value) {
+      auto type = value.getType();
+      if (auto nullable = value.getType().dyn_cast_or_null<mlir::db::NullableType>()){
+         type = nullable.getType();
+      }
+      return type;
+   }
+   
 };
 #define T_FakeNode T_TidScan
 struct FakeNode : Node {

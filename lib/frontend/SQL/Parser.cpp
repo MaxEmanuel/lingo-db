@@ -493,45 +493,42 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          return opType == ExpressionType::COMPARE_NOT_LIKE ? builder.create<mlir::db::NotOp>(loc, like) : like;
       }
       case ExpressionType::OPERATOR_CONCAT: {
-         mlir::Value leftValue, rightValue;
-         auto leftType = left.getType().dyn_cast_or_null<mlir::db::NullableType>();
-         auto rightType = right.getType().dyn_cast_or_null<mlir::db::NullableType>();
-         mlir::Value type1, type2, dimension1, dimension2;
-         if (leftType) {
-            if (leftType.getType().isa<mlir::db::ArrayType>()) {
-               auto array = leftType.getType().dyn_cast_or_null<mlir::db::ArrayType>();
+         auto leftType = SQLTypeInference::getType(left);
+         auto rightType = SQLTypeInference::getType(right);
+         auto baseType = SQLTypeInference::getCommonBaseType(mlir::TypeRange{leftType, rightType});
+         // Look if one value is an array, then call 'ConcatenateArray', otherwise 'Concatenate'
+         if (baseType.isa<mlir::db::ArrayType>()) {
+            // Here initialise necessary parameters to be able of calling runtime::ArrayRuntime::concat
+            mlir::Value type1, dimension1, type2, dimension2;
+            // If left value is not an array (is not casted), assign to him the attributes (type and dimension) from the actual array type.
+            // In this case it must be the right value
+            if (!leftType.isa<mlir::db::ArrayType>()) {
+               auto array = rightType.dyn_cast<mlir::db::ArrayType>();
                type1 = builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
                dimension1 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
-               leftValue = SQLTypeInference::castValueToType(builder, left, mlir::db::ArrayType::get(builder.getContext(), array.getDimensions(), array.getType()));
+               left = SQLTypeInference::castValueToType(builder, left, mlir::db::ArrayType::get(builder.getContext(), array.getDimensions(), array.getType()));
+            } else {
+               auto array = leftType.dyn_cast<mlir::db::ArrayType>();
+               type1 = builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
+               dimension1 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
             }
-         }
-         if (rightType) {
-            if (rightType.getType().isa<mlir::db::ArrayType>()) {
-               auto array = rightType.getType().dyn_cast_or_null<mlir::db::ArrayType>();
+            // If right value is not an array (is not casted), assign to him the attributes (type and dimension) from the actual array type.
+            // In this case it must be the left value
+            if (!rightType.isa<mlir::db::ArrayType>()) {
+               auto array = leftType.dyn_cast<mlir::db::ArrayType>();
                type2 = builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
                dimension2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
-               rightValue = SQLTypeInference::castValueToType(builder, right, mlir::db::ArrayType::get(builder.getContext(), array.getDimensions(), array.getType()));
+               right = SQLTypeInference::castValueToType(builder, right, mlir::db::ArrayType::get(builder.getContext(), array.getDimensions(), array.getType())); 
+            } else {
+               auto array = rightType.dyn_cast<mlir::db::ArrayType>();
+               type2 = builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
+               dimension2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));     
             }
-         }
-         if (!type2 && type1) {
-            auto array = leftType.getType().dyn_cast_or_null<mlir::db::ArrayType>();
-            type2 = builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
-            dimension2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
-            rightValue = SQLTypeInference::castValueToType(builder, right, mlir::db::ArrayType::get(builder.getContext(), array.getDimensions(), array.getType()));  
-         }
-         if (type2 && !type1) {
-            auto array = rightType.getType().dyn_cast_or_null<mlir::db::ArrayType>();
-            type1 = builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
-            dimension1 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
-            leftValue = SQLTypeInference::castValueToType(builder, left, mlir::db::ArrayType::get(builder.getContext(), array.getDimensions(), array.getType()));
+            return builder.create<mlir::db::RuntimeCall>(loc,  left.getType(), "ConcatenateArray", mlir::ValueRange({left, dimension1, type1, right, dimension2, type2})).getRes();
          }
 
-         if (type1 && type2) {
-            return builder.create<mlir::db::RuntimeCall>(loc,  leftValue.getType(), "ConcatenateArray", mlir::ValueRange({leftValue, dimension1, type1, rightValue, dimension2, type2})).getRes();
-         }
-
-         leftValue = SQLTypeInference::castValueToType(builder, left, mlir::db::StringType::get(builder.getContext()));
-         rightValue = SQLTypeInference::castValueToType(builder, right, mlir::db::StringType::get(builder.getContext()));
+         auto leftValue = SQLTypeInference::castValueToType(builder, left, mlir::db::StringType::get(builder.getContext()));
+         auto rightValue = SQLTypeInference::castValueToType(builder, right, mlir::db::StringType::get(builder.getContext()));
          mlir::Type resType = right.getType().isa<mlir::db::NullableType>() ? rightValue.getType() : leftValue.getType();
          return builder.create<mlir::db::RuntimeCall>(loc, resType, "Concatenate", mlir::ValueRange({leftValue, rightValue})).getRes();
       }

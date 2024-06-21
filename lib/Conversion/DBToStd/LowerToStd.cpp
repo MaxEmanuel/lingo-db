@@ -1207,7 +1207,7 @@ void DBToStdLoweringPass::runOnOperation() {
 
    patterns.insert<HashLowering>(typeConverter, ctxt);
 
-   if (failed(applyPartialConversion(module, target, std::move(patterns))))
+   if (failed(applyFullConversion(module, target, std::move(patterns))))
       signalPassFailure();
 }
 
