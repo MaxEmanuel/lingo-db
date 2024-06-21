@@ -855,6 +855,8 @@ class CreateTableLowering : public SubOpConversionPattern<mlir::subop::CreateRes
          return "float[" + std::to_string(floatType.getWidth()) + "]";
       } else if (auto stringType = type.dyn_cast_or_null<mlir::db::StringType>()) {
          return "string";
+      } else if (auto arrayType = type.dyn_cast_or_null<mlir::db::ArrayType>()) {
+         return "array";
       } else if (auto dateType = type.dyn_cast_or_null<mlir::db::DateType>()) {
          if (dateType.getUnit() == mlir::db::DateUnitAttr::day) {
             return "date[32]";
