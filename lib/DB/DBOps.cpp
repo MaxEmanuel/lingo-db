@@ -124,6 +124,9 @@ OpFoldResult mlir::db::ConstantOp::fold(mlir::db::ConstantOp::FoldAdaptor adapto
    } else if (type.isa<mlir::db::CharType>()) {
       std::string str = std::get<std::string>(parseResult);
       return mlir::StringAttr::get(getContext(), str);
+   } else if (type.isa<mlir::db::ArrayType>()) {
+      std::string str = std::get<std::string>(parseResult);
+      return mlir::StringAttr::get(getContext(), str);
    } else if (type.isa<mlir::db::IntervalType, mlir::db::DateType, mlir::db::TimestampType>()) {
       return mlir::IntegerAttr::get(mlir::IntegerType::get(getContext(), 64), std::get<int64_t>(parseResult));
    } else {
