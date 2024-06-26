@@ -156,6 +156,39 @@ using A_Expr = struct AExpr {
    int location_; /* token location, or -1 if unknown */
 };
 
+/*
+ * A_Indices - array subscript or slice bounds ([lidx:uidx] or [uidx])
+ */
+using A_Indices =  struct A_Indices
+{
+	NodeTag		type;
+	Node	   *lidx;			/* NULL if it's a single subscript */
+	Node	   *uidx;
+};
+
+
+
+/*
+ * A_Indirection - select a field and/or array element from an expression
+ *
+ * The indirection list can contain A_Indices nodes (representing
+ * subscripting), string Value nodes (representing field selection --- the
+ * string value is the name of the field to select), and A_Star nodes
+ * (representing selection of all fields of a composite type).
+ * For example, a complex selection operation like
+ *				(foo).field1[42][7].field2
+ * would be represented with a single A_Indirection node having a 4-element
+ * indirection list.
+ *
+ * Currently, A_Star must appear only as the last list element --- the grammar
+ * is responsible for enforcing this!
+ */
+using A_Indirection = struct A_Indirection{
+	NodeTag		type;
+	Node	   *arg;			/* the thing being selected from */
+	List	   *indirection;	/* subscripts and/or field names and/or * */
+};
+
 using NullTestType = enum NullTestType { IS_NULL,
                                          IS_NOT_NULL };
 

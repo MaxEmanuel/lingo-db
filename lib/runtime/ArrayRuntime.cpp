@@ -35,3 +35,19 @@ runtime::VarLen32 runtime::ArrayRuntime::concat(runtime::VarLen32 str1, int dim1
         throw std::runtime_error("The entered type - " + type1.str() + " - is currently not supported");
     }
 }
+
+runtime::VarLen32 runtime::ArrayRuntime::getRange(runtime::VarLen32 array, int dim, runtime::VarLen32 type, int start, int stop) {
+    std::string result = "This is getRange";
+
+    char* data = new char[result.length()];           
+    memcpy(data, result.data(), result.length());     
+    return runtime::VarLen32((uint8_t*) data, result.length());
+}
+
+runtime::VarLen32 runtime::ArrayRuntime::getEntry(runtime::VarLen32 array, int dim, runtime::VarLen32 type, int index) {
+    std::string result = "This is getEntry";
+
+    char* data = new char[result.length()];           
+    memcpy(data, result.data(), result.length());     
+    return runtime::VarLen32((uint8_t*) data, result.length());
+}

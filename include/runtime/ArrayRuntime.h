@@ -26,6 +26,9 @@ namespace runtime
         * @param type2      The type the elements in the second array
         */
         static runtime::VarLen32 concat(runtime::VarLen32 array1, int dim1, runtime::VarLen32 type1, runtime::VarLen32 array2, int dim2, runtime::VarLen32 type2);
+
+        static runtime::VarLen32 getRange(runtime::VarLen32 array, int dim, runtime::VarLen32 type, int start, int stop);
+        static runtime::VarLen32 getEntry(runtime::VarLen32 array, int dim, runtime::VarLen32 type, int index);
     };
 
     /**

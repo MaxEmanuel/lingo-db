@@ -1169,6 +1169,12 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
          auto* coalesceExpr = reinterpret_cast<AExpr*>(node);
          return translateCoalesceExpression(builder, context, reinterpret_cast<List*>(coalesceExpr->lexpr_)->head);
       }
+      case T_A_Indirection: {
+         auto* indirectionExpr = reinterpret_cast<A_Indirection*>(node);
+         auto* indirections = reinterpret_cast<List*>(indirectionExpr->indirection);
+         mlir::Value data = translateExpression(builder, reinterpret_cast<Node*>(indirectionExpr->arg), context, true);
+         return translateIndirection(builder, context, indirections, data);
+      }
       default: {
         throw std::runtime_error("unsupported expression type");
       }
@@ -1176,6 +1182,43 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
   throw std::runtime_error("should never happen");
    return mlir::Value();
 }
+
+ mlir::Value frontend::sql::Parser::translateIndirection(mlir::OpBuilder& builder, TranslationContext& context, List* indirections, mlir::Value data){
+   auto* listCell = indirections->head;
+   mlir::Value result;
+   // TODO: optimize this
+   auto array = SQLTypeInference::getType(data).dyn_cast<mlir::db::ArrayType>();
+   mlir::Value type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
+   int dimensions = array.getDimensions();
+   while (listCell) {
+      auto* node = reinterpret_cast<Node*>(listCell->data.ptr_value);
+      switch (node->type) {
+         case T_A_Indices: {
+            auto* indicesExpr = reinterpret_cast<A_Indices*>(node);
+            auto* leftNode = reinterpret_cast<Node*>(indicesExpr->lidx);
+            auto* rightNode = reinterpret_cast<Node*>(indicesExpr->uidx);
+            mlir::Value rightIndex = translateExpression(builder, rightNode, context, true);
+            mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), dimensions));
+            mlir::Value usedArray = listCell == indirections->head ? data : result;
+            // If true user entered 'array[1:2]', otherwise 'array[2]'
+            if (leftNode) {
+               mlir::Value leftIndex = translateExpression(builder, leftNode, context, true);
+               result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayRange", mlir::ValueRange({usedArray, dimensionValue, type, leftIndex, rightIndex})).getRes();
+            } else {
+               result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayElement", mlir::ValueRange({usedArray, dimensionValue, type, rightIndex})).getRes();
+            }
+            break;
+         }
+         default: {
+            throw std::runtime_error("A entered subscript operator is not supported");
+         }
+      }
+      listCell = listCell->next;
+      dimensions--;
+   }
+   return result;
+ }
+
 void frontend::sql::Parser::translateCreateStatement(mlir::OpBuilder& builder, CreateStmt* statement) {
    RangeVar* relation = statement->relation_;
    std::string tableName = relation->relname_ != nullptr ? relation->relname_ : "";
