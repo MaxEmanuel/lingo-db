@@ -36,18 +36,54 @@ runtime::VarLen32 runtime::ArrayRuntime::concat(runtime::VarLen32 str1, int dim1
     }
 }
 
-runtime::VarLen32 runtime::ArrayRuntime::getRange(runtime::VarLen32 array, int dim, runtime::VarLen32 type, int start, int stop) {
-    std::string result = "This is getRange";
-
-    char* data = new char[result.length()];           
-    memcpy(data, result.data(), result.length());     
-    return runtime::VarLen32((uint8_t*) data, result.length());
+runtime::VarLen32 runtime::ArrayRuntime::getRange(runtime::VarLen32 str, int dim, runtime::VarLen32 type, int start, int stop) {
+    if (type.str() == "int32[]") {
+        runtime::Array<int32_t> array(str, dim, &runtime::Array<int32_t>::stringToInt32);
+        array.setToRange(start, stop);
+        return array.toString(&runtime::Array<int32_t>::numericToString<int32_t>);
+    }  else if (type.str() == "int64[]") {
+        runtime::Array<int64_t> array(str, dim, &runtime::Array<int64_t>::stringToInt64);
+        return array.toString(&runtime::Array<int64_t>::numericToString<int64_t>);
+        array.setToRange(start, stop);
+    } else if (type.str() == "float[]") {
+        runtime::Array<float> array(str, dim, &runtime::Array<float>::stringToFloat);
+        array.setToRange(start, stop);
+        return array.toString(&runtime::Array<float>::numericToString<float>);
+    } else if (type.str() == "double[]") {
+        runtime::Array<double> array(str, dim, &runtime::Array<double>::stringToDouble);
+        array.setToRange(start, stop);
+        return array.toString(&runtime::Array<double>::numericToString<double>);
+    } else if (type.str() == "string[]") {
+        runtime::Array<std::string> array(str, dim, &runtime::Array<std::string>::stringToArrayString);
+        array.setToRange(start, stop);
+        return array.toString(&runtime::Array<std::string>::arrayStringToString);
+    } else {
+        throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
+    }
 }
 
-runtime::VarLen32 runtime::ArrayRuntime::getEntry(runtime::VarLen32 array, int dim, runtime::VarLen32 type, int index) {
-    std::string result = "This is getEntry";
-
-    char* data = new char[result.length()];           
-    memcpy(data, result.data(), result.length());     
-    return runtime::VarLen32((uint8_t*) data, result.length());
+runtime::VarLen32 runtime::ArrayRuntime::getEntry(runtime::VarLen32 str, int dim, runtime::VarLen32 type, int index) {
+    if (type.str() == "int32[]") {
+        runtime::Array<int32_t> array(str, dim, &runtime::Array<int32_t>::stringToInt32);
+        array.setToElement(index);
+        return array.toString(&runtime::Array<int32_t>::numericToString<int32_t>);
+    }  else if (type.str() == "int64[]") {
+        runtime::Array<int64_t> array(str, dim, &runtime::Array<int64_t>::stringToInt64);
+        return array.toString(&runtime::Array<int64_t>::numericToString<int64_t>);
+        array.setToElement(index);
+    } else if (type.str() == "float[]") {
+        runtime::Array<float> array(str, dim, &runtime::Array<float>::stringToFloat);
+        array.setToElement(index);
+        return array.toString(&runtime::Array<float>::numericToString<float>);
+    } else if (type.str() == "double[]") {
+        runtime::Array<double> array(str, dim, &runtime::Array<double>::stringToDouble);
+        array.setToElement(index);
+        return array.toString(&runtime::Array<double>::numericToString<double>);
+    } else if (type.str() == "string[]") {
+        runtime::Array<std::string> array(str, dim, &runtime::Array<std::string>::stringToArrayString);
+        array.setToElement(index);
+        return array.toString(&runtime::Array<std::string>::arrayStringToString);
+    } else {
+        throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
+    }
 }

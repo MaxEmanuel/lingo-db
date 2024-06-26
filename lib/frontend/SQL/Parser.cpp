@@ -1187,8 +1187,8 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
    auto* listCell = indirections->head;
    mlir::Value result;
    auto columnType = SQLTypeInference::getType(data);
-   // A value which represents an index for the 'indirections' list
-   int counter = 0;
+   // A value which counts how many times the T_A_Indices expression occurs
+   int dimensionCounter = 0;
    // Iterate over each subscript operator
    while (listCell) {
       auto* node = reinterpret_cast<Node*>(listCell->data.ptr_value);
@@ -1208,15 +1208,17 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
                auto array = columnType.dyn_cast<mlir::db::ArrayType>();
                mlir::Value type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
                mlir::Value rightIndex = translateExpression(builder, rightNode, context, true);
-               mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions() - counter));
                // It is possible that there are more than 1 subscript operater, e.g. array[0][0]. Operators needs to be nested
                mlir::Value usedArray = listCell == indirections->head ? data : result;
                // If a range is requested or a single entry, call the respective function
                if (leftNode) {
                   mlir::Value leftIndex = translateExpression(builder, leftNode, context, true);
+                  mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
                   result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayRange", mlir::ValueRange({usedArray, dimensionValue, type, leftIndex, rightIndex})).getRes();
                } else {
+                  mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions() - dimensionCounter));
                   result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayElement", mlir::ValueRange({usedArray, dimensionValue, type, rightIndex})).getRes();
+                  dimensionCounter++;
                }
             } else {
                throw std::runtime_error("Subscript operators is currently only available for arrays");
@@ -1228,7 +1230,6 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
          }
       }
       listCell = listCell->next;
-      counter++;
    }
    return result;
  }

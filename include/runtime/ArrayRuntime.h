@@ -24,11 +24,35 @@ namespace runtime
         * @param array2     The array which should be moved to the first array
         * @param dim2       The dimension value of the second array
         * @param type2      The type the elements in the second array
+        * @returns A modified array wrapped up as string in a VarLen32 object
+        * @throws std::runtime_error   -    If one of the given arrays could not be created according to the given str, dim and type parameters. 
         */
         static runtime::VarLen32 concat(runtime::VarLen32 array1, int dim1, runtime::VarLen32 type1, runtime::VarLen32 array2, int dim2, runtime::VarLen32 type2);
 
-        static runtime::VarLen32 getRange(runtime::VarLen32 array, int dim, runtime::VarLen32 type, int start, int stop);
-        static runtime::VarLen32 getEntry(runtime::VarLen32 array, int dim, runtime::VarLen32 type, int index);
+        /**
+         * This function allows to pick up some elements of a given array in a specific range.
+         * @param str       The intial array
+         * @param dim       The amount of dimension of the given array
+         * @param type      The type of the elements from the given array
+         * @param start     The start index or start value of the range specification
+         * @param stop      The stop index or end value of the range specification
+         * @returns A modified array wrapped up as string in a VarLen32 object
+         * @throws std::runtime_error   -   If the start or stop indices are wrongly specified or the array could not be created according to the 
+         *                                  given str, dim and type parameters. 
+         */
+        static runtime::VarLen32 getRange(runtime::VarLen32 str, int dim, runtime::VarLen32 type, int start, int stop);
+
+        /**
+         * This function allows to pick up a single element of a given array.
+         * @param str       The intial array
+         * @param dim       The amount of dimension of the given array
+         * @param type      The type of the elements from the given array
+         * @param index     The index of the element which should be returned
+         * @returns A modified array wrapped up as string in a VarLen32 object
+         * @throws std::runtime_error   -   If the index is wrongly specified or the array could not be created according to the 
+         *                                  given str, dim and type parameters. 
+         */
+        static runtime::VarLen32 getEntry(runtime::VarLen32 str, int dim, runtime::VarLen32 type, int index);
     };
 
     /**
@@ -64,6 +88,8 @@ namespace runtime
                 this->toVector(content, this->vector, func);
             } else if (dimensions == 2) {
                 this->toMatrix(content, this->matrix, func);
+            } else if (dimensions < 1) {
+                throw std::runtime_error("That's an invalid dimension. Should be at least 1");
             } else {
                 throw std::runtime_error("More than 2 dimensions are currently not supported");
             }
@@ -78,8 +104,15 @@ namespace runtime
 
             if (this->dimensions == 2) {
                 result = this->matrixToString(this->matrix, func);
-            } else {
+            } else if (this->dimensions == 1) {
                 result = this->vectorToString(this->vector, func);
+            } else {
+                // This case is called if the array consists only with a single value
+                result = this->vector[0] == nullptr ? "null" : func(*(this->vector[0]));
+                // This statement deletes duplicated quotation marks which happens if a single std::string value is returned
+                if (result.find("") != std::string::npos){
+                    result = result.substr(1, result.length() - 1);
+                }
             }
 
             // These are necessary steps to create a VarLen32 object
@@ -121,6 +154,57 @@ namespace runtime
                 }
             }
         };
+
+        /**
+         * This method deletes every element in the array except the ones defined in the given range (including start and end).
+         * @param start     Index which represents the first value in the resulting array
+         * @param stop      Index which represents the last value in the resulting array
+         * @throws std::runtime_error - If one of the indices is out of bounds of the array or if the start index is larger than the stop index
+         */
+        void setToRange(int start, int stop) {
+            int length = this->dimensions == 1 ? this->vector.size() : this->matrix.size();
+            if (start >= length || start < 0) {
+                throw std::runtime_error("Start-index out of bounds");
+            }
+            if (stop >= length || stop < 0) {
+                throw std::runtime_error("Stop-index out of bounds");
+            }
+            if (start >= stop) {
+                throw std::runtime_error("First index - " + std::to_string(start) + " - should be smaller than the second index - " + std::to_string(stop));
+            }
+            // Loop over every element and delete those which cannot be assigned to the given index-range
+            for (int index = 0; index < length; index++){
+                if (index < start || index > stop) {
+                    if (this->dimensions == 1) {
+                        this->vector.erase(this->vector.begin() + index);
+                    } else {
+                        this->matrix.erase(this->matrix.begin() + index);
+                    }
+                    index--;
+                    length--;
+                }
+            }
+        }
+
+        /**
+         * This method changes the array, so that only the element with the given index remains.
+         * @param element       Index which represents the position of the element which should remain
+         * @throws std::runtime_error - If the given index is out of bounds of the array
+         */
+        void setToElement(int element){
+            int length = this->dimensions == 1 ? this->vector.size() : this->matrix.size();
+            if (element >= length || element < 0) {
+                throw std::runtime_error("Index out of bounds");
+            }
+            if (this->dimensions == 2) {
+                this->vector = std::move(*(this->matrix[element]));
+            } else {
+                auto newVector = std::vector<std::unique_ptr<T>>();
+                newVector.push_back(std::move(this->vector[element]));
+                this->vector = std::move(newVector);
+            }
+            this->dimensions--;
+        }
 
         /**
          * This method returns a pointer to its vector
