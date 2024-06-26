@@ -64,6 +64,8 @@ namespace runtime
          * @throws std::runtime_error   -   If the array could not be created according to the given str, dim and type parameters.
          */
         static runtime::VarLen32 getDimensions(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
+
+        static runtime::VarLen32 getCardinality(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
     };
 
     /**
@@ -228,6 +230,27 @@ namespace runtime
             } else {
                 result = this->getVectorDimension(this->vector);
             }
+
+            // These are necessary steps to create a VarLen32 object
+            char* data = new char[result.length()];           
+            memcpy(data, result.data(), result.length());     
+            return runtime::VarLen32((uint8_t*) data, result.length());
+        };
+
+        runtime::VarLen32 getCardinality(){
+            int size = 0;
+            if (this->dimensions == 2) {
+                for (auto& element : this->matrix) {
+                    if (element == nullptr) {
+                        size++;
+                    } else {
+                        size += element->size();
+                    }
+                }
+            } else {
+                size = this->vector.size();
+            }
+            std::string result = std::to_string(size);
 
             // These are necessary steps to create a VarLen32 object
             char* data = new char[result.length()];           
@@ -429,7 +452,7 @@ namespace runtime
 
         std::string getVectorDimension(std::vector<std::unique_ptr<T>>& container) {
             return "[1:" + std::to_string(container.size()) + "]";
-        }
+        };
 
         std::string getMatrixDimension(std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>>& container) {
             std::string result = "";
@@ -441,7 +464,7 @@ namespace runtime
                 }
             }
             return result;
-        }
+        };
     };
     
 } // namespace runtime
