@@ -350,6 +350,16 @@ struct Parser {
    //translate a complete from clause into a single value of type tuple stream (connect single items with cross-products)
    mlir::Value translateFromClause(mlir::OpBuilder& builder, SelectStmt* stmt, TranslationContext& context, ResolverScope& scope);
 
+   /**
+    * This funtion translates an indirection-expression into mlir operations. Indirection expressions could be the following operations:
+    * Subscript operator, e.g. array[0] or array[0:9]
+    * Dot operator, e.g. class.method
+    * Star operator, e.g. select * from test_table
+    * @param builder       Object which is used to be able of creating mlir operations
+    * @param context       ??
+    * @param indirections  A list of nodes which represents the different used indirection-operators
+    * @param data          Object which represents the column definition
+    */
    mlir::Value translateIndirection(mlir::OpBuilder& builder, TranslationContext& context, List* indirections, mlir::Value data);
 
    //translate list of constant values into relalg::ConstRelationOp

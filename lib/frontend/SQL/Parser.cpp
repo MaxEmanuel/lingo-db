@@ -1186,35 +1186,49 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
  mlir::Value frontend::sql::Parser::translateIndirection(mlir::OpBuilder& builder, TranslationContext& context, List* indirections, mlir::Value data){
    auto* listCell = indirections->head;
    mlir::Value result;
-   // TODO: optimize this
-   auto array = SQLTypeInference::getType(data).dyn_cast<mlir::db::ArrayType>();
-   mlir::Value type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
-   int dimensions = array.getDimensions();
+   auto columnType = SQLTypeInference::getType(data);
+   // A value which represents an index for the 'indirections' list
+   int counter = 0;
+   // Iterate over each subscript operator
    while (listCell) {
       auto* node = reinterpret_cast<Node*>(listCell->data.ptr_value);
+      // Proof which type this subscript operator has
       switch (node->type) {
+         // E.g. array[0] or array[0:9]
          case T_A_Indices: {
+            // Get all received informations 
             auto* indicesExpr = reinterpret_cast<A_Indices*>(node);
+            // leftNode = represents start index
             auto* leftNode = reinterpret_cast<Node*>(indicesExpr->lidx);
+            // rightNode = represents end index or single index
             auto* rightNode = reinterpret_cast<Node*>(indicesExpr->uidx);
-            mlir::Value rightIndex = translateExpression(builder, rightNode, context, true);
-            mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), dimensions));
-            mlir::Value usedArray = listCell == indirections->head ? data : result;
-            // If true user entered 'array[1:2]', otherwise 'array[2]'
-            if (leftNode) {
-               mlir::Value leftIndex = translateExpression(builder, leftNode, context, true);
-               result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayRange", mlir::ValueRange({usedArray, dimensionValue, type, leftIndex, rightIndex})).getRes();
+            // Proof which columnType is used for the subscript operator
+            if (columnType.isa<mlir::db::ArrayType>()){
+               // Get all informations from the columnType
+               auto array = columnType.dyn_cast<mlir::db::ArrayType>();
+               mlir::Value type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
+               mlir::Value rightIndex = translateExpression(builder, rightNode, context, true);
+               mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions() - counter));
+               // It is possible that there are more than 1 subscript operater, e.g. array[0][0]. Operators needs to be nested
+               mlir::Value usedArray = listCell == indirections->head ? data : result;
+               // If a range is requested or a single entry, call the respective function
+               if (leftNode) {
+                  mlir::Value leftIndex = translateExpression(builder, leftNode, context, true);
+                  result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayRange", mlir::ValueRange({usedArray, dimensionValue, type, leftIndex, rightIndex})).getRes();
+               } else {
+                  result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayElement", mlir::ValueRange({usedArray, dimensionValue, type, rightIndex})).getRes();
+               }
             } else {
-               result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayElement", mlir::ValueRange({usedArray, dimensionValue, type, rightIndex})).getRes();
+               throw std::runtime_error("Subscript operators is currently only available for arrays");
             }
             break;
          }
          default: {
-            throw std::runtime_error("A entered subscript operator is not supported");
+            throw std::runtime_error("An entered subscript operator is not supported");
          }
       }
       listCell = listCell->next;
-      dimensions--;
+      counter++;
    }
    return result;
  }
