@@ -53,6 +53,17 @@ namespace runtime
          *                                  given str, dim and type parameters. 
          */
         static runtime::VarLen32 getEntry(runtime::VarLen32 str, int dim, runtime::VarLen32 type, int index);
+
+        /**
+         * This function returns a string of dimension values (for array). E.g. for a one dimensional array it will be a single entry, but for a
+         * two dimensional array it will be n entries, depending on the size.
+         * @param str       The initial array
+         * @param dim       The amount of dimension of the given array
+         * @param type      The type of the elements from the given array
+         * @returns A VarLen32 object containing every dimension information
+         * @throws std::runtime_error   -   If the array could not be created according to the given str, dim and type parameters.
+         */
+        static runtime::VarLen32 getDimensions(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
     };
 
     /**
@@ -127,11 +138,11 @@ namespace runtime
          */
         void concat(runtime::Array<T>* secondArray) {
             // Add a vector to this matrix
-            if (this->dimensions > secondArray->getDimensions()){
+            if (this->dimensions > secondArray->getDimension()){
                 auto vector = std::make_unique<std::vector<std::unique_ptr<T>>>(std::move(*(secondArray->getVector())));
                 this->matrix.push_back(std::move(vector));
             // Add a matrix to this vector
-            } else if (this->dimensions < secondArray->getDimensions()) {
+            } else if (this->dimensions < secondArray->getDimension()) {
                 for (auto& vector : *(secondArray->getMatrix())){
                     // Null-values of a matrix will be ignored
                     if (vector != nullptr) {
@@ -184,7 +195,7 @@ namespace runtime
                     length--;
                 }
             }
-        }
+        };
 
         /**
          * This method changes the array, so that only the element with the given index remains.
@@ -204,7 +215,25 @@ namespace runtime
                 this->vector = std::move(newVector);
             }
             this->dimensions--;
-        }
+        };
+
+        /**
+         * This method returns a VarLen32 object which stores a string with a list of dimensions entries. Each entry corresponds to a 
+         * single one dimensional array.
+         */
+        runtime::VarLen32 getDimensions(){
+            std::string result;
+            if (this->dimensions == 2) {
+                result = this->getMatrixDimension(this->matrix);
+            } else {
+                result = this->getVectorDimension(this->vector);
+            }
+
+            // These are necessary steps to create a VarLen32 object
+            char* data = new char[result.length()];           
+            memcpy(data, result.data(), result.length());     
+            return runtime::VarLen32((uint8_t*) data, result.length());
+        };
 
         /**
          * This method returns a pointer to its vector
@@ -223,7 +252,7 @@ namespace runtime
         /**
          * This method returns its dimension value
          */
-        int getDimensions(){
+        int getDimension(){
             return this->dimensions;
         }
 
@@ -397,6 +426,22 @@ namespace runtime
             result += "}";
             return result;
         };
+
+        std::string getVectorDimension(std::vector<std::unique_ptr<T>>& container) {
+            return "[1:" + std::to_string(container.size()) + "]";
+        }
+
+        std::string getMatrixDimension(std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>>& container) {
+            std::string result = "";
+            for (auto& element : container) {
+                if (element == nullptr) {
+                    result += "[1:1]";
+                } else {
+                    result += this->getVectorDimension(*element);
+                }
+            }
+            return result;
+        }
     };
     
 } // namespace runtime

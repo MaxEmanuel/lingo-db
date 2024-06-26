@@ -69,8 +69,8 @@ runtime::VarLen32 runtime::ArrayRuntime::getEntry(runtime::VarLen32 str, int dim
         return array.toString(&runtime::Array<int32_t>::numericToString<int32_t>);
     }  else if (type.str() == "int64[]") {
         runtime::Array<int64_t> array(str, dim, &runtime::Array<int64_t>::stringToInt64);
-        return array.toString(&runtime::Array<int64_t>::numericToString<int64_t>);
         array.setToElement(index);
+        return array.toString(&runtime::Array<int64_t>::numericToString<int64_t>);
     } else if (type.str() == "float[]") {
         runtime::Array<float> array(str, dim, &runtime::Array<float>::stringToFloat);
         array.setToElement(index);
@@ -83,6 +83,27 @@ runtime::VarLen32 runtime::ArrayRuntime::getEntry(runtime::VarLen32 str, int dim
         runtime::Array<std::string> array(str, dim, &runtime::Array<std::string>::stringToArrayString);
         array.setToElement(index);
         return array.toString(&runtime::Array<std::string>::arrayStringToString);
+    } else {
+        throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
+    }
+}
+
+runtime::VarLen32 runtime::ArrayRuntime::getDimensions(runtime::VarLen32 str, int dim, runtime::VarLen32 type) {
+    if (type.str() == "int32[]") {
+        runtime::Array<int32_t> array(str, dim, &runtime::Array<int32_t>::stringToInt32);
+        return array.getDimensions();
+    }  else if (type.str() == "int64[]") {
+        runtime::Array<int64_t> array(str, dim, &runtime::Array<int64_t>::stringToInt64);
+        return array.getDimensions();
+    } else if (type.str() == "float[]") {
+        runtime::Array<float> array(str, dim, &runtime::Array<float>::stringToFloat);
+        return array.getDimensions();
+    } else if (type.str() == "double[]") {
+        runtime::Array<double> array(str, dim, &runtime::Array<double>::stringToDouble);
+        return array.getDimensions();
+    } else if (type.str() == "string[]") {
+        runtime::Array<std::string> array(str, dim, &runtime::Array<std::string>::stringToArrayString);
+        return array.getDimensions();
     } else {
         throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
     }

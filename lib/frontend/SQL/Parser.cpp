@@ -352,6 +352,13 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       auto packed = builder.create<mlir::util::PackOp>(loc, values);
       return builder.create<mlir::db::Hash>(loc, builder.getIndexType(), packed);
    }
+   if (funcName == "array_dims") {
+      auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
+      auto array = SQLTypeInference::getType(val).dyn_cast<mlir::db::ArrayType>();
+      mlir::Value type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
+      mlir::Value dimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
+      return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "ArrayDimensions", mlir::ValueRange({val, dimension, type})).getRes();
+   }
   throw std::runtime_error("could not translate func call");
    return mlir::Value();
 }
