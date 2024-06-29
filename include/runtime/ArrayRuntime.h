@@ -75,7 +75,7 @@ namespace runtime
        This class represents an array structure with abitrary dimensions. The type ```T``` defines which type the corresponding elements should have.
      */
     template<typename T>
-    class ArrayF {
+    class Array {
 
         /**
            This class represents a single array element of type ```R```. If an instance does not contain any element it will be a ```null``` value.
@@ -103,9 +103,15 @@ namespace runtime
              * @note                    If the given ```value``` could not be converted to type ```R```, a ```std::runtime_error``` will be thrown
              */
             ArrayElem(std::string value, TypeCast typeCast, StringCast stringCast) : isNull(false), castToType(typeCast), castToString(stringCast) {
+                // Remove every " " until first character occurs for a string
+                if (std::is_same<R, std::string>::value) {
+                    if (size_t startIndex = value.find('"')){
+                        value = value.substr(startIndex, value.size());
+                    }
+                }
                 try {
                     this->value = this->castToType(value);
-                } catch (std::invalid_argument error) {
+                } catch (std::invalid_argument const&) {
                     throw std::runtime_error("The value -" + value + "- could not be converted. Check the dimension of your input or the entered values");
                 }
             }
@@ -178,7 +184,7 @@ namespace runtime
              */
             std::string toString(){
                 if (this->isNull){
-                    return "null, ";
+                    return "null,";
                 } else {
                     std::string result = "{";
                     // If container contains single elements
@@ -199,6 +205,58 @@ namespace runtime
                     result += "},";
                     return result;
                 }
+            }
+
+            /**
+             * This method joins two arrays together. It is also possible that the given ```array``` has a lower dimension than ```this```.
+             * It will add the elements to the last entry
+             * @param array         A reference to the ```ArrayList``` object which should be connected to ```this```
+             * @note                If the dimension value of the parameter ```array``` is larger than the dimension value of ```this```,
+             *                      it will throw an ```std::runtime_error```.
+             */
+            void concat(ArrayList<T>& array) {
+                // If dim(this) > dim(array) push to last ArrayList entry
+                if (this->dimension > array.getDimension()) {
+                    this->container[this->container.size() - 1].concat(array);
+                } else if (this->dimension < array.getDimension()){
+                    throw std::runtime_error("The dimension -" + std::to_string(array.getDimension()) + "- is larger than the dimension -" + std::to_string(this->dimension) + "- of the array which should receive the elements");
+                } else {
+                    // If dimension is 1, then push elements to the elements attribute
+                    if (this->dimension == 1) {
+                        for (auto& element : array.getElements()) {
+                            this->elements.push_back(element);
+                        }
+                    // If dimension is < 1, then push elements to the container attribute
+                    } else {
+                        for (auto& element: array.getContainer()) {
+                            this->container.push_back(element);
+                        }
+                    }
+                }
+            }
+
+            /**
+             * This method returns the dimension value of the current ```ArrayList``` object.
+             * @returns             An dimension value
+             */
+            int32_t getDimension(){
+                return this->dimension;
+            }
+
+            /**
+             * This method returns the elements attribute, a ```std::vector``` with a list of ```ArrayElem``` objects.
+             * @returns             A reference to a the ```std::vector<ArrayElem<R>>```
+             */
+            std::vector<ArrayElem<R>>& getElements(){
+                return this->elements;
+            }
+
+            /**
+             * This method returns the container attribute, a ```std::vector``` with a list of ```ArrayList``` objects.
+             * @returns             A reference to the ```std::vector<ArrayList<R>>```
+             */
+            std::vector<ArrayList<R>>& getContainer(){
+                return this->container;
             }
 
             private:
@@ -222,9 +280,9 @@ namespace runtime
                     // Counts, how many '{' have been encounterd which has not been closed
                     int32_t openEntries = -1; // -1 = does not found any '{'
                     // Index of the first character of an array element (skip the first '{')
-                    int32_t startIndex = array.find('{') + 1;
+                    size_t startIndex = array.find('{') + 1;
                     // Iterate over every character from the array parameter
-                    for (int32_t index = startIndex; index < array.size(); index++){
+                    for (size_t index = startIndex; index < array.size(); index++){
                         // If the corresponding '}' of an element has been identified
                         if (openEntries == 0){
                             // Create a new ArrayList with the corresponding substring and a lower dimension
@@ -287,9 +345,9 @@ namespace runtime
                 // Proof if the content is a null value
                 if (!this->isInputNull(array)){
                     // Index of the first character of an array element (skip the first '{')
-                    int32_t startIndex = array.find('{') + 1;
+                    size_t startIndex = array.find('{') + 1;
                     // Iterate over every character from the array parameter
-                    for (int32_t index = startIndex; index < array.size(); index++){
+                    for (size_t index = startIndex; index < array.size(); index++){
                         // Proof every character
                         switch (array[index]){
                         case '}':
@@ -366,7 +424,7 @@ namespace runtime
          * @note                If the given array parameter does not correspond to the defined array signatur a ```std::runtime::error``` will be thrown,
          *                      e.g. ```array = [1,2,3,4]```
          */
-        ArrayF(std::string array, int32_t dimension, TypeCast typeCast, StringCast stringCast) : array(ArrayList<T>(array, dimension, typeCast, stringCast)) {}
+        Array(std::string array, int32_t dimension, TypeCast typeCast, StringCast stringCast) : array(ArrayList<T>(array, dimension, typeCast, stringCast)) {}
 
         /**
          * This method converts the complete array structure back to a string.
@@ -383,12 +441,32 @@ namespace runtime
             return runtime::VarLen32((uint8_t*) data, result.length());
         }
 
+        /**
+         * This method joins two arrays together. It is also possible that the given ```array``` has a lower dimension than ```this```.
+         * It will add the elements to the last entry
+         * @param array         A reference to the ```array``` object which should be connected to ```this```
+         * @note                If the dimension value of the parameter ```array``` is larger than the dimension value of ```this```,
+         *                      it will throw an ```std::runtime_error```.
+         */
+        void concat(Array<T>& array) {
+            this->array.concat(array.getArray());
+        }
+
+        /**
+         * This method returns a reference to the ```ArrayList``` attribute from this class
+         * @return              A reference to the ```ArrayList``` value
+         */
+        ArrayList<T>& getArray(){
+            return this->array;
+        }
+
     };
 
     /**
      * This class is an abstract class which includes all cast functions for an ```Array``` construction.
      */
     class TypeCasts {
+        public:
         /**
          * This static method converts a std::string into a int32_t
          */
@@ -431,469 +509,6 @@ namespace runtime
         template<typename R>
         static std::string numericToString(R value) {
             return std::to_string(value);
-        };
-    };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    /**********************************************************************************************************************************
-     * 
-     * 
-     * 
-     *                                                      DEPRECATED (will be replaced with above code)
-     * 
-     * 
-     * 
-     ***********************************************************************************************************************************/
-
-
-    /**
-     * This class represents an array for any type (e.g. int32_t, int64_t, float, etc.)
-     */
-    template<typename T>
-    class Array {
-        // Attribute which stores a single vector
-        std::vector<std::unique_ptr<T>> vector;
-        // Attribute which stores a single matrix
-        std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>> matrix;
-        // Attribute which decides if result is a vector or a matrix
-        int dimensions;
-
-        public:
-        /**
-         * Construct an Array object.
-         * @param array         The content as string inside a VarLen32 object
-         * @param dimensions    How many dimensions the array has
-         * @param func          A function which can convert an element to the corresponding type -T
-         * @throw std::runtime_error    - If the containing array does not match with the given dimensions value of if the
-         *                                dimensions value is larger than 2. If an element could not converted to type T 
-         *                                with the given convertion function.
-         * 
-         * 
-         */
-        Array(runtime::VarLen32 array, int dimensions, std::function<T(std::string)> func) : dimensions(dimensions) {
-            std::string content = array.str();
-            this->vector = std::vector<std::unique_ptr<T>>();
-            this->matrix = std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>>();
-            // According to the given dimension create the corresponding object
-            if (dimensions == 1) {
-                this->toVector(content, this->vector, func);
-            } else if (dimensions == 2) {
-                this->toMatrix(content, this->matrix, func);
-            } else if (dimensions < 1) {
-                throw std::runtime_error("That's an invalid dimension. Should be at least 1");
-            } else {
-                throw std::runtime_error("More than 2 dimensions are currently not supported");
-            }
-        };
-
-        /**
-         * This method converts the given array into a string (stored as VarLen32 object) 
-         * @param func  The function which should be used to convert an element of type T to a std::string
-         */
-        runtime::VarLen32 toString(std::function<std::string(T)> func) {
-            std::string result;
-
-            if (this->dimensions == 2) {
-                result = this->matrixToString(this->matrix, func);
-            } else if (this->dimensions == 1) {
-                result = this->vectorToString(this->vector, func);
-            } else {
-                // This case is called if the array consists only with a single value
-                result = this->vector[0] == nullptr ? "null" : func(*(this->vector[0]));
-                // This statement deletes duplicated quotation marks which happens if a single std::string value is returned
-                if (result.find("") != std::string::npos){
-                    result = result.substr(1, result.length() - 1);
-                }
-            }
-
-            // These are necessary steps to create a VarLen32 object
-            char* data = new char[result.length()];           
-            memcpy(data, result.data(), result.length());     
-            return runtime::VarLen32((uint8_t*) data, result.length());
-        };
-
-        /**
-         * This method adds the elements of the given array.
-         * @param secondArray   A pointer to the Array object which elements should be added 
-         */
-        void concat(runtime::Array<T>* secondArray) {
-            // Add a vector to this matrix
-            if (this->dimensions > secondArray->getDimension()){
-                auto vector = std::make_unique<std::vector<std::unique_ptr<T>>>(std::move(*(secondArray->getVector())));
-                this->matrix.push_back(std::move(vector));
-            // Add a matrix to this vector
-            } else if (this->dimensions < secondArray->getDimension()) {
-                for (auto& vector : *(secondArray->getMatrix())){
-                    // Null-values of a matrix will be ignored
-                    if (vector != nullptr) {
-                        for (auto& element : *vector) {
-                            this->vector.push_back(std::move(element));
-                        }
-                    }
-                }
-            } else {
-                // If merging 2 matrices
-                if (this->dimensions == 2) {
-                    for (auto& element : *(secondArray->getMatrix())) {
-                        this->matrix.push_back(std::move(element));
-                    }
-                // If merging 2 vectors
-                } else {
-                    for (auto& element : *(secondArray->getVector())) {
-                        this->vector.push_back(std::move(element));
-                    }
-                }
-            }
-        };
-
-        /**
-         * This method deletes every element in the array except the ones defined in the given range (including start and end).
-         * @param start     Index which represents the first value in the resulting array
-         * @param stop      Index which represents the last value in the resulting array
-         * @throws std::runtime_error - If one of the indices is out of bounds of the array or if the start index is larger than the stop index
-         */
-        void setToRange(int start, int stop) {
-            int length = this->dimensions == 1 ? this->vector.size() : this->matrix.size();
-            if (start >= length || start < 0) {
-                throw std::runtime_error("Start-index out of bounds");
-            }
-            if (stop >= length || stop < 0) {
-                throw std::runtime_error("Stop-index out of bounds");
-            }
-            if (start >= stop) {
-                throw std::runtime_error("First index - " + std::to_string(start) + " - should be smaller than the second index - " + std::to_string(stop));
-            }
-            // Loop over every element and delete those which cannot be assigned to the given index-range
-            for (int index = 0; index < length; index++){
-                if (index < start || index > stop) {
-                    if (this->dimensions == 1) {
-                        this->vector.erase(this->vector.begin() + index);
-                    } else {
-                        this->matrix.erase(this->matrix.begin() + index);
-                    }
-                    index--;
-                    length--;
-                }
-            }
-        };
-
-        /**
-         * This method changes the array, so that only the element with the given index remains.
-         * @param element       Index which represents the position of the element which should remain
-         * @throws std::runtime_error - If the given index is out of bounds of the array
-         */
-        void setToElement(int element){
-            int length = this->dimensions == 1 ? this->vector.size() : this->matrix.size();
-            if (element >= length || element < 0) {
-                throw std::runtime_error("Index out of bounds");
-            }
-            if (this->dimensions == 2) {
-                this->vector = std::move(*(this->matrix[element]));
-            } else {
-                auto newVector = std::vector<std::unique_ptr<T>>();
-                newVector.push_back(std::move(this->vector[element]));
-                this->vector = std::move(newVector);
-            }
-            this->dimensions--;
-        };
-
-        /**
-         * This method returns a VarLen32 object which stores a string with a list of dimensions entries. Each entry corresponds to a 
-         * single one dimensional array.
-         */
-        runtime::VarLen32 getDimensions(){
-            std::string result;
-            if (this->dimensions == 2) {
-                result = this->getMatrixDimension(this->matrix);
-            } else {
-                result = this->getVectorDimension(this->vector);
-            }
-
-            // These are necessary steps to create a VarLen32 object
-            char* data = new char[result.length()];           
-            memcpy(data, result.data(), result.length());     
-            return runtime::VarLen32((uint8_t*) data, result.length());
-        };
-
-        runtime::VarLen32 getCardinality(){
-            int size = 0;
-            if (this->dimensions == 2) {
-                for (auto& element : this->matrix) {
-                    if (element == nullptr) {
-                        size++;
-                    } else {
-                        size += element->size();
-                    }
-                }
-            } else {
-                size = this->vector.size();
-            }
-            std::string result = std::to_string(size);
-
-            // These are necessary steps to create a VarLen32 object
-            char* data = new char[result.length()];           
-            memcpy(data, result.data(), result.length());     
-            return runtime::VarLen32((uint8_t*) data, result.length());
-        };
-
-        /**
-         * This method returns a pointer to its vector
-         */
-        std::vector<std::unique_ptr<T>>* getVector(){
-            return &this->vector;
-        };
-
-        /**
-         * This method returns a pointer to its matrix
-         */
-        std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>>* getMatrix(){
-            return &this->matrix;
-        };
-
-        /**
-         * This method returns its dimension value
-         */
-        int getDimension(){
-            return this->dimensions;
-        }
-
-        /**
-         * This static method converts a std::string into a int32_t
-         */
-        static int32_t stringToInt32(std::string value) {
-            return std::stoi(value);
-        };
-
-
-        /**
-         * This static method converts a std::string into a int64_t
-         */
-        static int64_t stringToInt64(std::string value) {
-            return std::stoll(value);
-        };
-
-        /**
-         * This static method converts a std::string into a float
-         */
-        static float stringToFloat(std::string value) {
-            return std::stof(value);
-        };
-
-        /**
-         * This static method converts a std::string into a double
-         */
-        static double stringToDouble(std::string value) {
-            return std::stod(value);
-        };
-
-        /**
-         * This static method converts a std::string into a std::string
-         */
-        static std::string stringToArrayString(std::string value) {
-            return value;
-        };
-
-        /**
-         * This static method converts a primitive numeric value into a std::string
-         */
-        template<typename R>
-        static std::string numericToString(R value) {
-            return std::to_string(value);
-        };
-
-        /**
-         * This static method converts a std::string into a std::string, but with adding quotation marks
-         */
-        static std::string arrayStringToString(std::string value) {
-            return '"' + value + '"';
-        };
-
-        private:
-
-        /**
-         * This method converts the given string into a std::vector containing std::unique_ptr to the corresponding elements. If the array contains 
-         * null values, they will be represented as nullptr. 
-         * @param array         The string which should be converted
-         * @param container     A reference to the vector where the elements should be added
-         * @param func          A function which is used to convert the elements to the corresponding type T.
-         * @throws runtime_error    - If the string contains elements which cannot be converted to the specified type
-         */
-        void toVector(std::string array, std::vector<std::unique_ptr<T>>& container, std::function<T(std::string)> func) {
-            // Delete outer brackets ({})
-            array = array.substr(1, array.size() - 2);
-            std::stringstream stringStream(array);
-            std::string singleValue;
-            char delimiter = std::is_same<T, std::string>::value ? '"' : ',';
-            bool isElement = false;
-            while(std::getline(stringStream, singleValue, delimiter)) {
-                // If one of these null-strings occur, add nullptr
-                if (singleValue.find("Null") != std::string::npos || 
-                    singleValue.find("NULL") != std::string::npos || 
-                    singleValue.find("null") != std::string::npos){
-                    container.push_back(nullptr);
-                // Otherwise convert value to specified type and add it
-                } else {
-                    try {
-                        if (std::is_same<T, std::string>::value && isElement) {
-                            T value = func(singleValue);
-                            container.push_back(std::make_unique<T>(value));
-                        } else if (!std::is_same<T, std::string>::value) {
-                            singleValue.erase(std::remove_if(singleValue.begin(), singleValue.end(), ::isspace), singleValue.end());
-                            T value = func(singleValue);
-                            container.push_back(std::make_unique<T>(value));
-                        }
-                    } catch (const std::invalid_argument& exception) {
-                        throw std::runtime_error(singleValue + " cannot be converted");
-                    }
-                }
-                // This is necessary if T == std::string, because of using other delimiter
-                isElement = !isElement;
-            }
-        };
-
-
-        /**
-         * This methods converts a string into a matrix (std::vector with std::unique_ptr containing std::vector). If the array contains 
-         * null values, they will be represented as nullptr. If the string contains elements which cannot be converted to the specified type a 
-         * runtime_error will be thrown.
-         * @param array     The string which should be converted
-         * @param container The container in which the elements should be added
-         * @param func      The function which should be used to convert an element to type T
-         */
-        void toMatrix(std::string array, std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>>& container, std::function<T(std::string)> func) {
-            // Remove outer brackets ({})
-            array = array.substr(1, array.size() - 2);
-            std::stringstream stringStream(array);
-            std::string singleVector;
-            // Iterate over each vector element of the matrix
-            while (std::getline(stringStream, singleVector, '}')) {
-                auto startIndex = singleVector.find('{');
-                // It is possible that there is a NULL value that was skipped (has no {})
-                if (singleVector.find("NULL") < startIndex || singleVector.find("Null") < startIndex || singleVector.find("null") < startIndex) {
-                    container.push_back(nullptr);
-                    // Proof if the find null value is the last entry of that matrix
-                    if (startIndex == std::string::npos) {
-                        break;
-                    }
-                }
-                // If the opening bracket is missing, the dimension of the input is not valid
-                if (startIndex == std::string::npos) {
-                    throw std::runtime_error(array + " has not expected dimension of " + std::to_string(this->dimensions));
-                }
-                std::unique_ptr<std::vector<std::unique_ptr<T>>> vector = std::make_unique<std::vector<std::unique_ptr<T>>>();
-                // Remove every character before '{'
-                singleVector = singleVector.substr(startIndex, singleVector.size());
-                // Add the deleted "}" from the "getline" function
-                singleVector = singleVector + '}';
-                this->toVector(singleVector, *vector, func);
-                container.push_back(std::move(vector));                 
-            }
-        };
-
-        /**
-         * This method converts a vector object into a string.
-         * @param container     The std::vector which should be converted into a string
-         * @param func          The function which should be used for conversion
-         */
-        std::string vectorToString(std::vector<std::unique_ptr<T>>& container, std::function<std::string(T)> func) {
-            std::string result = "{";
-            for (auto& element : container) {
-                if (element == nullptr) {
-                    result += "null, ";
-                } else {
-                    result += func(*element) + ", ";
-                }
-            }
-            result = result.substr(0, result.size() - 2);
-            result += "}";
-            return result;
-        };
-
-        /**
-         * This method converts a matrix into a string.
-         * @param container     The std::vector which should be converted into a string
-         * @param func          The function which should be used for conversion
-         */
-        std::string matrixToString(std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>>& container, std::function<std::string(T)> func) {
-            std::string result = "{";
-            for (auto& element : container) {
-                if (element == nullptr) {
-                    result += "null, ";
-                } else {
-                    result += this->vectorToString(*element, func) + ", ";
-                }
-            }
-            result = result.substr(0, result.size() - 2);
-            result += "}";
-            return result;
-        };
-
-        std::string getVectorDimension(std::vector<std::unique_ptr<T>>& container) {
-            return "[1:" + std::to_string(container.size()) + "]";
-        };
-
-        std::string getMatrixDimension(std::vector<std::unique_ptr<std::vector<std::unique_ptr<T>>>>& container) {
-            std::string result = "";
-            for (auto& element : container) {
-                if (element == nullptr) {
-                    result += "[1:1]";
-                } else {
-                    result += this->getVectorDimension(*element);
-                }
-            }
-            return result;
         };
     };
     
