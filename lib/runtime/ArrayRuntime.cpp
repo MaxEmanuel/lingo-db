@@ -1,5 +1,7 @@
 #include "runtime/helpers.h"
 #include "runtime/ArrayRuntime.h"
+#include "runtime/ArrayRuntime/Array.h"
+#include "runtime/ArrayRuntime/TypeCast.h"
 
 runtime::VarLen32 runtime::ArrayRuntime::concat(runtime::VarLen32 str1, int dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, int dim2, runtime::VarLen32 type2) {
     if (type1.str() != type2.str()) {

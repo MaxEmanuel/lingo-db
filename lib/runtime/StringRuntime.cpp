@@ -3,6 +3,8 @@
 #include "arrow/util/formatting.h"
 #include "arrow/util/value_parsing.h"
 #include "runtime/helpers.h"
+#include "runtime/ArrayRuntime/Array.h"
+#include "runtime/ArrayRuntime/TypeCast.h"
 
 #include <arrow/type.h>
 #include <arrow/util/decimal.h>
