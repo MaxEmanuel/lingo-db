@@ -236,6 +236,28 @@ namespace runtime
             }
 
             /**
+             * This method returns a single entry from the array and returns it as string.
+             * @param index         The index of the element which should be returned
+             * @returns             The element as string
+             * @note                If the index does not map to an existing element it will throw an ```std::runtime_error```
+             */
+            std::string getEntry(int32_t index) {
+                if (this->dimension == 1) {
+                    if ((int32_t) this->elements.size() <= index || index < 0){
+                        throw std::runtime_error("The desired element does not exist");
+                    }
+                    std::string result = this->elements[index].toString();
+                    return result.substr(0, result.size() - 1);
+                } else {
+                    if ((int32_t) this->container.size() <= index || index < 0){
+                        throw std::runtime_error("The desired element does not exist");
+                    }
+                    std::string result = this->container[index].toString();
+                    return result.substr(0, result.size() - 1);
+                }
+            }
+
+            /**
              * This method returns the dimension value of the current ```ArrayList``` object.
              * @returns             An dimension value
              */
@@ -434,11 +456,7 @@ namespace runtime
             std::string result = this->array.toString();
             // Delete the last character which will be a ','
             result = result.substr(0, result.size() - 1);
-            
-            // These are necessary steps to create a VarLen32 object
-            char* data = new char[result.length()];           
-            memcpy(data, result.data(), result.length());     
-            return runtime::VarLen32((uint8_t*) data, result.length());
+            return this->castToVarLen(result);
         }
 
         /**
@@ -453,11 +471,35 @@ namespace runtime
         }
 
         /**
+         * This method returns a single entry from the array and returns it as ```VarLen32``` object.
+         * @param index         The index of the element which should be returned
+         * @returns             The element as ```VarLen32``` object
+         * @note                If the index does not map to an existing element it will throw an ```std::runtime_error```
+         */
+        runtime::VarLen32 getEntry(int32_t index) {
+            std::string result = this->array.getEntry(index);
+            return this->castToVarLen(result);
+        }
+
+        /**
          * This method returns a reference to the ```ArrayList``` attribute from this class
          * @return              A reference to the ```ArrayList``` value
          */
         ArrayList<T>& getArray(){
             return this->array;
+        }
+
+        private:
+        /**
+         * This function casts a string to a ```VarLen``` object.
+         * @param data          The string which should be converted
+         * @returns             A ```VarLen``` object which contains the given string
+         */
+        runtime::VarLen32 castToVarLen (std::string data) {
+            // These are necessary steps to create a VarLen32 object
+            char* result = new char[data.length()];           
+            memcpy(result, data.data(), data.length());     
+            return runtime::VarLen32((uint8_t*) result, data.length());
         }
 
     };

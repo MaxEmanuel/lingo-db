@@ -64,30 +64,25 @@ runtime::VarLen32 runtime::ArrayRuntime::getRange(runtime::VarLen32 str, int dim
 }
 
 runtime::VarLen32 runtime::ArrayRuntime::getEntry(runtime::VarLen32 str, int dim, runtime::VarLen32 type, int index) {
-    std::runtime_error("Feature is currently unavailable");
-    /* if (type.str() == "int32[]") {
-        runtime::Array<int32_t> array(str, dim, &runtime::Array<int32_t>::stringToInt32);
-        array.setToElement(index);
-        return array.toString(&runtime::Array<int32_t>::numericToString<int32_t>);
+    if (type.str() == "int32[]") {
+        runtime::Array<int32_t> array(str, dim, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
+        return  array.getEntry(index);
     }  else if (type.str() == "int64[]") {
-        runtime::Array<int64_t> array(str, dim, &runtime::Array<int64_t>::stringToInt64);
-        array.setToElement(index);
-        return array.toString(&runtime::Array<int64_t>::numericToString<int64_t>);
+        runtime::Array<int64_t> array(str, dim, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+        return array.getEntry(index);
     } else if (type.str() == "float[]") {
-        runtime::Array<float> array(str, dim, &runtime::Array<float>::stringToFloat);
-        array.setToElement(index);
-        return array.toString(&runtime::Array<float>::numericToString<float>);
+        runtime::Array<float> array(str, dim, &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
+        return array.getEntry(index);
     } else if (type.str() == "double[]") {
-        runtime::Array<double> array(str, dim, &runtime::Array<double>::stringToDouble);
-        array.setToElement(index);
-        return array.toString(&runtime::Array<double>::numericToString<double>);
+        runtime::Array<double> array(str, dim, &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
+        return array.getEntry(index);
     } else if (type.str() == "string[]") {
-        runtime::Array<std::string> array(str, dim, &runtime::Array<std::string>::stringToArrayString);
-        array.setToElement(index);
-        return array.toString(&runtime::Array<std::string>::arrayStringToString);
+        runtime::Array<std::string> array(str, dim, &runtime::TypeCasts::stringToString, &runtime::TypeCasts::stringToString);
+        return array.getEntry(index);
     } else {
         throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
-    } */
+    }
+    return str;
 }
 
 runtime::VarLen32 runtime::ArrayRuntime::getDimensions(runtime::VarLen32 str, int dim, runtime::VarLen32 type) {
