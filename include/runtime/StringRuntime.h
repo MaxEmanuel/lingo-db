@@ -1,6 +1,7 @@
 #ifndef RUNTIME_STRINGRUNTIME_H
 #define RUNTIME_STRINGRUNTIME_H
 #include "runtime/helpers.h"
+#include <immintrin.h>
 namespace runtime {
 struct StringRuntime {
    static bool NO_SIDE_EFFECTS compareEq(VarLen32 l, VarLen32 r);
@@ -20,6 +21,7 @@ struct StringRuntime {
    static NO_SIDE_EFFECTS int64_t toDate(VarLen32 str);
    static VarLen32 fromDate(int64_t);
    static VarLen32 fromInt(int64_t);
+   static VarLen32 fromTFloat(__bf16);
    static VarLen32 fromFloat32(float);
    static VarLen32 fromFloat64(double);
    static VarLen32 fromChar(uint64_t, size_t bytes);

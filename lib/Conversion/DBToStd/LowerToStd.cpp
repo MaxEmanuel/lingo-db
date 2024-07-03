@@ -259,7 +259,23 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
       } else if (auto intWidth = getIntegerWidth(scalarSourceType, false)) {
          result = rt::StringRuntime::fromInt(rewriter, loc)({valueToCast})[0];
       } else if (auto floatType = scalarSourceType.dyn_cast_or_null<FloatType>()) {
-         result = floatType.getWidth() == 32 ? rt::StringRuntime::fromFloat32(rewriter, loc)({valueToCast})[0] : rt::StringRuntime::fromFloat64(rewriter, loc)({valueToCast})[0];
+         // HELLO WORLD
+         switch (floatType.getWidth()) {
+            case 16:
+               result = rt::StringRuntime::fromTFloat(rewriter, loc)({valueToCast})[0];
+               break;
+            case 32: {
+               result = rt::StringRuntime::fromFloat32(rewriter, loc)({valueToCast})[0];
+               break;
+            }
+            case 64: {
+               result = rt::StringRuntime::fromFloat64(rewriter, loc)({valueToCast})[0];
+               break;
+            }
+            default: {
+               return failure();
+            }
+         }
       } else if (auto decimalSourceType = scalarSourceType.dyn_cast_or_null<db::DecimalType>()) {
          auto scale = rewriter.create<arith::ConstantOp>(loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(decimalSourceType.getS()));
          result = rt::StringRuntime::fromDecimal(rewriter, loc)({valueToCast, scale})[0];
