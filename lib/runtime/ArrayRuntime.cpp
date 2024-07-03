@@ -88,45 +88,53 @@ runtime::VarLen32 runtime::ArrayRuntime::getEntry(runtime::VarLen32 str, int dim
 }
 
 runtime::VarLen32 runtime::ArrayRuntime::getDimensions(runtime::VarLen32 str, int dim, runtime::VarLen32 type) {
-    std::runtime_error("Feature is currently unavailable");
-    /* if (type.str() == "int32[]") {
-        runtime::Array<int32_t> array(str, dim, &runtime::Array<int32_t>::stringToInt32);
-        return array.getDimensions();
+    if (type.str() == "int32[]") {
+        runtime::Array<int32_t> array(str, dim, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
+        return  array.getDimensionRange();
     }  else if (type.str() == "int64[]") {
-        runtime::Array<int64_t> array(str, dim, &runtime::Array<int64_t>::stringToInt64);
-        return array.getDimensions();
+        runtime::Array<int64_t> array(str, dim, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+        return  array.getDimensionRange();
     } else if (type.str() == "float[]") {
-        runtime::Array<float> array(str, dim, &runtime::Array<float>::stringToFloat);
-        return array.getDimensions();
+        runtime::Array<float> array(str, dim, &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
+        return  array.getDimensionRange();
     } else if (type.str() == "double[]") {
-        runtime::Array<double> array(str, dim, &runtime::Array<double>::stringToDouble);
-        return array.getDimensions();
+        runtime::Array<double> array(str, dim, &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
+        return  array.getDimensionRange();
     } else if (type.str() == "string[]") {
-        runtime::Array<std::string> array(str, dim, &runtime::Array<std::string>::stringToArrayString);
-        return array.getDimensions();
+        runtime::Array<std::string> array(str, dim, &runtime::TypeCasts::stringToString, &runtime::TypeCasts::stringToString);
+        return  array.getDimensionRange();
     } else {
         throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
-    } */
+    }
+    return str;
 }
 
 runtime::VarLen32 runtime::ArrayRuntime::getCardinality(runtime::VarLen32 str, int dim, runtime::VarLen32 type) {
-    std::runtime_error("Feature is currently unavailable");
-    /* if (type.str() == "int32[]") {
-        runtime::Array<int32_t> array(str, dim, &runtime::Array<int32_t>::stringToInt32);
-        return array.getCardinality();
+    if (type.str() == "int32[]") {
+        runtime::Array<int32_t> array(str, dim, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
+        return  array.getCardinality();
     }  else if (type.str() == "int64[]") {
-        runtime::Array<int64_t> array(str, dim, &runtime::Array<int64_t>::stringToInt64);
-        return array.getCardinality();
+        runtime::Array<int64_t> array(str, dim, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+        return  array.getCardinality();
     } else if (type.str() == "float[]") {
-        runtime::Array<float> array(str, dim, &runtime::Array<float>::stringToFloat);
-        return array.getCardinality();
+        runtime::Array<float> array(str, dim, &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
+        return  array.getCardinality();
     } else if (type.str() == "double[]") {
-        runtime::Array<double> array(str, dim, &runtime::Array<double>::stringToDouble);
-        return array.getCardinality();
+        runtime::Array<double> array(str, dim, &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
+        return  array.getCardinality();
     } else if (type.str() == "string[]") {
-        runtime::Array<std::string> array(str, dim, &runtime::Array<std::string>::stringToArrayString);
-        return array.getCardinality();
+        runtime::Array<std::string> array(str, dim, &runtime::TypeCasts::stringToString, &runtime::TypeCasts::stringToString);
+        return  array.getCardinality();
     } else {
         throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
-    } */
+    }
+    return str;
+}
+
+int32_t runtime::ArrayRuntime::castToInt32(runtime::VarLen32 str, int dim, runtime::VarLen32 type) {
+    try{
+        return runtime::TypeCasts::stringToInt32(str);
+    } catch (const std::invalid_argument& exception) {
+        std::runtime_error("The given array structure-" + str.str() + "- cannot be converted to a single integer");
+    }
 }

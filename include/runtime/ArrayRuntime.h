@@ -16,7 +16,7 @@ namespace runtime
         * @param dim2       The dimension value of the second array
         * @param type2      The type the elements in the second array
         * @returns A modified array wrapped up as string in a VarLen32 object
-        * @throws std::runtime_error   -    If one of the given arrays could not be created according to the given str, dim and type parameters. 
+        * @throws ```std::runtime_error```   - If one of the given arrays could not be created according to the given str, dim and type parameters. 
         */
         static runtime::VarLen32 concat(runtime::VarLen32 array1, int dim1, runtime::VarLen32 type1, runtime::VarLen32 array2, int dim2, runtime::VarLen32 type2);
 
@@ -28,8 +28,8 @@ namespace runtime
          * @param start     The start index or start value of the range specification
          * @param stop      The stop index or end value of the range specification
          * @returns A modified array wrapped up as string in a VarLen32 object
-         * @throws std::runtime_error   -   If the start or stop indices are wrongly specified or the array could not be created according to the 
-         *                                  given str, dim and type parameters. 
+         * @throws ```std::runtime_error```   - If the start or stop indices are wrongly specified or the array could not be created according to the 
+         *                                      given str, dim and type parameters. 
          */
         static runtime::VarLen32 getRange(runtime::VarLen32 str, int dim, runtime::VarLen32 type, int start, int stop);
 
@@ -40,23 +40,41 @@ namespace runtime
          * @param type      The type of the elements from the given array
          * @param index     The index of the element which should be returned
          * @returns A modified array wrapped up as string in a VarLen32 object
-         * @throws std::runtime_error   -   If the index is wrongly specified or the array could not be created according to the 
-         *                                  given str, dim and type parameters. 
+         * @throws ```std::runtime_error```   - If the index is wrongly specified or the array could not be created according to the 
+         *                                      given str, dim and type parameters. 
          */
         static runtime::VarLen32 getEntry(runtime::VarLen32 str, int dim, runtime::VarLen32 type, int index);
 
         /**
          * This function returns a string of dimension values (for array). E.g. for a one dimensional array it will be a single entry, but for a
-         * two dimensional array it will be n entries, depending on the size.
+         * two dimensional array it will be 2 entries, depending on the size.
          * @param str       The initial array
          * @param dim       The amount of dimension of the given array
          * @param type      The type of the elements from the given array
          * @returns A VarLen32 object containing every dimension information
-         * @throws std::runtime_error   -   If the array could not be created according to the given str, dim and type parameters.
+         * @throws ```std::runtime_error```   - If the array could not be created according to the given str, dim and type parameters.
          */
         static runtime::VarLen32 getDimensions(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
 
+        /**
+         * This function returns the number of elements inside the array as ```VarLen32``` object.
+         * @param str       The initial array
+         * @param dim       The amount of dimension of the given array
+         * @param type      The type of the elements from the given array
+         * @returns A VarLen32 object containing the number of elements in the array
+         * @throws ```std::runtime_error```   - If the array could not be created according to the given str, dim and type parameters.
+         */
         static runtime::VarLen32 getCardinality(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
+
+        /**
+         * This function casts an array (actual a single value which will be interpreted as array) to an integer with 32 bits.
+         * @param str       The initial array
+         * @param dim       The amount of dimension of the given array
+         * @param type      The type of the elements from the given array
+         * @returns The value as int
+         * @throws ```std::runtime_error```   - If the array could not be converted to int.
+         */
+        static int32_t castToInt32(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
     };
     
 } // namespace runtime

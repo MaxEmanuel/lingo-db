@@ -28,6 +28,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
 #include "runtime-defs/StringRuntime.h"
+#include "runtime-defs/ArrayRuntime.h"
 #include <mlir/Dialect/util/FunctionHelper.h>
 
 using namespace mlir;
@@ -232,7 +233,18 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
       auto scalarSourceType = castOp.getVal().getType();
       auto scalarTargetType = castOp.getType();
       auto convertedTargetType = typeConverter->convertType(scalarTargetType);
-      if (!scalarSourceType.isa<mlir::db::StringType>() && !scalarTargetType.isa<mlir::db::StringType>()) return failure();
+
+      // If type is wrapped inside a nullable, get the type inside from nullable
+      if (scalarSourceType.isa<mlir::db::NullableType>()) {
+         scalarSourceType = scalarSourceType.dyn_cast<mlir::db::NullableType>().getType();
+      }
+      if (scalarTargetType.isa<mlir::db::NullableType>()) {
+         scalarTargetType = scalarTargetType.dyn_cast<mlir::db::NullableType>().getType();
+      }
+
+      auto isValidSourceType = scalarSourceType.isa<mlir::db::StringType>() || scalarSourceType.isa<mlir::db::ArrayType>();
+      auto isValidTargetType = scalarTargetType.isa<mlir::db::StringType>() || scalarTargetType.isa<mlir::db::ArrayType>();
+      if (!isValidSourceType && !isValidTargetType) return failure();
 
       Value valueToCast = adaptor.getVal();
       Value result;
@@ -259,6 +271,13 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
             auto dimensions = rewriter.create<arith::ConstantOp>(loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(arrayType.getDimensions()));
             auto type = rewriter.create<mlir::util::CreateConstVarLen>(loc, mlir::util::VarLen32Type::get(rewriter.getContext()),rewriter.getStringAttr(arrayType.getType()));
             result = rt::StringRuntime::toArray(rewriter, loc)({valueToCast, dimensions, type})[0];
+         }
+      // If scalarSourceType == ArrayType, then ArrayType -> OtherType
+      } else if (auto  arrayType = scalarSourceType.dyn_cast_or_null<mlir::db::ArrayType>()){
+         auto dimensions = rewriter.create<arith::ConstantOp>(loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(arrayType.getDimensions()));
+         auto type = rewriter.create<mlir::util::CreateConstVarLen>(loc, mlir::util::VarLen32Type::get(rewriter.getContext()),rewriter.getStringAttr(arrayType.getType()));
+         if (auto intWidth = getIntegerWidth(scalarTargetType, false)) {
+            result = rt::ArrayRuntime::castToInt32(rewriter, loc)({valueToCast, dimensions, type})[0];
          }
       } else if (auto intWidth = getIntegerWidth(scalarSourceType, false)) {
          result = rt::StringRuntime::fromInt(rewriter, loc)({valueToCast})[0];

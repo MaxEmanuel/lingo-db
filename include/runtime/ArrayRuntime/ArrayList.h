@@ -132,6 +132,59 @@ namespace runtime
         }
 
         /**
+         * This method returns for each dimension the accessible range as string (e.g. '[1:2][1:3]').
+         * @return              A string which contains the dimensionality of the array
+         * @note                Currently this method only returns the dimensionality from the first elements that fit. This means
+         *                      that not all elements fit with this schema. Currently it will not be checked that each element inside
+         *                      the array will have the same structure (e.g. '{{1,2},{1,2,3}}' is a valid array and will return '[1:2][1:2]')
+         * @note                If an array does not contain any element and is not ``ǹull```, then this function returns '[0:0]'
+         */
+        std::string getDimensionRange() {
+            if (this->isNull) {
+                return "";
+            }
+            // If there are not any elements
+            if (this->elements.size() == 0 && this->container.size() == 0) {
+                 return "[0:0]";
+            }
+            if (this->dimension == 1) {
+                return "[1:" + std::to_string(this->elements.size()) + "]";
+            } else {
+                std::string result = "[1:" + std::to_string(this->container.size()) + "]";
+                // Find best fitting element
+                for (auto& element : this->container) {
+                    std::string subResult = element.getDimensionRange();
+                    // Null values should not be used
+                    if (subResult != ""){
+                        return result + subResult;
+                    }
+                }
+                return result + "[0:0]";
+            }
+        }
+
+        /**
+         * This method returns the number of elements in the array.
+         * @return              The number of elements in the array
+         * @note                ```null``` values will be counted if they replace a single array element (e.g. '{1,2,3,null}' will return 4, 
+         *                      but '{{1,2}, null}' will return 2).
+         */
+        int32_t getNumberElements() {
+            if (this->isNull) {
+                return 0;
+            }
+            int32_t result = 0;
+            if (this->dimension == 1) {
+                result += this->elements.size();
+            } else {
+                for (auto& element : container) {
+                    result += element.getNumberElements();
+                }
+            }
+            return result;
+        }
+
+        /**
          * This method returns the dimension value of the current ```ArrayList``` object.
          * @returns             An dimension value
          */

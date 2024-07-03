@@ -72,6 +72,29 @@ namespace runtime
         }
 
         /**
+         * This method returns for each dimension the accessible range as ```VarLen32``` object (e.g. '[1:2][1:3]').
+         * @return              A ```VarLen32``` object which contains the string about the dimensionality of the array
+         * @note                Currently this method only returns the dimensionality from the first elements that fit. This means
+         *                      that not all elements fit with this schema. Currently it will not be checked that each element inside
+         *                      the array will have the same structure (e.g. '{{1,2},{1,2,3}}' is a valid array and will return '[1:2][1:2]')
+         */
+        runtime::VarLen32 getDimensionRange() {
+            std::string result = this->array.getDimensionRange();
+            return this->castToVarLen(result);
+        }
+
+        /**
+         * This method returns the number of elements in the array.
+         * @return              The number of elements in the array as string in a ```VarLen32``` object
+         * @note                ```null``` values will be counted if they replace a single array element (e.g. '{1,2,3,null}' will return 4, 
+         *                      but '{{1,2}, null}' will return 2).
+         */
+        runtime::VarLen32 getCardinality() {
+            int32_t result = this->array.getNumberElements();
+            return this->castToVarLen(std::to_string(result));
+        }
+
+        /**
          * This method returns a reference to the ```ArrayList``` attribute from this class
          * @return              A reference to the ```ArrayList``` value
          */
