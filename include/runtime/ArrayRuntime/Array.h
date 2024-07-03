@@ -72,6 +72,32 @@ namespace runtime
         }
 
         /**
+         * This method changes the structure of the elements. All elements of a particular dimension which are between the indices
+         * ```start``` and  ```stop``` will remain. All other elements will be deleted.
+         * @param start         The start index of the interval
+         * @param stop          The end index of the interval
+         * @param subDim        The dimension which should be adjusted
+         * @note                Be aware that the first element will be on index 1 not 0.
+         * @note                A ```std::runtime_error``` will be thrown if ```start < 1```, ```stop < 1```, ```subDim < 1``` or
+         *                      all these parameters are larger then expected (e.g. ```start = 3``` but array has only 2 elements)
+         */
+        void slice(int32_t start, int32_t stop, int32_t subDim) {
+            // reduce start and stop value, because according to specification it should start with 1 and not 0.
+            start--; 
+            stop--;
+            if (start < 0){
+                throw std::runtime_error("Invalid index value: " + std::to_string(start));
+            }
+            if (stop < 0) {
+                throw std::runtime_error("Invalid index value: " + std::to_string(stop));
+            }
+            if (subDim < 1) {
+                throw std::runtime_error("Invalid dimension value: " + std::to_string(subDim));
+            }
+            this->array.slice(start, stop, subDim);
+        }
+
+        /**
          * This method returns for each dimension the accessible range as ```VarLen32``` object (e.g. '[1:2][1:3]').
          * @return              A ```VarLen32``` object which contains the string about the dimensionality of the array
          * @note                Currently this method only returns the dimensionality from the first elements that fit. This means

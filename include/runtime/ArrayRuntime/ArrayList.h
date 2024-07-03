@@ -132,6 +132,66 @@ namespace runtime
         }
 
         /**
+         * This method changes the structure of the elements. All elements of a particular dimension which are between the indices
+         * ```start``` and  ```stop``` will remain. All other elements will be deleted.
+         * @param start         The start index of the interval
+         * @param stop          The end index of the interval
+         * @param subDim        The dimension which should be adjusted
+         * @note                A ```std::runtime_error``` will be thrown if one of the parameters is larger then expected 
+         *                      (e.g. ```start = 3``` but array has only 2 elements)
+         */
+        void slice(int32_t start, int32_t stop, int32_t subDim) {
+            // If there is a null value, nothing to slice
+            if (this->isNull) {
+                return;
+            }
+            if (subDim == this->dimension) {
+                if (this->dimension == 1){
+                    if ((int32_t) this->elements.size() <= start) {
+                        throw std::runtime_error("This array does not have any elements at " + std::to_string(start) + " in dimension " + std::to_string(subDim));
+                    }
+                    if ((int32_t) this->elements.size() <= stop) {
+                        throw std::runtime_error("This array does not have any elements at " + std::to_string(stop) + " in dimension " + std::to_string(subDim));
+                    }
+                    // Iterate over single elements and delete those that does not appear in the interval
+                    int32_t index = 0;
+                    for (auto it = this->elements.begin(); it != this->elements.end(); it++) {
+                        if (index < start || index > stop) {
+                            this->elements.erase(it);
+                            it--;
+                        }
+                        index++;
+                    }
+                } else {
+                    if ((int32_t) this->container.size() <= start) {
+                        throw std::runtime_error("This array does not have any elements at " + std::to_string(start) + " in dimension " + std::to_string(subDim));
+                    }
+                    if ((int32_t) this->container.size() <= stop) {
+                        throw std::runtime_error("This array does not have any elements at " + std::to_string(stop) + " in dimension " + std::to_string(subDim));
+                    }
+                    // Iterate over complete container and delete those that does not appear in the interval
+                    int32_t index = 0;
+                    for (auto it = this->container.begin(); it != this->container.end(); it++) {
+                        if (index < start || index > stop) {
+                            this->container.erase(it);
+                            it--;
+                        }
+                        index++;
+                    }
+                }
+            } else {
+                if (subDim > this->dimension) {
+                    throw std::runtime_error("This array does not have a " + std::to_string(subDim) + "th dimension");
+                } else {
+                    // Call the function of the children, because lower dimension is given
+                    for (auto& element : this->container) {
+                        element.slice(start, stop, subDim);
+                    }
+                }
+            }
+        }
+
+        /**
          * This method returns for each dimension the accessible range as string (e.g. '[1:2][1:3]').
          * @return              A string which contains the dimensionality of the array
          * @note                Currently this method only returns the dimensionality from the first elements that fit. This means

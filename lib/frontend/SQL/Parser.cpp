@@ -1227,13 +1227,14 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
                // If a range is requested or a single entry, call the respective function
                if (leftNode) {
                   mlir::Value leftIndex = translateExpression(builder, leftNode, context, true);
-                  mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
-                  result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayRange", mlir::ValueRange({usedArray, dimensionValue, type, leftIndex, rightIndex})).getRes();
+                  mlir::Value arrayDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
+                  mlir::Value operaterDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions() - dimensionCounter));
+                  result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayRange", mlir::ValueRange({usedArray, arrayDimension, type, leftIndex, rightIndex, operaterDimension})).getRes();
                } else {
                   mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions() - dimensionCounter));
                   result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayElement", mlir::ValueRange({usedArray, dimensionValue, type, rightIndex})).getRes();
-                  dimensionCounter++;
                }
+               dimensionCounter++;
             } else {
                throw std::runtime_error("Subscript operators is currently only available for arrays");
             }

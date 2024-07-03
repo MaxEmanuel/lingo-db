@@ -28,10 +28,10 @@ namespace runtime
          * @param start     The start index or start value of the range specification
          * @param stop      The stop index or end value of the range specification
          * @returns A modified array wrapped up as string in a VarLen32 object
-         * @throws ```std::runtime_error```   - If the start or stop indices are wrongly specified or the array could not be created according to the 
+         * @throws ```std::runtime_error```   - If the start, stop indices or subDim parameter are wrongly specified or the array could not be created according to the 
          *                                      given str, dim and type parameters. 
          */
-        static runtime::VarLen32 getRange(runtime::VarLen32 str, int dim, runtime::VarLen32 type, int start, int stop);
+        static runtime::VarLen32 getRange(runtime::VarLen32 str, int dim, runtime::VarLen32 type, int start, int stop, int subDim);
 
         /**
          * This function allows to pick up a single element of a given array.
