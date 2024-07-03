@@ -137,4 +137,5 @@ int32_t runtime::ArrayRuntime::castToInt32(runtime::VarLen32 str, int dim, runti
     } catch (const std::invalid_argument& exception) {
         std::runtime_error("The given array structure-" + str.str() + "- cannot be converted to a single integer");
     }
+    return 0;
 }
