@@ -467,6 +467,15 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          if (getBaseType(left.getType()).isa<mlir::db::DateType>() && getBaseType(right.getType()).isa<mlir::db::IntervalType>()) {
             return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "DateAdd", mlir::ValueRange({left, right})).getRes();
          }
+         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            auto rightArray = getBaseType(right.getType()).dyn_cast<mlir::db::ArrayType>();      
+            mlir::Value rigthDim = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), rightArray.getDimensions()));
+            mlir::Value rigthType = builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(rightArray.getType()));
+            auto leftArray = getBaseType(left.getType()).dyn_cast<mlir::db::ArrayType>();
+            mlir::Value leftDim = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), leftArray.getDimensions()));
+            mlir::Value leftType = builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(leftArray.getType()));
+            return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayAdd", mlir::ValueRange({left, leftDim, leftType, right, rigthDim, rigthType})).getRes();
+         }
          return builder.create<mlir::db::AddOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
       case ExpressionType::OPERATOR_MINUS:
          if (left.getType().isa<mlir::db::DateType>() && right.getType().isa<mlir::db::IntervalType>()) {

@@ -76,6 +76,8 @@ namespace runtime
          * @note            If the array could not be converted to int, it will throw an ```std::runtime_error```.
          */
         static int32_t castToInt32(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
+
+        static runtime::VarLen32 add(runtime::VarLen32 str1, int dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, int dim2, runtime::VarLen32 type2);
     };
     
 } // namespace runtime

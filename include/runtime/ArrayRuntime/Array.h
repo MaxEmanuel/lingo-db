@@ -120,6 +120,10 @@ namespace runtime
             return this->castToVarLen(std::to_string(result));
         }
 
+        void add(Array<T>& toAdd) {
+            this->array.add(toAdd.getArray());
+        }
+
         /**
          * This method returns a reference to the ```ArrayList``` attribute from this class
          * @return              A reference to the ```ArrayList``` value

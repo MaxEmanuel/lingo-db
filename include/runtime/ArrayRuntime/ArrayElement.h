@@ -56,5 +56,17 @@ namespace runtime {
                 return this->castToString(this->value) + ", ";
             }
         }
+
+        bool getIsNull() {
+            return this->isNull;
+        }
+
+        R getValue() {
+            return this->value;
+        }
+
+        void add(ArrayElem<R>& value) {
+            this->value += value.getValue();
+        }
     };
 }

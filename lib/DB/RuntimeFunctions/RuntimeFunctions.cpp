@@ -258,6 +258,8 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    builtinRegistry->add("ArrayDimensions").implementedAs(rt::ArrayRuntime::getDimensions).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
    builtinRegistry->add("ArrayCardinality").implementedAs(rt::ArrayRuntime::getCardinality).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
 
+   builtinRegistry->add("ArrayAdd").implementedAs(rt::ArrayRuntime::add).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
+
    builtinRegistry->add("Like").implementedAs(rt::StringRuntime::like).matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::stringLike}, resTypeIsBool);
    builtinRegistry->add("ConstLike").matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::stringLike}, resTypeIsBool).implementedAs(constLikeImpl).needsWrapping();
    builtinRegistry->add("RoundDecimal").matchesTypes({RuntimeFunction::anyDecimal, RuntimeFunction::intLike}, RuntimeFunction::matchesArgument()).needsWrapping().implementedAs([](mlir::OpBuilder& rewriter, mlir::ValueRange loweredArguments, mlir::TypeRange originalArgumentTypes, mlir::Type resType, const mlir::TypeConverter* typeConverter, mlir::Location loc) -> mlir::Value {

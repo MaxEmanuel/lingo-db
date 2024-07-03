@@ -244,12 +244,46 @@ namespace runtime
             return result;
         }
 
+        void add(ArrayList<R>& toAdd) {
+            if (this->isNull || toAdd.getIsNull()){
+                return;
+            }
+            if (this->dimension != toAdd.getDimension()){
+                throw std::runtime_error("Both arrays should have the same dimension");
+            }
+            if (this->dimension == 1) {
+                auto elementsToAdd = toAdd.getElements();
+                if (this->elements.size() != elementsToAdd.size()){
+                    throw std::runtime_error("Both arrays should have the same dimension");
+                }
+                for (size_t index = 0; index < this->elements.size(); index++) {
+                    if (!this->elements[index].getIsNull() && !elementsToAdd[index].getIsNull()){
+                        this->elements[index].add(elementsToAdd[index]);
+                    }
+                }
+            } else {
+                auto elementsToAdd = toAdd.getContainer();
+                if (this->container.size() != elementsToAdd.size()){
+                    throw std::runtime_error("Both arrays should have the same dimension");
+                }
+                for (size_t index = 0; index < this->container.size(); index++) {
+                    if (!this->container[index].getIsNull() && !elementsToAdd[index].getIsNull()){
+                        this->container[index].add(elementsToAdd[index]);
+                    }
+                }
+            }
+        }
+
         /**
          * This method returns the dimension value of the current ```ArrayList``` object.
          * @returns             An dimension value
          */
         int32_t getDimension(){
             return this->dimension;
+        }
+
+        bool getIsNull(){
+            return this->isNull;
         }
 
         /**
