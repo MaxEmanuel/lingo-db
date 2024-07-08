@@ -1,6 +1,7 @@
 #include "frontend/SQL/Parser.h"
 #include "mlir/Dialect/SubOperator/SubOperatorDialect.h"
 #include "mlir/Dialect/SubOperator/SubOperatorOps.h"
+#include "mlir-support/typeHelper.h"
 #include <regex>
 namespace {
 
@@ -354,17 +355,13 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
    }
    if (funcName == "array_dims") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
-      auto array = SQLTypeInference::getType(val).dyn_cast<mlir::db::ArrayType>();
-      mlir::Value type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
-      mlir::Value dimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
-      return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "ArrayDimensions", mlir::ValueRange({val, dimension, type})).getRes();
+      auto arrayData = TypeFunctions::extractArrayData(builder, val);
+      return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "ArrayDimensions", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
    }
    if (funcName == "cardinality") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
-      auto array = SQLTypeInference::getType(val).dyn_cast<mlir::db::ArrayType>();
-      mlir::Value type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
-      mlir::Value dimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
-      return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "ArrayCardinality", mlir::ValueRange({val, dimension, type})).getRes();
+      auto arrayData = TypeFunctions::extractArrayData(builder, val);
+      return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "ArrayCardinality", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
    }
   throw std::runtime_error("could not translate func call");
    return mlir::Value();
@@ -468,13 +465,9 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
             return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "DateAdd", mlir::ValueRange({left, right})).getRes();
          }
          if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
-            auto rightArray = getBaseType(right.getType()).dyn_cast<mlir::db::ArrayType>();      
-            mlir::Value rigthDim = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), rightArray.getDimensions()));
-            mlir::Value rigthType = builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(rightArray.getType()));
-            auto leftArray = getBaseType(left.getType()).dyn_cast<mlir::db::ArrayType>();
-            mlir::Value leftDim = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), leftArray.getDimensions()));
-            mlir::Value leftType = builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(leftArray.getType()));
-            return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayAdd", mlir::ValueRange({left, leftDim, leftType, right, rigthDim, rigthType})).getRes();
+            auto rightArray = TypeFunctions::extractArrayData(builder, right);
+            auto leftArray = TypeFunctions::extractArrayData(builder, left);
+            return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayAdd", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
          }
          return builder.create<mlir::db::AddOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
       case ExpressionType::OPERATOR_MINUS:
@@ -522,32 +515,26 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          // Look if one value is an array, then call 'ConcatenateArray', otherwise 'Concatenate'
          if (baseType.isa<mlir::db::ArrayType>()) {
             // Here initialise necessary parameters to be able of calling runtime::ArrayRuntime::concat
-            mlir::Value type1, dimension1, type2, dimension2;
+            std::tuple<mlir::Value, mlir::Value> leftArray, rightArray;
             // If left value is not an array (is not casted), assign to him the attributes (type and dimension) from the actual array type.
             // In this case it must be the right value
             if (!leftType.isa<mlir::db::ArrayType>()) {
                auto array = rightType.dyn_cast<mlir::db::ArrayType>();
-               type1 = builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
-               dimension1 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
+               leftArray = TypeFunctions::extractArrayData(builder, right);
                left = SQLTypeInference::castValueToType(builder, left, mlir::db::ArrayType::get(builder.getContext(), array.getDimensions(), array.getType()));
             } else {
-               auto array = leftType.dyn_cast<mlir::db::ArrayType>();
-               type1 = builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
-               dimension1 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
+               leftArray = TypeFunctions::extractArrayData(builder, left);
             }
             // If right value is not an array (is not casted), assign to him the attributes (type and dimension) from the actual array type.
             // In this case it must be the left value
             if (!rightType.isa<mlir::db::ArrayType>()) {
                auto array = leftType.dyn_cast<mlir::db::ArrayType>();
-               type2 = builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
-               dimension2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
+               rightArray = TypeFunctions::extractArrayData(builder, left);
                right = SQLTypeInference::castValueToType(builder, right, mlir::db::ArrayType::get(builder.getContext(), array.getDimensions(), array.getType())); 
             } else {
-               auto array = rightType.dyn_cast<mlir::db::ArrayType>();
-               type2 = builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
-               dimension2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));     
+               rightArray = TypeFunctions::extractArrayData(builder, right);    
             }
-            return builder.create<mlir::db::RuntimeCall>(loc,  left.getType(), "ConcatenateArray", mlir::ValueRange({left, dimension1, type1, right, dimension2, type2})).getRes();
+            return builder.create<mlir::db::RuntimeCall>(loc,  left.getType(), "ConcatenateArray", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
          }
 
          auto leftValue = SQLTypeInference::castValueToType(builder, left, mlir::db::StringType::get(builder.getContext()));
