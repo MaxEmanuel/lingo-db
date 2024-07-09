@@ -76,8 +76,10 @@ namespace runtime
          * @param dim2       The dimension value of the second array
          * @param type2      The type the elements in the second array
          * @returns          A modified array wrapped up as string in a ```VarLen32``` object
-         * @note             If one of the given arrays could not be created according to the given str, dim and type parameters or both arrays have different 
-         *                   types, it will throw an ```std::runtime_error```. Also for case if the dimension values of both arrays are not equal
+         * @note             It will throw an ```std::runtime_error```, if one of the given arrays could not be created according to the given 
+         *                   ```str```, ```dim``` and ```type``` parameters
+         * @note             It will throw an ```std::runtime_error```, if both arrays have different types
+         * @note             It will throw an ```std::runtime_error```, if the dimension values of both arrays are not equal
          */
         static runtime::VarLen32 add(runtime::VarLen32 str1, int dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, int dim2, runtime::VarLen32 type2);
 

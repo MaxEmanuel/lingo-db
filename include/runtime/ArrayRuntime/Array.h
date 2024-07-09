@@ -4,7 +4,6 @@
 #include <vector>
 #include "runtime/helpers.h"
 #include "runtime/ArrayRuntime/ArrayList.h"
-#include "mlir/Dialect/DB/IR/DBOps.h"
 
 namespace runtime
 {
