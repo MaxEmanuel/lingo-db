@@ -80,5 +80,13 @@ namespace runtime {
         void add(ArrayElem<R>& value) {
             this->value += value.getValue();
         }
+
+        /**
+         * This method subtracts a value to the stored value of this ```ArrayElem```.
+         * @param value         The value which should be subtracted
+         */
+        void sub(ArrayElem<R>& value) {
+            this->value -= value.getValue();
+        }
     };
 }

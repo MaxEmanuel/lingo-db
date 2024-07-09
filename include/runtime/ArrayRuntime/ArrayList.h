@@ -274,6 +274,35 @@ namespace runtime
         }
 
         /**
+         * This method implements the element-wise subtraction for an array.
+         * @param toSub         A reference to the ```ArrayList``` object which elements should be used for subtraction
+         * @note                If the dimension values are not equal of both arrays, it will throw an ```std::runtime_error```
+         * @note                If one array has less elements than the other array, all elements which exceeds the boundary of
+         *                      the smallest array will be ignored
+         */
+        void sub(ArrayList<R>& toSub) {
+            if (this->isNull || toSub.getIsNull()){
+                return;
+            }
+            if (this->dimension != toSub.getDimension()){
+                throw std::runtime_error("Both arrays should have the same dimension");
+            }
+            if (this->dimension == 1) {
+                auto elementsToSub = toSub.getElements();
+                auto boundary = this->elements.size() > elementsToSub.size() ? elementsToSub.size() : this->elements.size();
+                for (size_t index = 0; index < boundary; index++) {
+                    this->elements[index].sub(elementsToSub[index]);
+                }
+            } else {
+                auto elementsToSub = toSub.getContainer();
+                auto boundary = this->container.size() > elementsToSub.size() ? elementsToSub.size() : this->container.size();
+                for (size_t index = 0; index < boundary; index++) {
+                    this->container[index].sub(elementsToSub[index]);
+                }
+            }
+        }
+
+        /**
          * This method returns the dimension value of the current ```ArrayList``` object.
          * @returns             An dimension value
          */

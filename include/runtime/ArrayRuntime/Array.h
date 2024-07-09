@@ -132,6 +132,17 @@ namespace runtime
         }
 
         /**
+         * This method implements the element-wise subtraction for an array.
+         * @param toSub         A reference to the ```Array``` object which elements should be used for subtraction
+         * @note                If the dimension values are not equal of both arrays, it will throw an ```std::runtime_error```
+         * @note                If one array has less elements than the other array, all elements which exceeds the boundary of
+         *                      the smallest array will be ignored
+         */
+        void sub(Array<T>& toSub) {
+            this->array.sub(toSub.getArray());
+        }
+
+        /**
          * This method returns a reference to the ```ArrayList``` attribute from this class
          * @return              A reference to the ```ArrayList``` value
          */

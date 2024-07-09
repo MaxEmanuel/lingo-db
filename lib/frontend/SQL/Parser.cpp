@@ -467,12 +467,25 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
             auto rightArray = TypeFunctions::extractArrayData(builder, right);
             auto leftArray = TypeFunctions::extractArrayData(builder, left);
-            return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayAdd", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
+            // Is needed to proof if one of the values is a mlir::db::ConstantOp (for return mlir type of the function).
+            // Otherwise the correspoding function will not be executed 
+            auto typeId = mlir::TypeID::get<mlir::db::ConstantOp>();
+            auto returnType = left.getDefiningOp()->getName().getTypeID() == typeId && right.getDefiningOp()->getName().getTypeID() != typeId ? right.getType() : left.getType();
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayAdd", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
          }
          return builder.create<mlir::db::AddOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
       case ExpressionType::OPERATOR_MINUS:
          if (left.getType().isa<mlir::db::DateType>() && right.getType().isa<mlir::db::IntervalType>()) {
             return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "DateSubtract", mlir::ValueRange({left, right})).getRes();
+         }
+         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            auto rightArray = TypeFunctions::extractArrayData(builder, right);
+            auto leftArray = TypeFunctions::extractArrayData(builder, left);
+            // Is needed to proof if one of the values is a mlir::db::ConstantOp (for return mlir type of the function).
+            // Otherwise the correspoding function will not be executed 
+            auto typeId = mlir::TypeID::get<mlir::db::ConstantOp>();
+            auto returnType = left.getDefiningOp()->getName().getTypeID() == typeId && right.getDefiningOp()->getName().getTypeID() != typeId ? right.getType() : left.getType();
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArraySub", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
          }
          return builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
       case ExpressionType::OPERATOR_MULTIPLY:

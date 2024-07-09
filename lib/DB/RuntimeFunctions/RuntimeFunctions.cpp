@@ -259,6 +259,7 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    builtinRegistry->add("ArrayCardinality").implementedAs(rt::ArrayRuntime::getCardinality).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
 
    builtinRegistry->add("ArrayAdd").implementedAs(rt::ArrayRuntime::add).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
+   builtinRegistry->add("ArraySub").implementedAs(rt::ArrayRuntime::sub).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
 
    builtinRegistry->add("Like").implementedAs(rt::StringRuntime::like).matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::stringLike}, resTypeIsBool);
    builtinRegistry->add("ConstLike").matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::stringLike}, resTypeIsBool).implementedAs(constLikeImpl).needsWrapping();
