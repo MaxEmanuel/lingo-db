@@ -56,7 +56,7 @@ namespace runtime
         /**
          * This method converts the content of a ```ArrayList``` object to a string 
          */
-        std::string toString(){
+        std::string toString() {
             if (this->isNull){
                 return "null,";
             } else {
@@ -244,6 +244,13 @@ namespace runtime
             return result;
         }
 
+        /**
+         * This method implements the element-wise addition for an array.
+         * @param toAdd         A reference to the ```ArrayList``` object which elements should be used for addition
+         * @note                If the dimension values are not equal of both arrays, it will throw an ```std::runtime_error```
+         * @note                If one array has less elements than the other array, all elements which exceeds the boundary of
+         *                      the smallest array will be ignored
+         */
         void add(ArrayList<R>& toAdd) {
             if (this->isNull || toAdd.getIsNull()){
                 return;
@@ -253,23 +260,15 @@ namespace runtime
             }
             if (this->dimension == 1) {
                 auto elementsToAdd = toAdd.getElements();
-                if (this->elements.size() != elementsToAdd.size()){
-                    throw std::runtime_error("Both arrays should have the same dimension");
-                }
-                for (size_t index = 0; index < this->elements.size(); index++) {
-                    if (!this->elements[index].getIsNull() && !elementsToAdd[index].getIsNull()){
-                        this->elements[index].add(elementsToAdd[index]);
-                    }
+                auto boundary = this->elements.size() > elementsToAdd.size() ? elementsToAdd.size() : this->elements.size();
+                for (size_t index = 0; index < boundary; index++) {
+                    this->elements[index].add(elementsToAdd[index]);
                 }
             } else {
                 auto elementsToAdd = toAdd.getContainer();
-                if (this->container.size() != elementsToAdd.size()){
-                    throw std::runtime_error("Both arrays should have the same dimension");
-                }
-                for (size_t index = 0; index < this->container.size(); index++) {
-                    if (!this->container[index].getIsNull() && !elementsToAdd[index].getIsNull()){
-                        this->container[index].add(elementsToAdd[index]);
-                    }
+                auto boundary = this->container.size() > elementsToAdd.size() ? elementsToAdd.size() : this->container.size();
+                for (size_t index = 0; index < boundary; index++) {
+                    this->container[index].add(elementsToAdd[index]);
                 }
             }
         }
@@ -282,6 +281,9 @@ namespace runtime
             return this->dimension;
         }
 
+        /**
+         * This method returns a ```bool``` which signals if this ```ArrayList``` represents a ```null``` value.
+         */
         bool getIsNull(){
             return this->isNull;
         }

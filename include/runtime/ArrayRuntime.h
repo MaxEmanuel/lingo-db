@@ -68,6 +68,20 @@ namespace runtime
         static runtime::VarLen32 getCardinality(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
 
         /**
+         * This funtion allows the addition of two arrays.
+         * @param str1       The array which should be modified
+         * @param dim1       The dimension value of the first array
+         * @param type1      The type of the elements in the first array
+         * @param str2       The array which includes all elements for addition
+         * @param dim2       The dimension value of the second array
+         * @param type2      The type the elements in the second array
+         * @returns          A modified array wrapped up as string in a ```VarLen32``` object
+         * @note             If one of the given arrays could not be created according to the given str, dim and type parameters or both arrays have different 
+         *                   types, it will throw an ```std::runtime_error```. Also for case if the dimension values of both arrays are not equal
+         */
+        static runtime::VarLen32 add(runtime::VarLen32 str1, int dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, int dim2, runtime::VarLen32 type2);
+
+        /**
          * This function casts an array (actual a single value which will be interpreted as array) to an integer with 32 bits.
          * @param str       The initial array
          * @param dim       The amount of dimension of the given array
@@ -76,8 +90,6 @@ namespace runtime
          * @note            If the array could not be converted to int, it will throw an ```std::runtime_error```.
          */
         static int32_t castToInt32(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
-
-        static runtime::VarLen32 add(runtime::VarLen32 str1, int dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, int dim2, runtime::VarLen32 type2);
     };
     
 } // namespace runtime

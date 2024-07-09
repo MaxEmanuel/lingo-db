@@ -57,14 +57,26 @@ namespace runtime {
             }
         }
 
+        /**
+         * This method returns a ```bool``` which signals if this ```ArrayElem``` 
+         * represents a ```null``` value.
+         */
         bool getIsNull() {
             return this->isNull;
         }
 
+        /**
+         * This method returns the value of the ```ArrayElem```.
+         * @note        If the ```ArrayElem``` object represents a ```null``` value, this value can be a random value
+         */
         R getValue() {
             return this->value;
         }
 
+        /**
+         * This method adds a value to the stored value of this ```ArrayElem```.
+         * @param value         The value which should be added
+         */
         void add(ArrayElem<R>& value) {
             this->value += value.getValue();
         }

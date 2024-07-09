@@ -4,6 +4,7 @@
 #include <vector>
 #include "runtime/helpers.h"
 #include "runtime/ArrayRuntime/ArrayList.h"
+#include "mlir/Dialect/DB/IR/DBOps.h"
 
 namespace runtime
 {
@@ -120,6 +121,13 @@ namespace runtime
             return this->castToVarLen(std::to_string(result));
         }
 
+        /**
+         * This method implements the element-wise addition for an array.
+         * @param toAdd         A reference to the ```Array``` object which elements should be used for addition
+         * @note                If the dimension values are not equal of both arrays, it will throw an ```std::runtime_error```
+         * @note                If one array has less elements than the other array, all elements which exceeds the boundary of
+         *                      the smallest array will be ignored
+         */
         void add(Array<T>& toAdd) {
             this->array.add(toAdd.getArray());
         }
