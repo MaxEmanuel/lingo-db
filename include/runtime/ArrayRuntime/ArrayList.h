@@ -111,7 +111,7 @@ namespace runtime
 
         /**
          * This method returns a single entry from the array and returns it as string.
-         * @param index         The index of the element which should be returned
+         * @param index         The index of the element which should be returned (startint at 0)
          * @returns             The element as string
          * @note                If the index does not map to an existing element it will throw an ```std::runtime_error```
          */
@@ -121,7 +121,7 @@ namespace runtime
                     throw std::runtime_error("The desired element does not exist");
                 }
                 std::string result = this->elements[index].toString();
-                return result.substr(0, result.size() - 1);
+                return result.substr(0, result.size() - 2);
             } else {
                 if ((int32_t) this->container.size() <= index || index < 0){
                     throw std::runtime_error("The desired element does not exist");

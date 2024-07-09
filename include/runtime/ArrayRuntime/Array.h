@@ -62,12 +62,12 @@ namespace runtime
 
         /**
          * This method returns a single entry from the array and returns it as ```VarLen32``` object.
-         * @param index         The index of the element which should be returned
+         * @param index         The index of the element which should be returned (starting at 1)
          * @returns             The element as ```VarLen32``` object
          * @note                If the index does not map to an existing element it will throw an ```std::runtime_error```
          */
         runtime::VarLen32 getEntry(int32_t index) {
-            std::string result = this->array.getEntry(index);
+            std::string result = this->array.getEntry(index - 1);
             return this->castToVarLen(result);
         }
 
