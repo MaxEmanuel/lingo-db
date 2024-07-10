@@ -94,13 +94,19 @@ void printTable(const std::shared_ptr<arrow::Table>& table) {
       std::stringstream sstr;
       if (table->schema()->field(positions.size())->type()->id() != arrow::Type::HALF_FLOAT) {
          arrow::PrettyPrint(*c.get(), options, &sstr); //NOLINT (clang-diagnostic-unused-result)
-         columnReps.push_back(sstr.str());
       } else {
+         sstr << "[\n[\n";
          PrintHalfFloat printer;
-         auto str = printer.Compute(c->chunk(0)).ValueOrDie();
-         auto res = "[\n[\n" + str + "\n]\n]";
-         columnReps.push_back(res);
+         for (unsigned i = 0; i < c->num_chunks(); i++) {
+            sstr << printer.Compute(c->chunk(i)).ValueOrDie();
+            if (i < c->num_chunks() - 1) {
+               sstr << ",\n";
+            }
+         }
+         sstr << "\n]\n]";
       }
+
+      columnReps.push_back(sstr.str());
       positions.push_back(0);
    }
    std::cout << std::endl
