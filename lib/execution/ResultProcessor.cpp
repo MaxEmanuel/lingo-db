@@ -1,12 +1,19 @@
 #include <iomanip>
 #include <iostream>
 
+#define NDEBUG
+#include <arrow/array.h>
+#include <arrow/datum.h> // Include the header file for arrow::Datum
 #include <arrow/pretty_print.h>
+#include <arrow/scalar.h>
 #include <arrow/table.h>
+#include <arrow/visit_array_inline.h>
+#undef NDEBUG
 
 #include "execution/ResultProcessing.h"
 #include "runtime/TableBuilder.h"
 #include <functional>
+#include <arrow/status.h>
 
 namespace {
 unsigned char hexval(unsigned char c) {
@@ -32,6 +39,39 @@ class TableRetriever : public execution::ResultProcessor {
    }
 };
 
+class PrintHalfFloat : public arrow::ArrayVisitor {
+   std::ostringstream partial;
+
+   public:
+   arrow::Result<std::string> Compute(std::shared_ptr<arrow::Array> array) {
+      ARROW_RETURN_NOT_OK(arrow::VisitArrayInline(*array, this));
+      return partial.str();
+   }
+
+   // Default implementation
+   arrow::Status Visit(const arrow::Array& array) {
+      return arrow::Status::NotImplemented("Can not compute sum for array of type ", array.type()->ToString());
+   }
+
+   arrow::Status Visit(const arrow::HalfFloatArray& array) {
+      unsigned index = 0;
+      for (std::optional<typename arrow::HalfFloatType::c_type> value : array) {
+         if (value.has_value()) {
+            unsigned int proc = static_cast<unsigned>(value.value()) << 16;
+
+            float tmp = *reinterpret_cast<float*>(&proc);
+            partial << tmp;
+            if (index < array.length() - 1) {
+               partial << ",\n";
+            }
+            ++index;
+         }
+      }
+
+      return arrow::Status::OK();
+   }
+};
+
 void printTable(const std::shared_ptr<arrow::Table>& table) {
    // Do not output anything for insert or copy statements
    if (table->columns().empty()) {
@@ -52,8 +92,15 @@ void printTable(const std::shared_ptr<arrow::Table>& table) {
       convertHex.push_back(table->schema()->field(positions.size())->type()->id() == arrow::Type::FIXED_SIZE_BINARY);
       rowSep += std::string(33, '-');
       std::stringstream sstr;
-      arrow::PrettyPrint(*c.get(), options, &sstr); //NOLINT (clang-diagnostic-unused-result)
-      columnReps.push_back(sstr.str());
+      if (table->schema()->field(positions.size())->type()->id() != arrow::Type::HALF_FLOAT) {
+         arrow::PrettyPrint(*c.get(), options, &sstr); //NOLINT (clang-diagnostic-unused-result)
+         columnReps.push_back(sstr.str());
+      } else {
+         PrintHalfFloat printer;
+         auto str = printer.Compute(c->chunk(0)).ValueOrDie();
+         auto res = "[\n[\n" + str + "\n]\n]";
+         columnReps.push_back(res);
+      }
       positions.push_back(0);
    }
    std::cout << std::endl
