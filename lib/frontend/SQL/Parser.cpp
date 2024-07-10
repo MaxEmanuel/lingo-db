@@ -355,12 +355,12 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
    }
    if (funcName == "array_dims") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
-      auto arrayData = TypeFunctions::extractArrayData(builder, val);
+      auto arrayData = TypeFunctions::extractArrayDataDB(builder, val);
       return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "ArrayDimensions", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
    }
    if (funcName == "cardinality") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
-      auto arrayData = TypeFunctions::extractArrayData(builder, val);
+      auto arrayData = TypeFunctions::extractArrayDataDB(builder, val);
       return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "ArrayCardinality", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
    }
   throw std::runtime_error("could not translate func call");
@@ -465,8 +465,8 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
             return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "DateAdd", mlir::ValueRange({left, right})).getRes();
          }
          if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
-            auto rightArray = TypeFunctions::extractArrayData(builder, right);
-            auto leftArray = TypeFunctions::extractArrayData(builder, left);
+            auto rightArray = TypeFunctions::extractArrayDataDB(builder, right);
+            auto leftArray = TypeFunctions::extractArrayDataDB(builder, left);
             // Is needed to proof if one of the values is a mlir::db::ConstantOp (for return mlir type of the function).
             // Otherwise the correspoding function will not be executed 
             auto typeId = mlir::TypeID::get<mlir::db::ConstantOp>();
@@ -479,8 +479,8 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
             return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "DateSubtract", mlir::ValueRange({left, right})).getRes();
          }
          if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
-            auto rightArray = TypeFunctions::extractArrayData(builder, right);
-            auto leftArray = TypeFunctions::extractArrayData(builder, left);
+            auto rightArray = TypeFunctions::extractArrayDataDB(builder, right);
+            auto leftArray = TypeFunctions::extractArrayDataDB(builder, left);
             // Is needed to proof if one of the values is a mlir::db::ConstantOp (for return mlir type of the function).
             // Otherwise the correspoding function will not be executed 
             auto typeId = mlir::TypeID::get<mlir::db::ConstantOp>();
@@ -533,19 +533,19 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
             // In this case it must be the right value
             if (!leftType.isa<mlir::db::ArrayType>()) {
                auto array = rightType.dyn_cast<mlir::db::ArrayType>();
-               leftArray = TypeFunctions::extractArrayData(builder, right);
+               leftArray = TypeFunctions::extractArrayDataDB(builder, right);
                left = SQLTypeInference::castValueToType(builder, left, mlir::db::ArrayType::get(builder.getContext(), array.getDimensions(), array.getType()));
             } else {
-               leftArray = TypeFunctions::extractArrayData(builder, left);
+               leftArray = TypeFunctions::extractArrayDataDB(builder, left);
             }
             // If right value is not an array (is not casted), assign to him the attributes (type and dimension) from the actual array type.
             // In this case it must be the left value
             if (!rightType.isa<mlir::db::ArrayType>()) {
                auto array = leftType.dyn_cast<mlir::db::ArrayType>();
-               rightArray = TypeFunctions::extractArrayData(builder, left);
+               rightArray = TypeFunctions::extractArrayDataDB(builder, left);
                right = SQLTypeInference::castValueToType(builder, right, mlir::db::ArrayType::get(builder.getContext(), array.getDimensions(), array.getType())); 
             } else {
-               rightArray = TypeFunctions::extractArrayData(builder, right);    
+               rightArray = TypeFunctions::extractArrayDataDB(builder, right);    
             }
             return builder.create<mlir::db::RuntimeCall>(loc,  left.getType(), "ConcatenateArray", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
          }

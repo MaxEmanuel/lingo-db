@@ -30,6 +30,7 @@
 #include "runtime-defs/StringRuntime.h"
 #include "runtime-defs/ArrayRuntime.h"
 #include <mlir/Dialect/util/FunctionHelper.h>
+#include "mlir-support/typeHelper.h"
 
 using namespace mlir;
 
@@ -233,18 +234,7 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
       auto scalarSourceType = castOp.getVal().getType();
       auto scalarTargetType = castOp.getType();
       auto convertedTargetType = typeConverter->convertType(scalarTargetType);
-
-      // If type is wrapped inside a nullable, get the type inside from nullable
-      if (scalarSourceType.isa<mlir::db::NullableType>()) {
-         scalarSourceType = scalarSourceType.dyn_cast<mlir::db::NullableType>().getType();
-      }
-      if (scalarTargetType.isa<mlir::db::NullableType>()) {
-         scalarTargetType = scalarTargetType.dyn_cast<mlir::db::NullableType>().getType();
-      }
-
-      auto isValidSourceType = scalarSourceType.isa<mlir::db::StringType>() || scalarSourceType.isa<mlir::db::ArrayType>();
-      auto isValidTargetType = scalarTargetType.isa<mlir::db::StringType>() || scalarTargetType.isa<mlir::db::ArrayType>();
-      if (!isValidSourceType && !isValidTargetType) return failure();
+      if (!scalarSourceType.isa<mlir::db::StringType>() && !scalarTargetType.isa<mlir::db::StringType>()) return failure();
 
       Value valueToCast = adaptor.getVal();
       Value result;
@@ -268,16 +258,8 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
          } else if (scalarTargetType.isa<mlir::db::DateType>()) {
             result = rt::StringRuntime::toDate(rewriter, loc)({valueToCast})[0];
          } else if (auto arrayType = scalarTargetType.dyn_cast_or_null<mlir::db::ArrayType>()) {
-            auto dimensions = rewriter.create<arith::ConstantOp>(loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(arrayType.getDimensions()));
-            auto type = rewriter.create<mlir::util::CreateConstVarLen>(loc, mlir::util::VarLen32Type::get(rewriter.getContext()),rewriter.getStringAttr(arrayType.getType()));
-            result = rt::StringRuntime::toArray(rewriter, loc)({valueToCast, dimensions, type})[0];
-         }
-      // If scalarSourceType == ArrayType, then ArrayType -> OtherType
-      } else if (auto  arrayType = scalarSourceType.dyn_cast_or_null<mlir::db::ArrayType>()){
-         auto dimensions = rewriter.create<arith::ConstantOp>(loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(arrayType.getDimensions()));
-         auto type = rewriter.create<mlir::util::CreateConstVarLen>(loc, mlir::util::VarLen32Type::get(rewriter.getContext()),rewriter.getStringAttr(arrayType.getType()));
-         if (auto intWidth = getIntegerWidth(scalarTargetType, false)) {
-            result = rt::ArrayRuntime::castToInt32(rewriter, loc)({valueToCast, dimensions, type})[0];
+            auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
+            result = rt::StringRuntime::toArray(rewriter, loc)({valueToCast, std::get<0>(arrayData), std::get<1>(arrayData)})[0];
          }
       } else if (auto intWidth = getIntegerWidth(scalarSourceType, false)) {
          result = rt::StringRuntime::fromInt(rewriter, loc)({valueToCast})[0];
@@ -291,6 +273,61 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
          result = rt::StringRuntime::fromChar(rewriter, loc)({valueToCast, bytes})[0];
       } else if (scalarSourceType.isa<mlir::db::DateType>()) {
          result = rt::StringRuntime::fromDate(rewriter, loc)({valueToCast})[0];
+      }
+      if (result) {
+         rewriter.replaceOp(castOp, result);
+         return success();
+      } else {
+         return failure();
+      }
+   }
+};
+
+class ArrayCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
+   public:
+   using OpConversionPattern<mlir::db::CastOp>::OpConversionPattern;
+
+   LogicalResult matchAndRewrite(mlir::db::CastOp castOp, OpAdaptor adaptor, ConversionPatternRewriter& rewriter) const override {
+      auto loc = castOp->getLoc();
+      auto scalarSourceType = castOp.getVal().getType();
+      auto scalarTargetType = castOp.getType();
+      auto convertedTargetType = typeConverter->convertType(scalarTargetType);
+
+      // If type is wrapped inside a nullable, get the type inside from nullable
+      if (scalarSourceType.isa<mlir::db::NullableType>()) {
+         scalarSourceType = scalarSourceType.dyn_cast<mlir::db::NullableType>().getType();
+      }
+      if (scalarTargetType.isa<mlir::db::NullableType>()) {
+         scalarTargetType = scalarTargetType.dyn_cast<mlir::db::NullableType>().getType();
+      }
+
+      // If both type are not db::ArrayType -> wrong cast conversion function
+      if (!scalarSourceType.isa<mlir::db::ArrayType>() && !scalarTargetType.isa<mlir::db::ArrayType>()) return failure();
+
+      mlir::Value valueToCast = adaptor.getVal();
+      mlir::Value result;
+
+      // If scalarSourceType == ArrayType, then ArrayType -> OtherType
+      if (auto arrayType = scalarSourceType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+         // ArrayType -> Integer (int32_t / int64_t)
+         if (auto intWidth = getIntegerWidth(scalarTargetType, false)) {
+            if (intWidth < 64) {
+               result = rt::ArrayRuntime::castToInt32(rewriter, loc)({valueToCast})[0];
+            } else {
+               result = rt::ArrayRuntime::castToInt64(rewriter, loc)({valueToCast})[0];
+            }
+         // ArrayType -> Float / Double
+         } else if (auto floatType = scalarTargetType.dyn_cast_or_null<FloatType>()) {
+            if (floatType.getWidth() == 32) {
+               result = rt::ArrayRuntime::castToFloat(rewriter, loc)({valueToCast})[0];
+            } else {
+               result = rt::ArrayRuntime::castToDouble(rewriter, loc)({valueToCast})[0];
+            }  
+         // ArrayType -> ArrayType (if meta data changes like dimension or type)
+         } else if (auto targetArray = scalarTargetType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
+            result = rt::ArrayRuntime::castToArray(rewriter, loc)({valueToCast, std::get<0>(arrayData), std::get<1>(arrayData)})[0];
+         }
       }
       if (result) {
          rewriter.replaceOp(castOp, result);
@@ -1187,6 +1224,7 @@ void DBToStdLoweringPass::runOnOperation() {
    patterns.insert<StringCmpOpLowering>(typeConverter, ctxt);
    patterns.insert<CharCmpOpLowering>(typeConverter, ctxt);
    patterns.insert<StringCastOpLowering>(typeConverter, ctxt);
+   patterns.insert<ArrayCastOpLowering>(typeConverter, ctxt);
    patterns.insert<RuntimeCallLowering>(typeConverter, ctxt);
    patterns.insert<CmpOpLowering>(typeConverter, ctxt);
    patterns.insert<BetweenLowering>(typeConverter, ctxt);

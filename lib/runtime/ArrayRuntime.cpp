@@ -196,11 +196,60 @@ runtime::VarLen32 runtime::ArrayRuntime::sub(runtime::VarLen32 str1, int dim1, r
     }
 }
 
-int32_t runtime::ArrayRuntime::castToInt32(runtime::VarLen32 str, int dim, runtime::VarLen32 type) {
+int32_t runtime::ArrayRuntime::castToInt32(runtime::VarLen32 str) {
     try{
         return runtime::TypeCasts::stringToInt32(str);
     } catch (const std::invalid_argument& exception) {
         std::runtime_error("The given array structure-" + str.str() + "- cannot be converted to a single integer");
     }
     return 0;
+}
+
+int64_t runtime::ArrayRuntime::castToInt64(runtime::VarLen32 str) {
+    try{
+        return runtime::TypeCasts::stringToInt64(str);
+    } catch (const std::invalid_argument& exception) {
+        std::runtime_error("The given array structure-" + str.str() + "- cannot be converted to a single integer");
+    }
+    return 0;
+}
+
+float runtime::ArrayRuntime::castToFloat(runtime::VarLen32 str) {
+    try{
+        return runtime::TypeCasts::stringToFloat(str);
+    } catch (const std::invalid_argument& exception) {
+        std::runtime_error("The given array structure-" + str.str() + "- cannot be converted to a single float");
+    }
+    return 0;
+}
+
+double runtime::ArrayRuntime::castToDouble(runtime::VarLen32 str) {
+    try{
+        return runtime::TypeCasts::stringToDouble(str);
+    } catch (const std::invalid_argument& exception) {
+        std::runtime_error("The given array structure-" + str.str() + "- cannot be converted to a single double");
+    }
+    return 0;
+}
+
+runtime::VarLen32 runtime::ArrayRuntime::castToArray(runtime::VarLen32 str, int dimensions, runtime::VarLen32 type) {
+   if (type.str() == "int32[]") {
+      runtime::Array<int32_t> array(str, dimensions, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
+      return array.toString();
+   } else if (type.str() == "int64[]") {
+      runtime::Array<int64_t> array(str, dimensions, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+      return array.toString();
+   } else if (type.str() == "float[]") {
+      runtime::Array<float> array(str, dimensions, &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
+      return array.toString();
+   } else if (type.str() == "double[]") {
+      runtime::Array<double> array(str, dimensions, &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
+      return array.toString();
+   } else if (type.str() == "string[]") {
+      runtime::Array<std::string> array(str, dimensions, &runtime::TypeCasts::stringToString, &runtime::TypeCasts::stringToString);
+      return array.toString();
+   } else {
+      throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
+   }
+   return str;
 }

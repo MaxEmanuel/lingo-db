@@ -102,12 +102,45 @@ namespace runtime
         /**
          * This function casts an array (actual a single value which will be interpreted as array) to an integer with 32 bits.
          * @param str       The initial array
-         * @param dim       The amount of dimension of the given array
-         * @param type      The type of the elements from the given array
-         * @returns         The value as int
+         * @returns         The value as int32_t
          * @note            If the array could not be converted to int, it will throw an ```std::runtime_error```.
          */
-        static int32_t castToInt32(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
+        static int32_t castToInt32(runtime::VarLen32 str);
+
+        /**
+         * This function casts an array (actual a single value which will be interpreted as array) to an integer with 64 bits.
+         * @param str       The initial array
+         * @returns         The value as int64_t
+         * @note            If the array could not be converted to int, it will throw an ```std::runtime_error```.
+         */
+        static int64_t castToInt64(runtime::VarLen32 str);
+
+        /**
+         * This function casts an array (actual a single value which will be interpreted as array) to a float.
+         * @param str       The initial array
+         * @returns         The value as float
+         * @note            If the array could not be converted to float, it will throw an ```std::runtime_error```.
+         */
+        static float castToFloat(runtime::VarLen32 str);
+
+        /**
+         * This function casts an array (actual a single value which will be interpreted as array) to a double.
+         * @param str       The initial array
+         * @returns         The value as double
+         * @note            If the array could not be converted to double, it will throw an ```std::runtime_error```.
+         */
+        static double castToDouble(runtime::VarLen32 str);
+
+        /**
+         * This function casts an array (actual a single value which will be interpreted as array) to an array with other specifications.
+         * E.g. the array should have another ```type```or another ```dimension``` value. 
+         * @param str       The initial array
+         * @param dim       The amount of dimension of the given array
+         * @param type      The type of the elements from the given array
+         * @returns         The value as new array
+         * @note            If the array could not be converted to other array, it will throw an ```std::runtime_error```.
+         */
+        static runtime::VarLen32 castToArray(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
     };
     
 } // namespace runtime
