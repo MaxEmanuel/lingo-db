@@ -363,6 +363,12 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       auto arrayData = TypeFunctions::extractArrayDataDB(builder, val);
       return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "ArrayCardinality", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
    }
+   if (funcName == "transpose") {
+      auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
+      auto arrayData = TypeFunctions::extractArrayDataDB(builder, val);
+      return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "ArrayTranspose", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
+   }
+
   throw std::runtime_error("could not translate func call");
    return mlir::Value();
 }

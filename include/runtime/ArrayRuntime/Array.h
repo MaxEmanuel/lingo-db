@@ -142,6 +142,10 @@ namespace runtime
             this->array.sub(toSub.getArray());
         }
 
+        void transpose() {
+            this->array.transpose();
+        }
+
         /**
          * This method returns a reference to the ```ArrayList``` attribute from this class
          * @return              A reference to the ```ArrayList``` value

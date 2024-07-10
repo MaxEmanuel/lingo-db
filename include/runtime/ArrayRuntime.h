@@ -99,6 +99,8 @@ namespace runtime
          */
         static runtime::VarLen32 sub(runtime::VarLen32 str1, int dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, int dim2, runtime::VarLen32 type2);
 
+        static runtime::VarLen32 transpose(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
+
         /**
          * This function casts an array (actual a single value which will be interpreted as array) to an integer with 32 bits.
          * @param str       The initial array

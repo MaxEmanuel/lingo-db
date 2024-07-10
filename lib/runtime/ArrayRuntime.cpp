@@ -196,6 +196,33 @@ runtime::VarLen32 runtime::ArrayRuntime::sub(runtime::VarLen32 str1, int dim1, r
     }
 }
 
+runtime::VarLen32 runtime::ArrayRuntime::transpose(runtime::VarLen32 str, int dim, runtime::VarLen32 type) {
+    if (type.str() == "int32[]") {
+        runtime::Array<int32_t> array(str, dim, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
+        array.transpose();
+        return  array.toString();
+    }  else if (type.str() == "int64[]") {
+        runtime::Array<int64_t> array(str, dim, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+        array.transpose();
+        return  array.toString();;
+    } else if (type.str() == "float[]") {
+        runtime::Array<float> array(str, dim, &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
+        array.transpose();
+        return  array.toString();
+    } else if (type.str() == "double[]") {
+        runtime::Array<double> array(str, dim, &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
+        array.transpose();
+        return  array.toString();
+    } else if (type.str() == "string[]") {
+        runtime::Array<std::string> array(str, dim, &runtime::TypeCasts::stringToString, &runtime::TypeCasts::stringToString);
+        array.transpose();
+        return  array.toString();
+    } else {
+        throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
+    }
+    return str;
+}
+
 int32_t runtime::ArrayRuntime::castToInt32(runtime::VarLen32 str) {
     try{
         return runtime::TypeCasts::stringToInt32(str);

@@ -51,7 +51,7 @@ namespace runtime
         /**
          * This constructor creates an empty instance of ```ArrayList``` which represents a ```null``` value.
          */
-        ArrayList() : isNull(true) {}
+        ArrayList() : elements(std::vector<ArrayElem<R>>()), container(std::vector<ArrayList<R>>()), dimension(0), isNull(true) {}
 
         /**
          * This method converts the content of a ```ArrayList``` object to a string 
@@ -302,6 +302,36 @@ namespace runtime
             }
         }
 
+        void transpose(){
+            std::vector<ArrayList<R>> result;
+            size_t lowerDim = this->getChildListSize();
+            for (size_t dim = 0; dim < lowerDim; dim++) {
+                ArrayList<R> newElement;
+                for (auto& element : this->container) {
+                    if (element.getIsNull()){
+                        if (this->dimension == 2){
+                            ArrayElem<R> value;
+                            newElement.addElement(value);
+                        } else {
+                            ArrayList<R> value;
+                            newElement.addContainer(value);
+                        }
+                    }
+                    if (this->dimension == 2) {
+                        if (element.getListSize() > dim) {
+                            newElement.addElement(element.getElements()[dim]);
+                        }
+                    } else if (this->dimension > 2) {
+                        if (element.getListSize() > dim) {
+                            newElement.addContainer(element.getContainer()[dim]);
+                        }
+                    }
+                }
+                result.push_back(newElement);
+            }
+            this->container = result;
+        }
+
         /**
          * This method returns the dimension value of the current ```ArrayList``` object.
          * @returns             An dimension value
@@ -331,6 +361,33 @@ namespace runtime
          */
         std::vector<ArrayList<R>>& getContainer(){
             return this->container;
+        }
+
+        size_t getListSize(){
+            if (this->dimension == 1) {
+                return this->elements.size();
+            } else {
+                return this->container.size();
+            }
+        }
+
+        void addElement(ArrayElem<R>& element){
+            if (this->isNull) {
+                this->isNull = false;
+                this->dimension = 1;
+            }
+            this->elements.push_back(element);
+        }
+
+        void addContainer(ArrayList<R>& container) {
+            if (this->isNull) {
+                this->isNull = false;
+                this->dimension = container.getDimension() + 1;
+            }
+            if (container.getDimension() + 1 != this->dimension) {
+                std::runtime_error("A list of array element could not be added according to wrong dimension specification: " + std::to_string(this->dimension) + " != " + std::to_string(container.getDimension() + 1));
+            }
+            this->container.push_back(container);
         }
 
         private:
@@ -472,6 +529,18 @@ namespace runtime
                 return true;
             }
             return false;
+        }
+
+        size_t getChildListSize() {
+            size_t result = 1;
+            if (this->dimension >= 2) {                
+                for (auto& element : this->container) {
+                    if (result < element.getListSize()) {
+                        result = element.getListSize();
+                    }
+                }
+            }
+            return result;
         }
     };
 } // namespace runtime
