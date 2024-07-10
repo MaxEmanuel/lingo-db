@@ -57,11 +57,13 @@ class PrintHalfFloat : public arrow::ArrayVisitor {
       unsigned index = 0;
       for (std::optional<typename arrow::HalfFloatType::c_type> value : array) {
          if (value.has_value()) {
+            // convert the half float to a regular float
             unsigned int proc = static_cast<unsigned>(value.value()) << 16;
-
             float tmp = *reinterpret_cast<float*>(&proc);
+            // append the float to the accumulator
             partial << tmp;
             if (index < array.length() - 1) {
+               // add the element separator if this is not the last element
                partial << ",\n";
             }
             ++index;
@@ -93,8 +95,11 @@ void printTable(const std::shared_ptr<arrow::Table>& table) {
       rowSep += std::string(33, '-');
       std::stringstream sstr;
       if (table->schema()->field(positions.size())->type()->id() != arrow::Type::HALF_FLOAT) {
+         // for every data type other than half floats, we can use arrow's pretty print
          arrow::PrettyPrint(*c.get(), options, &sstr); //NOLINT (clang-diagnostic-unused-result)
       } else {
+         // this is necessary, because arrow does not implement pretty printing for half floats,
+         // instead it would interpret the bit representation as an integer
          sstr << "[\n[\n";
          PrintHalfFloat printer;
          for (unsigned i = 0; i < c->num_chunks(); i++) {
