@@ -28,12 +28,6 @@ namespace runtime {
          * @note                    If the given ```value``` could not be converted to type ```R```, a ```std::runtime_error``` will be thrown
          */
         ArrayElem(std::string value, TypeCast typeCast, StringCast stringCast) : isNull(false), castToType(typeCast), castToString(stringCast) {
-            // Remove every " " until first character occurs for a string
-            if (std::is_same<R, std::string>::value) {
-                if (size_t startIndex = value.find('"')){
-                    value = value.substr(startIndex, value.size());
-                }
-            }
             try {
                 this->value = this->castToType(value);
             } catch (std::invalid_argument const&) {
@@ -53,7 +47,12 @@ namespace runtime {
             if (this->isNull){
                 return "null, ";
             } else {
-                return this->castToString(this->value) + ", ";
+                std::string result = this->castToString(this->value);
+                // If type is string add "" to the value, to mark the element as string
+                if (result.find('"') == std::string::npos && std::is_same<R, std::string>::value) {
+                    result = '"' + result + '"';
+                }
+                return result + ", ";
             }
         }
 
