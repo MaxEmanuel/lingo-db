@@ -1242,11 +1242,11 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
                // If a range is requested or a single entry, call the respective function
                if (leftNode) {
                   mlir::Value leftIndex = translateExpression(builder, leftNode, context, true);
-                  mlir::Value arrayDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions()));
-                  mlir::Value operaterDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions() - dimensionCounter));
+                  mlir::Value arrayDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), array.getDimensions()));
+                  mlir::Value operaterDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), array.getDimensions() - dimensionCounter));
                   result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayRange", mlir::ValueRange({usedArray, arrayDimension, type, leftIndex, rightIndex, operaterDimension})).getRes();
                } else {
-                  mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getIntegerAttr(builder.getI32Type(), array.getDimensions() - dimensionCounter));
+                  mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), array.getDimensions() - dimensionCounter));
                   result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayElement", mlir::ValueRange({usedArray, dimensionValue, type, rightIndex})).getRes();
                }
                dimensionCounter++;
@@ -1422,6 +1422,10 @@ std::optional<mlir::Value> frontend::sql::Parser::translate(mlir::OpBuilder& bui
          case T_InsertStmt: {
             translateInsertStmt(builder, reinterpret_cast<InsertStmt*>(statement));
             break;
+         }
+         case T_UpdateStmt: {
+            auto test = reinterpret_cast<UpdateStmt*>(statement);
+            auto tes2 = 9;
          }
          default:
            throw std::runtime_error("unsupported statement type");

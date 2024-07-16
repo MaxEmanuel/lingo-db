@@ -36,7 +36,7 @@ namespace runtime
          * @note                If the given array parameter does not correspond to the defined array signatur a ```std::runtime::error``` will be thrown,
          *                      e.g. ```array = [1,2,3,4]```
          */
-        Array(std::string array, int32_t dimension, TypeCast typeCast, StringCast stringCast) : array(ArrayList<T>(array, dimension, typeCast, stringCast)) {}
+        Array(std::string array, uint64_t dimension, TypeCast typeCast, StringCast stringCast) : array(ArrayList<T>(array, dimension, typeCast, stringCast)) {}
 
         /**
          * This method converts the complete array structure back to a string.
@@ -44,8 +44,8 @@ namespace runtime
          */
         runtime::VarLen32 toString(){
             std::string result = this->array.toString();
-            // Delete the last character which will be a ','
-            result = result.substr(0, result.size() - 1);
+            // Delete the last character which will be a ', '
+            result = result.substr(0, result.size() - 2);
             return this->castToVarLen(result);
         }
 
@@ -66,7 +66,7 @@ namespace runtime
          * @returns             The element as ```VarLen32``` object
          * @note                If the index does not map to an existing element it will throw an ```std::runtime_error```
          */
-        runtime::VarLen32 getEntry(int32_t index) {
+        runtime::VarLen32 getEntry(uint64_t index) {
             std::string result = this->array.getEntry(index - 1);
             return this->castToVarLen(result);
         }
@@ -78,19 +78,13 @@ namespace runtime
          * @param stop          The end index of the interval
          * @param subDim        The dimension which should be adjusted
          * @note                Be aware that the first element will be on index 1 not 0.
-         * @note                A ```std::runtime_error``` will be thrown if ```start < 1```, ```stop < 1```, ```subDim < 1``` or
-         *                      all these parameters are larger then expected (e.g. ```start = 3``` but array has only 2 elements)
+         * @note                A ```std::runtime_error``` will be thrown if ```subDim < 1``` or all these parameters are larger 
+         *                      then expected (e.g. ```start = 3``` but array has only 2 elements)
          */
-        void slice(int32_t start, int32_t stop, int32_t subDim) {
+        void slice(uint64_t start, uint64_t stop, uint64_t subDim) {
             // reduce start and stop value, because according to specification it should start with 1 and not 0.
             start--; 
             stop--;
-            if (start < 0){
-                throw std::runtime_error("Invalid index value: " + std::to_string(start));
-            }
-            if (stop < 0) {
-                throw std::runtime_error("Invalid index value: " + std::to_string(stop));
-            }
             if (subDim < 1) {
                 throw std::runtime_error("Invalid dimension value: " + std::to_string(subDim));
             }
@@ -116,7 +110,7 @@ namespace runtime
          *                      but '{{1,2}, null}' will return 2).
          */
         runtime::VarLen32 getCardinality() {
-            int32_t result = this->array.getNumberElements();
+            uint64_t result = this->array.getNumberElements();
             return this->castToVarLen(std::to_string(result));
         }
 
@@ -128,7 +122,7 @@ namespace runtime
          *                      the smallest array will be ignored
          */
         void add(Array<T>& toAdd) {
-            this->array.add(toAdd.getArray());
+            this->array.elementWiseArith(toAdd.getArray(), ArrayArithOperator::addition);
         }
 
         /**
@@ -139,7 +133,7 @@ namespace runtime
          *                      the smallest array will be ignored
          */
         void sub(Array<T>& toSub) {
-            this->array.sub(toSub.getArray());
+            this->array.elementWiseArith(toSub.getArray(), ArrayArithOperator::subtraction);
         }
 
         void transpose() {

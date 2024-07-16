@@ -87,5 +87,13 @@ namespace runtime {
         void sub(ArrayElem<R>& value) {
             this->value -= value.getValue();
         }
+
+        /**
+         * This method multiplies a value to the stored value of this ```ArrayElem```.
+         * @param value         The value which should be used for multiplication
+         */
+        void mul(ArrayElem<R>& value) {
+            this->value *= value.getValue();
+        }
     };
 }

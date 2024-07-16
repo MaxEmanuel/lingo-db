@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include "runtime/ArrayRuntime/ArrayElement.h"
+#include "runtime/ArrayRuntime/ArrayArith.h"
 
 namespace runtime
 {
@@ -20,8 +21,10 @@ namespace runtime
         std::vector<ArrayElem<R>> elements;
         // A vector with more complex structure
         std::vector<ArrayList<R>> container;
+        // Number of elements
+        size_t size;
         // The dimension of the object in the array
-        int32_t dimension;
+        uint64_t dimension;
         // If the content is a null value
         bool isNull;
 
@@ -40,45 +43,54 @@ namespace runtime
          *  @note                If the given array parameter does not correspond to the defined array signatur a ```std::runtime::error``` will be thrown,
          *                       e.g. ```array = [1,2,3,4]```
          */
-        ArrayList(std::string array, int32_t dimension, TypeCast typeCast, StringCast stringCast) : dimension(dimension), isNull(false) {
+        ArrayList(std::string array, uint64_t dimension, TypeCast typeCast, StringCast stringCast) : dimension(dimension), isNull(false) {
+            this->elements = std::vector<ArrayElem<R>>();
+            this->container = std::vector<ArrayList<R>>();
             if (dimension == 1) {
                 this->setElements(array, typeCast, stringCast);
+                this->size = this->elements.size();
             } else {
                 this->setContainer(array, typeCast, stringCast);
+                this->size = this->container.size();
             }
         }
 
         /**
          * This constructor creates an empty instance of ```ArrayList``` which represents a ```null``` value.
          */
-        ArrayList() : elements(std::vector<ArrayElem<R>>()), container(std::vector<ArrayList<R>>()), dimension(0), isNull(true) {}
+        ArrayList() : elements(std::vector<ArrayElem<R>>()), container(std::vector<ArrayList<R>>()), size(0), dimension(0), isNull(true) {}
+
+        /*################################################################################################################################################
+                                                                    ARRAY MANIPULATION
+        #################################################################################################################################################*/
 
         /**
          * This method converts the content of a ```ArrayList``` object to a string 
+         * @note            If the object represents a ```null``` value it will return "null, "
          */
         std::string toString() {
             if (this->isNull){
-                return "null,";
-            } else {
-                std::string result = "{";
-                // If container contains single elements
-                if (this->dimension == 1) {
-                    for (auto& element : this->elements) {
-                        result += element.toString();
-                    }
-                    // Delete the last characters which are ', '
-                    result = result.substr(0, result.size() - 2);
-                // If container contains more complex structures
-                } else {
-                    for (auto& element : this->container) {
-                        result += element.toString();
-                    }
-                    // Delete the last character which is ','
-                    result = result.substr(0, result.size() - 1);
+                return "null, ";
+            } 
+            std::string result = "{";
+            switch (this->dimension) {
+            // If container contains single elements    
+            case 1:
+                for (auto& element : this->elements) {
+                    result += element.toString();
                 }
-                result += "},";
-                return result;
+                break;
+            // If container contains lists of elements    
+            default:
+                for (auto& element : this->container) {
+                    result += element.toString();
+                }
+                break;
             }
+            // Delete the last characters which are ', '
+            result = result.substr(0, result.size() - 2);
+            result += "}, ";
+            return result;
         }
 
         /**
@@ -91,20 +103,25 @@ namespace runtime
         void concat(ArrayList<R>& array) {
             // If dim(this) > dim(array) push to last ArrayList entry
             if (this->dimension > array.getDimension()) {
-                this->container[this->container.size() - 1].concat(array);
+                this->container[this->size - 1].concat(array);
+            // If dim(this) < dim(array)
             } else if (this->dimension < array.getDimension()){
-                throw std::runtime_error("The dimension -" + std::to_string(array.getDimension()) + "- is larger than the dimension -" + std::to_string(this->dimension) + "- of the array which should receive the elements");
+                throw std::runtime_error("Left array dimension -" + std::to_string(this->dimension) + "- < -" + std::to_string(array.getDimension()) + "- as dimension of the right array.");
+            // If dim(this) == dim(array)
             } else {
-                // If dimension is 1, then push elements to the elements attribute
-                if (this->dimension == 1) {
+                switch (this->dimension) {
+                // If dimension == 1, then push elements to the elements attribute
+                case 1:
                     for (auto& element : array.getElements()) {
                         this->elements.push_back(element);
                     }
-                // If dimension is < 1, then push elements to the container attribute
-                } else {
+                    break;
+                // If dimension > 1, then push elements to the container attribute
+                default:
                     for (auto& element: array.getContainer()) {
                         this->container.push_back(element);
                     }
+                    break;
                 }
             }
         }
@@ -115,20 +132,27 @@ namespace runtime
          * @returns             The element as string
          * @note                If the index does not map to an existing element it will throw an ```std::runtime_error```
          */
-        std::string getEntry(int32_t index) {
-            if (this->dimension == 1) {
-                if ((int32_t) this->elements.size() <= index || index < 0){
-                    throw std::runtime_error("The desired element does not exist");
-                }
-                std::string result = this->elements[index].toString();
-                return result.substr(0, result.size() - 2);
-            } else {
-                if ((int32_t) this->container.size() <= index || index < 0){
-                    throw std::runtime_error("The desired element does not exist");
-                }
-                std::string result = this->container[index].toString();
-                return result.substr(0, result.size() - 1);
+        std::string getEntry(uint64_t index) {
+            // If array element is null
+            if (this->isNull) {
+                return "null";
             }
+            // If given index is out of bounds
+            if (this->size <= index) {
+                throw std::runtime_error("The desired element on " + std::to_string(index) + " does not exist");
+            }
+            std::string result;
+            switch (this->dimension) {
+            // If container contains single elements
+            case 1:
+                result = this->elements[index].toString();
+                break;
+            // If container contains lists of elements
+            default:
+                result = this->container[index].toString();
+                break;
+            }
+            return result.substr(0, result.size() - 2);
         }
 
         /**
@@ -139,22 +163,29 @@ namespace runtime
          * @param subDim        The dimension which should be adjusted
          * @note                A ```std::runtime_error``` will be thrown if one of the parameters is larger then expected 
          *                      (e.g. ```start = 3``` but array has only 2 elements)
+         * @note                If the object represents a ```null``` value, it will return without any changes
          */
-        void slice(int32_t start, int32_t stop, int32_t subDim) {
+        void slice(uint64_t start, uint64_t stop, uint64_t subDim) {
             // If there is a null value, nothing to slice
             if (this->isNull) {
                 return;
             }
-            if (subDim == this->dimension) {
-                if (this->dimension == 1){
-                    if ((int32_t) this->elements.size() <= start) {
-                        throw std::runtime_error("This array does not have any elements at " + std::to_string(start) + " in dimension " + std::to_string(subDim));
-                    }
-                    if ((int32_t) this->elements.size() <= stop) {
-                        throw std::runtime_error("This array does not have any elements at " + std::to_string(stop) + " in dimension " + std::to_string(subDim));
-                    }
+            // Proof if given subDim is out of bounds
+            if (subDim > this->dimension) {
+                throw std::runtime_error("This array does not have a " + std::to_string(subDim) + "th dimension");
+            // Proof if the current dimension needs to be adjusted
+            } else if (subDim == this->dimension) {
+                // Proof if start or stop index is out of bounds
+                if (this->size <= start) {
+                    throw std::runtime_error("This array does not have any elements at " + std::to_string(start) + " in dimension " + std::to_string(subDim));
+                }
+                if (this->size <= stop) {
+                    throw std::runtime_error("This array does not have any elements at " + std::to_string(stop) + " in dimension " + std::to_string(subDim));
+                }
+                size_t index = 0;
+                switch (this->dimension) {
+                case 1:
                     // Iterate over single elements and delete those that does not appear in the interval
-                    int32_t index = 0;
                     for (auto it = this->elements.begin(); it != this->elements.end(); it++) {
                         if (index < start || index > stop) {
                             this->elements.erase(it);
@@ -162,15 +193,9 @@ namespace runtime
                         }
                         index++;
                     }
-                } else {
-                    if ((int32_t) this->container.size() <= start) {
-                        throw std::runtime_error("This array does not have any elements at " + std::to_string(start) + " in dimension " + std::to_string(subDim));
-                    }
-                    if ((int32_t) this->container.size() <= stop) {
-                        throw std::runtime_error("This array does not have any elements at " + std::to_string(stop) + " in dimension " + std::to_string(subDim));
-                    }
+                    break;
+                default:
                     // Iterate over complete container and delete those that does not appear in the interval
-                    int32_t index = 0;
                     for (auto it = this->container.begin(); it != this->container.end(); it++) {
                         if (index < start || index > stop) {
                             this->container.erase(it);
@@ -178,15 +203,12 @@ namespace runtime
                         }
                         index++;
                     }
+                    break;
                 }
             } else {
-                if (subDim > this->dimension) {
-                    throw std::runtime_error("This array does not have a " + std::to_string(subDim) + "th dimension");
-                } else {
-                    // Call the function of the children, because lower dimension is given
-                    for (auto& element : this->container) {
-                        element.slice(start, stop, subDim);
-                    }
+                // Call the function of the children, because lower dimension is given
+                for (auto& element : this->container) {
+                    element.slice(start, stop, subDim);
                 }
             }
         }
@@ -195,32 +217,36 @@ namespace runtime
          * This method returns for each dimension the accessible range as string (e.g. '[1:2][1:3]').
          * @return              A string which contains the dimensionality of the array
          * @note                Currently this method only returns the dimensionality from the first elements that fit. This means
-         *                      that not all elements fit with this schema. Currently it will not be checked that each element inside
+         *                      that not all elements may fit with this schema. Currently it will not be checked that each element inside
          *                      the array will have the same structure (e.g. '{{1,2},{1,2,3}}' is a valid array and will return '[1:2][1:2]')
-         * @note                If an array does not contain any element and is not ``ǹull```, then this function returns '[0:0]'
+         * @note                If a container does not contain any elements and is not ``ǹull```, then this function returns '[0:0]'
+         * @note                If the container represents a ``ǹull``` value, it will return an empty string
          */
         std::string getDimensionRange() {
+            // Proof if null value
             if (this->isNull) {
                 return "";
             }
-            // If there are not any elements
-            if (this->elements.size() == 0 && this->container.size() == 0) {
+            // Proof if empty list
+            if (this->size == 0) {
                  return "[0:0]";
             }
+            // Proof if container consists of a list of single elements
             if (this->dimension == 1) {
-                return "[1:" + std::to_string(this->elements.size()) + "]";
-            } else {
-                std::string result = "[1:" + std::to_string(this->container.size()) + "]";
-                // Find best fitting element
-                for (auto& element : this->container) {
-                    std::string subResult = element.getDimensionRange();
-                    // Null values should not be used
-                    if (subResult != ""){
-                        return result + subResult;
-                    }
-                }
-                return result + "[0:0]";
+                return "[1:" + std::to_string(this->size) + "]";
             }
+            std::string result = "[1:" + std::to_string(this->size) + "]";
+            std::string subResult = "";
+            // Find best fitting element
+            for (auto& element : this->container) {
+                // Ensure that null values and empty lists will not be present in final result
+                if (subResult == "" || subResult.find("[0:0]") != std::string::npos || static_cast<uint64_t>(std::ranges::count(subResult, '[')) != this->dimension - 1) {
+                    subResult = element.getDimensionRange();
+                } else {
+                    return result + subResult;
+                }
+            }
+            return result + "[0:0]";
         }
 
         /**
@@ -229,101 +255,107 @@ namespace runtime
          * @note                ```null``` values will be counted if they replace a single array element (e.g. '{1,2,3,null}' will return 4, 
          *                      but '{{1,2}, null}' will return 2).
          */
-        int32_t getNumberElements() {
+        uint64_t getNumberElements() {
+            // Proof if this represents a null value
             if (this->isNull) {
                 return 0;
             }
-            int32_t result = 0;
             if (this->dimension == 1) {
-                result += this->elements.size();
+                return this->size;
             } else {
+                uint64_t result = 0;
                 for (auto& element : container) {
                     result += element.getNumberElements();
                 }
+                return result;
             }
-            return result;
+        }
+
+        /*################################################################################################################################################
+                                                                        MATH FUNCTIONS (ML)
+        #################################################################################################################################################*/
+
+        /**
+         * This method implements the element-wise arithmetic operations for an array (Currently addition, subtraction and multiplication).
+         * @param other         A reference to the ```ArrayList``` object which elements represents the right side of the equation
+         * @param op            The operation which should be done
+         * @note                If the dimension values are not equal of both arrays, it will throw an ```std::runtime_error```
+         * @note                If the given ```op``` does not exist (implemented), it will throw an ```std::runtime_error```
+         * @note                If one array has less elements than the other array, all elements which exceeds the boundary of
+         *                      the smallest array will be ignored
+         * @note                If the current container represents a ```null``` value, nothing will happen
+         */
+        void elementWiseArith(ArrayList<R>& other, ArrayArithOperator op) {
+            // Proof if one of the containers is a null value
+            if (this->isNull || other.getIsNull()){
+                return;
+            }
+            // Proof if both arrays have the same dimension
+            if (this->dimension != other.getDimension()){
+                throw std::runtime_error("Both arrays should have the same dimension");
+            }
+            // Use end index of the container which has less elements
+            auto boundary = this->size > other.getSize() ? other.getSize() : this->size;
+            // Call corresponding operator for every single array element
+            if (this->dimension == 1) {
+                for (size_t index = 0; index < boundary; index++) {
+                    auto otherElement = other.getElements()[index];
+                    switch (op) {
+                    case ArrayArithOperator::addition:
+                        this->elements[index].add(otherElement);
+                        break;
+                    case ArrayArithOperator::subtraction:
+                        this->elements[index].sub(otherElement);
+                        break;
+                    case ArrayArithOperator::multiplication:
+                        this->elements[index].mul(otherElement);
+                        break;
+                    default:
+                        throw std::runtime_error("The entered operator for arrays is currently not supported");
+                    }
+                }
+            // Call this function for all children with their corresponding counterpart
+            } else {
+                for (size_t index = 0; index < boundary; index++) {
+                    this->container[index].elementWiseArith(other.getContainer()[index], op);
+                }
+            }
         }
 
         /**
-         * This method implements the element-wise addition for an array.
-         * @param toAdd         A reference to the ```ArrayList``` object which elements should be used for addition
-         * @note                If the dimension values are not equal of both arrays, it will throw an ```std::runtime_error```
-         * @note                If one array has less elements than the other array, all elements which exceeds the boundary of
-         *                      the smallest array will be ignored
+         * This method implements a transpose mechanism to an ```ArrayList``` object. This means the current ```dimension```
+         * of this object will be switched with the below ```dimension```. This function will therefore rearrange all affected
+         * elements. E.g. '{{1,2,3},{4,5,6}}' will be changed to '{{1,4},{2,5},{3,6}}', because this object has a 2x3 structure
+         * and will be changed to a 3x2 structure.
+         * @return
          */
-        void add(ArrayList<R>& toAdd) {
-            if (this->isNull || toAdd.getIsNull()){
-                return;
-            }
-            if (this->dimension != toAdd.getDimension()){
-                throw std::runtime_error("Both arrays should have the same dimension");
-            }
-            if (this->dimension == 1) {
-                auto elementsToAdd = toAdd.getElements();
-                auto boundary = this->elements.size() > elementsToAdd.size() ? elementsToAdd.size() : this->elements.size();
-                for (size_t index = 0; index < boundary; index++) {
-                    this->elements[index].add(elementsToAdd[index]);
-                }
-            } else {
-                auto elementsToAdd = toAdd.getContainer();
-                auto boundary = this->container.size() > elementsToAdd.size() ? elementsToAdd.size() : this->container.size();
-                for (size_t index = 0; index < boundary; index++) {
-                    this->container[index].add(elementsToAdd[index]);
-                }
-            }
-        }
-
-        /**
-         * This method implements the element-wise subtraction for an array.
-         * @param toSub         A reference to the ```ArrayList``` object which elements should be used for subtraction
-         * @note                If the dimension values are not equal of both arrays, it will throw an ```std::runtime_error```
-         * @note                If one array has less elements than the other array, all elements which exceeds the boundary of
-         *                      the smallest array will be ignored
-         */
-        void sub(ArrayList<R>& toSub) {
-            if (this->isNull || toSub.getIsNull()){
-                return;
-            }
-            if (this->dimension != toSub.getDimension()){
-                throw std::runtime_error("Both arrays should have the same dimension");
-            }
-            if (this->dimension == 1) {
-                auto elementsToSub = toSub.getElements();
-                auto boundary = this->elements.size() > elementsToSub.size() ? elementsToSub.size() : this->elements.size();
-                for (size_t index = 0; index < boundary; index++) {
-                    this->elements[index].sub(elementsToSub[index]);
-                }
-            } else {
-                auto elementsToSub = toSub.getContainer();
-                auto boundary = this->container.size() > elementsToSub.size() ? elementsToSub.size() : this->container.size();
-                for (size_t index = 0; index < boundary; index++) {
-                    this->container[index].sub(elementsToSub[index]);
-                }
-            }
-        }
-
         void transpose(){
             std::vector<ArrayList<R>> result;
-            size_t lowerDim = this->getChildListSize();
+            size_t lowerDim = this->getMaxChildSize();
+            // Iterate over 0 to new upper dimension (goal: merge every entry with a common index together)
             for (size_t dim = 0; dim < lowerDim; dim++) {
                 ArrayList<R> newElement;
+                // Iterate over all children to be able to access their list elements
                 for (auto& element : this->container) {
-                    if (element.getIsNull()){
-                        if (this->dimension == 2){
+                    if (this->dimension == 2) {
+                        // If this element is a null value, add also a null value to the new ArrayList
+                        if (element.getIsNull()){
                             ArrayElem<R> value;
                             newElement.addElement(value);
-                        } else {
-                            ArrayList<R> value;
-                            newElement.addContainer(value);
-                        }
-                    }
-                    if (this->dimension == 2) {
-                        if (element.getListSize() > dim) {
+                        // If current element has an entry on index dim (otherwise do nothing)
+                        } else if (element.getSize() > dim) {
+                            // Add this element as an entry to the new ArrayList
                             newElement.addElement(element.getElements()[dim]);
                         }
                     } else if (this->dimension > 2) {
-                        if (element.getListSize() > dim) {
-                            newElement.addContainer(element.getContainer()[dim]);
+                        // If this element is a null value, add also a null value to the new ArrayList
+                        if (element.getIsNull()){
+                            ArrayList<R> value;
+                            newElement.addContainer(value, this->dimension - 1);
+                        // If current element has an entry on index dim (otherwise do nothing)
+                        } else if (element.getSize() > dim) {
+                            // Add this element as an entry to the new ArrayList
+                            newElement.addContainer(element.getContainer()[dim], this->dimension - 1);
                         }
                     }
                 }
@@ -332,19 +364,32 @@ namespace runtime
             this->container = result;
         }
 
+        /*################################################################################################################################################
+                                                                        GETTER / SETTER
+        #################################################################################################################################################*/
+
         /**
          * This method returns the dimension value of the current ```ArrayList``` object.
          * @returns             An dimension value
          */
-        int32_t getDimension(){
+        uint64_t getDimension(){
             return this->dimension;
         }
 
         /**
          * This method returns a ```bool``` which signals if this ```ArrayList``` represents a ```null``` value.
+         * @returns             A ```bool``` if the current object represents a ```null``` value.
          */
         bool getIsNull(){
             return this->isNull;
+        }
+
+        /**
+         * This method returns the number of elements stored in this container
+         * @returns             The size of the corresponding stored list
+         */
+        size_t getSize(){
+            return this->size;
         }
 
         /**
@@ -363,32 +408,45 @@ namespace runtime
             return this->container;
         }
 
-        size_t getListSize(){
-            if (this->dimension == 1) {
-                return this->elements.size();
-            } else {
-                return this->container.size();
-            }
-        }
-
+        /**
+         * This method allows to add a new ```ArrayElem``` object, to the current list. If the current container
+         * represents a ```null``` value, it will be reversed.
+         * @param element       A reference to the ```ArrayElem``` object which should be added to the container list.
+         */
         void addElement(ArrayElem<R>& element){
+            // Init attributes if container was a null value
             if (this->isNull) {
                 this->isNull = false;
                 this->dimension = 1;
+                this->size = 0;
             }
             this->elements.push_back(element);
+            this->size++;
         }
 
-        void addContainer(ArrayList<R>& container) {
+        /**
+         * This method allows to add a new ```ArrayList``` object, to the current list. If the current container
+         * represents a ```null``` value, it will be reversed.
+         * @param element       A reference to the ```ArrayList``` object which should be added to the container list.
+         * @param dimension     A value which represents the ```dimension``` of the current container (is needed if current
+         *                      object represents a ```null``` value)
+         */
+        void addContainer(ArrayList<R>& container, uint64_t dimension) {
             if (this->isNull) {
                 this->isNull = false;
-                this->dimension = container.getDimension() + 1;
+                this->dimension = dimension;
+                this->size = 0;
             }
-            if (container.getDimension() + 1 != this->dimension) {
+            if ((container.getDimension() + 1 != this->dimension) && !container.getIsNull()) {
                 std::runtime_error("A list of array element could not be added according to wrong dimension specification: " + std::to_string(this->dimension) + " != " + std::to_string(container.getDimension() + 1));
             }
             this->container.push_back(container);
+            this->size++;
         }
+
+        /*################################################################################################################################################
+                                                                        PRIVATE METHODS
+        #################################################################################################################################################*/
 
         private:
         /**
@@ -405,7 +463,6 @@ namespace runtime
          *                       e.g. ```array = [1,2,3,4]```
          */
         void setContainer(std::string array, TypeCast typeCast, StringCast stringCast) {
-            this->container = std::vector<ArrayList<R>>();
             // Proof if the content is a null value
             if (!this->isInputNull(array)){
                 // Counts, how many '{' have been encounterd which has not been closed
@@ -472,7 +529,6 @@ namespace runtime
          *                       e.g. ```array = [1,2,3,4]```
          */
         void setElements(std::string array, TypeCast typeCast, StringCast stringCast) {
-            this->elements = std::vector<ArrayElem<R>>();
             // Proof if the content is a null value
             if (!this->isInputNull(array)){
                 // Index of the first character of an array element (skip the first '{')
@@ -531,13 +587,21 @@ namespace runtime
             return false;
         }
 
-        size_t getChildListSize() {
+        /**
+         * This method returns a value which represents the largest list size of all children in the ```container```
+         * or ```elements``` attribute (depends on the dimension of the current object).
+         * @return          A value representing the number of elements in the next below dimension
+         */
+        size_t getMaxChildSize() {
+            // If the container contains only ArrayElems -> return 1
+            if (this->dimension == 1) {
+                return 1;
+            }
+            // Find the maximum list size of all children
             size_t result = 1;
-            if (this->dimension >= 2) {                
-                for (auto& element : this->container) {
-                    if (result < element.getListSize()) {
-                        result = element.getListSize();
-                    }
+            for (auto& element : this->container) {
+                if (result < element.getSize()) {
+                    result = element.getSize();
                 }
             }
             return result;

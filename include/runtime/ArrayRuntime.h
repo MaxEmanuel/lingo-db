@@ -18,7 +18,7 @@ namespace runtime
         * @note             If one of the given arrays could not be created according to the given str, dim and type parameters or both arrays have different 
         *                   types, it will throw an ```std::runtime_error```. 
         */
-        static runtime::VarLen32 concat(runtime::VarLen32 array1, int dim1, runtime::VarLen32 type1, runtime::VarLen32 array2, int dim2, runtime::VarLen32 type2);
+        static runtime::VarLen32 concat(runtime::VarLen32 array1, uint64_t dim1, runtime::VarLen32 type1, runtime::VarLen32 array2, uint64_t dim2, runtime::VarLen32 type2);
 
         /**
          * This function allows to pick up some elements of a given array in a specific range.
@@ -31,7 +31,7 @@ namespace runtime
          * @note            If the start, stop indices or subDim parameter are wrongly specified or the array could not be created according to the 
          *                  given str, dim and type parameters, it will throw an ```std::runtime_error```. 
          */
-        static runtime::VarLen32 getRange(runtime::VarLen32 str, int dim, runtime::VarLen32 type, int start, int stop, int subDim);
+        static runtime::VarLen32 getRange(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type, uint64_t start, uint64_t stop, uint64_t subDim);
 
         /**
          * This function allows to pick up a single element of a given array.
@@ -43,7 +43,7 @@ namespace runtime
          * @note            If the index is wrongly specified or the array could not be created according to the 
          *                  given str, dim and type parameters, it will throw an ```std::runtime_error```. 
          */
-        static runtime::VarLen32 getEntry(runtime::VarLen32 str, int dim, runtime::VarLen32 type, int index);
+        static runtime::VarLen32 getEntry(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type, uint64_t index);
 
         /**
          * This function returns a string of dimension values (e.g. '{{1,2}, {2,3}}' it will be '[1:2][1:2]').
@@ -54,7 +54,7 @@ namespace runtime
          * @note            If the array could not be created according to the given str, dim and type parameters, it will throw an 
          *                  ```std::runtime_error```.
          */
-        static runtime::VarLen32 getDimensions(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
+        static runtime::VarLen32 getDimensions(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type);
 
         /**
          * This function returns the number of elements inside the array as ```VarLen32``` object.
@@ -65,7 +65,7 @@ namespace runtime
          * @note            If the array could not be created according to the given str, dim and type parameters, it will throw an
          *                  ```std::runtime_error```.
          */
-        static runtime::VarLen32 getCardinality(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
+        static runtime::VarLen32 getCardinality(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type);
 
         /**
          * This funtion allows the addition of two arrays.
@@ -81,7 +81,7 @@ namespace runtime
          * @note             It will throw an ```std::runtime_error```, if both arrays have different types
          * @note             It will throw an ```std::runtime_error```, if the dimension values of both arrays are not equal
          */
-        static runtime::VarLen32 add(runtime::VarLen32 str1, int dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, int dim2, runtime::VarLen32 type2);
+        static runtime::VarLen32 add(runtime::VarLen32 str1, uint64_t dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, uint64_t dim2, runtime::VarLen32 type2);
 
         /**
          * This funtion allows the subtraction of two arrays.
@@ -97,9 +97,9 @@ namespace runtime
          * @note             It will throw an ```std::runtime_error```, if both arrays have different types
          * @note             It will throw an ```std::runtime_error```, if the dimension values of both arrays are not equal
          */
-        static runtime::VarLen32 sub(runtime::VarLen32 str1, int dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, int dim2, runtime::VarLen32 type2);
+        static runtime::VarLen32 sub(runtime::VarLen32 str1, uint64_t dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, uint64_t dim2, runtime::VarLen32 type2);
 
-        static runtime::VarLen32 transpose(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
+        static runtime::VarLen32 transpose(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type);
 
         /**
          * This function casts an array (actual a single value which will be interpreted as array) to an integer with 32 bits.
@@ -142,9 +142,9 @@ namespace runtime
          * @returns         The value as new array
          * @note            If the array could not be converted to other array, it will throw an ```std::runtime_error```.
          */
-        static runtime::VarLen32 castToArray(runtime::VarLen32 str, int dim, runtime::VarLen32 type);
+        static runtime::VarLen32 castToArray(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type);
     };
     
 } // namespace runtime
 
-#endif // RUNTIME_ARRAYRUNTIME_H
+#endif // RUNTIME_ARRAYRUNTIME_H;
