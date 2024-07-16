@@ -150,6 +150,7 @@ frontend::sql::ExpressionType frontend::sql::stringToExpressionType(const std::s
       .Case("+", ExpressionType::OPERATOR_PLUS)
       .Case("-", ExpressionType::OPERATOR_MINUS)
       .Case("*", ExpressionType::OPERATOR_MULTIPLY)
+      .Case("**", ExpressionType::OPERATOR_SPECIAL_MULTIPLY)
       .Case("/", ExpressionType::OPERATOR_DIVIDE)
       .Case("||", ExpressionType::OPERATOR_CONCAT)
       .Case("%", ExpressionType::OPERATOR_MOD)
@@ -496,6 +497,17 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          return builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
       case ExpressionType::OPERATOR_MULTIPLY:
          return builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonNumber(builder, {left, right}));
+      case ExpressionType::OPERATOR_SPECIAL_MULTIPLY:
+         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            auto rightArray = TypeFunctions::extractArrayDataDB(builder, right);
+            auto leftArray = TypeFunctions::extractArrayDataDB(builder, left);
+            // Is needed to proof if one of the values is a mlir::db::ConstantOp (for return mlir type of the function).
+            // Otherwise the correspoding function will not be executed 
+            auto typeId = mlir::TypeID::get<mlir::db::ConstantOp>();
+            auto returnType = left.getDefiningOp()->getName().getTypeID() == typeId && right.getDefiningOp()->getName().getTypeID() != typeId ? right.getType() : left.getType();
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayEWMul", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
+         }
+         return mlir::Value();
       case ExpressionType::OPERATOR_DIVIDE:
          return builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonNumber(builder, {left, right}));
       case ExpressionType::OPERATOR_MOD:

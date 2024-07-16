@@ -99,6 +99,31 @@ namespace runtime
          */
         static runtime::VarLen32 sub(runtime::VarLen32 str1, uint64_t dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, uint64_t dim2, runtime::VarLen32 type2);
 
+        /**
+         * This funtion allows the element-wise multiplication of two arrays.
+         * @param str1       The array which should be modified
+         * @param dim1       The dimension value of the first array
+         * @param type1      The type of the elements in the first array
+         * @param str2       The array which includes all elements for subtraction
+         * @param dim2       The dimension value of the second array
+         * @param type2      The type the elements in the second array
+         * @returns          A modified array wrapped up as string in a ```VarLen32``` object
+         * @note             It will throw an ```std::runtime_error```, if one of the given arrays could not be created according to the given 
+         *                   ```str```, ```dim``` and ```type``` parameters
+         * @note             It will throw an ```std::runtime_error```, if both arrays have different types
+         * @note             It will throw an ```std::runtime_error```, if the dimension values of both arrays are not equal
+         */
+        static runtime::VarLen32 mulEW(runtime::VarLen32 str1, uint64_t dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, uint64_t dim2, runtime::VarLen32 type2);
+
+        /**
+         * This function transposes an array which means changes the dimension structure (by switching the first 2 dimensions).
+         * @param str       The initial array
+         * @param dim       The amount of dimension of the given array
+         * @param type      The type of the elements from the given array
+         * @returns         A VarLen32 object the restructured array
+         * @note            If the array could not be created according to the given str, dim and type parameters, it will throw an
+         *                  ```std::runtime_error```.
+         */
         static runtime::VarLen32 transpose(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type);
 
         /**

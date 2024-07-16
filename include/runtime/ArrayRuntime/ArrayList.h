@@ -283,11 +283,13 @@ namespace runtime
          * @note                If the given ```op``` does not exist (implemented), it will throw an ```std::runtime_error```
          * @note                If one array has less elements than the other array, all elements which exceeds the boundary of
          *                      the smallest array will be ignored
-         * @note                If the current container represents a ```null``` value, nothing will happen
+         * @note                If the current container or ```other```  represents a ```null``` value, this container will be changed to 
+         *                      a ```null``` value.
          */
         void elementWiseArith(ArrayList<R>& other, ArrayArithOperator op) {
             // Proof if one of the containers is a null value
             if (this->isNull || other.getIsNull()){
+                this->isNull = true;
                 return;
             }
             // Proof if both arrays have the same dimension

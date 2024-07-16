@@ -136,6 +136,24 @@ namespace runtime
             this->array.elementWiseArith(toSub.getArray(), ArrayArithOperator::subtraction);
         }
 
+        /**
+         * This method implements the element-wise multiplication for an array.
+         * @param toSub         A reference to the ```Array``` object which elements should be used for multiplication
+         * @note                If the dimension values are not equal of both arrays, it will throw an ```std::runtime_error```
+         * @note                If one array has less elements than the other array, all elements which exceeds the boundary of
+         *                      the smallest array will be ignored
+         */
+        void mulEW(Array<T>& toSub) {
+            this->array.elementWiseArith(toSub.getArray(), ArrayArithOperator::multiplication);
+        }
+
+        /**
+         * This method implements a transpose mechanism to an ```Array``` object. This means the current ```dimension```
+         * of this object will be switched with the below ```dimension```. This function will therefore rearrange all affected
+         * elements. E.g. '{{1,2,3},{4,5,6}}' will be changed to '{{1,4},{2,5},{3,6}}', because this object has a 2x3 structure
+         * and will be changed to a 3x2 structure.
+         * @return
+         */
         void transpose() {
             this->array.transpose();
         }

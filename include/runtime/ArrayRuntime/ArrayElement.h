@@ -73,27 +73,42 @@ namespace runtime {
         }
 
         /**
-         * This method adds a value to the stored value of this ```ArrayElem```.
+         * This method adds a value to the stored value of this ```ArrayElem```. If one of these objects represents a 
+         * ```null``` value, the current ```ArrayElem``` will change to a ```null``` value.
          * @param value         The value which should be added
          */
         void add(ArrayElem<R>& value) {
-            this->value += value.getValue();
+            if (this->isNull || value.getIsNull()){
+                this->isNull = true;
+            } else {
+                this->value += value.getValue();
+            }
         }
 
         /**
-         * This method subtracts a value to the stored value of this ```ArrayElem```.
+         * This method subtracts a value to the stored value of this ```ArrayElem```. If one of these objects represents a 
+         * ```null``` value, the current ```ArrayElem``` will change to a ```null``` value.
          * @param value         The value which should be subtracted
          */
         void sub(ArrayElem<R>& value) {
-            this->value -= value.getValue();
+            if (this->isNull || value.getIsNull()){
+                this->isNull = true;
+            } else {
+                this->value -= value.getValue();
+            }
         }
 
         /**
-         * This method multiplies a value to the stored value of this ```ArrayElem```.
+         * This method multiplies a value to the stored value of this ```ArrayElem```. If one of these objects represents a 
+         * ```null``` value, the current ```ArrayElem``` will change to a ```null``` value.
          * @param value         The value which should be used for multiplication
          */
         void mul(ArrayElem<R>& value) {
-            this->value *= value.getValue();
+            if (this->isNull || value.getIsNull()){
+                this->isNull = true;
+            } else {
+                this->value *= value.getValue();
+            }
         }
     };
 }
