@@ -148,6 +148,38 @@ namespace runtime
         }
 
         /**
+         * This method allows scalar multiplication with int32_t type as scalar.
+         * @param value         The value which represents the scalar.
+         */
+        void scalarMult(int32_t value) {
+            this->array.template scalarMult<int32_t>(value);
+        }
+
+        /**
+         * This method allows scalar multiplication with int64_t type as scalar.
+         * @param value         The value which represents the scalar.
+         */
+        void scalarMult(int64_t value) {
+            this->array.template scalarMult<int64_t>(value);
+        }
+
+        /**
+         * This method allows scalar multiplication with float type as scalar.
+         * @param value         The value which represents the scalar.
+         */
+        void scalarMult(float value) {
+            this->array.template scalarMult<float>(value);
+        }
+
+        /**
+         * This method allows scalar multiplication with double type as scalar.
+         * @param value         The value which represents the scalar.
+         */
+        void scalarMult(double value) {
+            this->array.template scalarMult<double>(value);
+        }
+
+        /**
          * This method implements a transpose mechanism to an ```Array``` object. This means the current ```dimension```
          * of this object will be switched with the below ```dimension```. This function will therefore rearrange all affected
          * elements. E.g. '{{1,2,3},{4,5,6}}' will be changed to '{{1,4},{2,5},{3,6}}', because this object has a 2x3 structure

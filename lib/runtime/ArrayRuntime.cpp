@@ -221,6 +221,52 @@ runtime::VarLen32 runtime::ArrayRuntime::mulEW(runtime::VarLen32 str1, uint64_t 
     }
 }
 
+runtime::VarLen32 runtime::ArrayRuntime::scalarMultInt(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type, int64_t scalar) {
+    if (type.str() == "int32[]") {
+        runtime::Array<int32_t> array(str, dim, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
+        array.scalarMult(scalar);
+        return  array.toString();
+    }  else if (type.str() == "int64[]") {
+        runtime::Array<int64_t> array(str, dim, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+        array.scalarMult(scalar);
+        return  array.toString();
+    } else if (type.str() == "float[]") {
+        runtime::Array<float> array(str, dim, &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
+        array.scalarMult(scalar);
+        return  array.toString();
+    } else if (type.str() == "double[]") {
+        runtime::Array<double> array(str, dim, &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
+        array.scalarMult(scalar);
+        return  array.toString();
+    } else {
+        throw std::runtime_error("The scalar-multiplication operator is only supported for numeric arrays");
+    }
+    return str;
+}
+
+runtime::VarLen32 runtime::ArrayRuntime::scalarMultFloat(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type, double scalar) {
+    if (type.str() == "int32[]") {
+        runtime::Array<int32_t> array(str, dim, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
+        array.scalarMult(scalar);
+        return  array.toString();
+    }  else if (type.str() == "int64[]") {
+        runtime::Array<int64_t> array(str, dim, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+        array.scalarMult(scalar);
+        return  array.toString();
+    } else if (type.str() == "float[]") {
+        runtime::Array<float> array(str, dim, &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
+        array.scalarMult(scalar);
+        return  array.toString();
+    } else if (type.str() == "double[]") {
+        runtime::Array<double> array(str, dim, &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
+        array.scalarMult(scalar);
+        return  array.toString();
+    } else {
+        throw std::runtime_error("The scalar-multiplication operator is only supported for numeric arrays");
+    }
+    return str;
+}
+
 runtime::VarLen32 runtime::ArrayRuntime::transpose(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type) {
     if (type.str() == "int32[]") {
         runtime::Array<int32_t> array(str, dim, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);

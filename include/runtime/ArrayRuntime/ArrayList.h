@@ -310,7 +310,7 @@ namespace runtime
                         this->elements[index].sub(otherElement);
                         break;
                     case ArrayArithOperator::multiplication:
-                        this->elements[index].mul(otherElement);
+                        this->elements[index].mult(otherElement);
                         break;
                     default:
                         throw std::runtime_error("The entered operator for arrays is currently not supported");
@@ -321,6 +321,33 @@ namespace runtime
                 for (size_t index = 0; index < boundary; index++) {
                     this->container[index].elementWiseArith(other.getContainer()[index], op);
                 }
+            }
+        }
+
+        /**
+         * This method allows scalar multiplication with any primitive numeric type (currently int32_t, int64_t, float and double).
+         * @param value         The value which represents the scalar.
+         * @note                If the type of the scalar does not match with the specification it will throw an ```std::runtime_error```
+         */
+        template <typename T>
+        void scalarMult(T value) {
+            if (!std::is_same<int32_t, T>::value || !std::is_same<int64_t, T>::value || !std::is_same<float, T>::value || !std::is_same<double, T>::value) {
+                std::runtime_error("Scalar-multiplication is only allowed with primitive numeric types");
+            }
+            if (this->isNull) {
+                return;
+            }
+            switch (this->dimension) {
+            case 1:
+                for (auto& element : this->elements) {
+                    element.mult(value);
+                }
+                break;
+            default:
+                for (auto& element : this->container) {
+                    element.scalarMult(value);
+                }
+                break;
             }
         }
 

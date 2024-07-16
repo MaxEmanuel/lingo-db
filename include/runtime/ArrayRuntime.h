@@ -116,6 +116,28 @@ namespace runtime
         static runtime::VarLen32 mulEW(runtime::VarLen32 str1, uint64_t dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, uint64_t dim2, runtime::VarLen32 type2);
 
         /**
+         * This function allows scalar multiplication with a scalar of type integer.
+         * @param str       The initial array
+         * @param dim       The amount of dimension of the given array
+         * @param type      The type of the elements from the given array
+         * @returns         A VarLen32 object the restructured array
+         * @note            If the array could not be created according to the given str, dim and type parameters,or if the array
+         *                  does not consists of elements of numeric type, it will throw an ```std::runtime_error```.
+         */
+        static runtime::VarLen32 scalarMultInt(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type, int64_t scalar); 
+
+        /**
+         * This function allows scalar multiplication with a scalar of type double.
+         * @param str       The initial array
+         * @param dim       The amount of dimension of the given array
+         * @param type      The type of the elements from the given array
+         * @returns         A VarLen32 object the restructured array
+         * @note            If the array could not be created according to the given str, dim and type parameters, or if the array
+         *                  does not consists of elements of numeric type, it will throw an ```std::runtime_error```.
+         */
+        static runtime::VarLen32 scalarMultFloat(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type, double scalar); 
+        
+        /**
          * This function transposes an array which means changes the dimension structure (by switching the first 2 dimensions).
          * @param str       The initial array
          * @param dim       The amount of dimension of the given array

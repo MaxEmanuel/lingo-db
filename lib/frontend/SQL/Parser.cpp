@@ -496,6 +496,23 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          }
          return builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
       case ExpressionType::OPERATOR_MULTIPLY:
+         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            //TODO
+         } else if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && (getBaseType(right.getType()).isa<mlir::IntegerType>() || getBaseType(right.getType()).isa<mlir::Float32Type>() || getBaseType(right.getType()).isa<mlir::Float64Type>())) {
+            auto array = TypeFunctions::extractArrayDataDB(builder, left);
+            if (getBaseType(right.getType()).isa<mlir::IntegerType>()) {
+               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultInt", mlir::ValueRange({left, std::get<0>(array), std::get<1>(array), right})).getRes();
+            } else {
+               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultFloat", mlir::ValueRange({left, std::get<0>(array), std::get<1>(array), right})).getRes();
+            }
+         } else if ((getBaseType(left.getType()).isa<mlir::IntegerType>() || getBaseType(left.getType()).isa<mlir::Float32Type>() || getBaseType(left.getType()).isa<mlir::Float64Type>()) && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            auto array = TypeFunctions::extractArrayDataDB(builder, right);
+            if (getBaseType(left.getType()).isa<mlir::IntegerType>()) {
+               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultInt", mlir::ValueRange({right, std::get<0>(array), std::get<1>(array), left})).getRes();
+            } else {
+               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultFloat", mlir::ValueRange({right, std::get<0>(array), std::get<1>(array), left})).getRes();
+            }
+         }
          return builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonNumber(builder, {left, right}));
       case ExpressionType::OPERATOR_SPECIAL_MULTIPLY:
          if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {

@@ -103,11 +103,51 @@ namespace runtime {
          * ```null``` value, the current ```ArrayElem``` will change to a ```null``` value.
          * @param value         The value which should be used for multiplication
          */
-        void mul(ArrayElem<R>& value) {
+        void mult(ArrayElem<R>& value) {
             if (this->isNull || value.getIsNull()){
                 this->isNull = true;
             } else {
                 this->value *= value.getValue();
+            }
+        }
+
+        /**
+         * This method multiples the given integer value to the stored value.
+         * @param value         The value which should be used for multiplication.
+         */
+        void mult(int32_t value){
+            if (!this->isNull) {
+                this->value *= value;
+            }
+        }
+
+        /**
+         * This method multiples the given integer value to the stored value.
+         * @param value         The value which should be used for multiplication.
+         */
+        void mult(int64_t value){
+            if (!this->isNull) {
+                this->value *= value;
+            }
+        }
+
+        /**
+         * This method multiples the given float value to the stored value.
+         * @param value         The value which should be used for multiplication.
+         */
+        void mult(float value){
+            if (!this->isNull) {
+                this->value *= value;
+            }
+        }
+
+        /**
+         * This method multiples the given double value to the stored value.
+         * @param value         The value which should be used for multiplication.
+         */
+        void mult(double value){
+            if (!this->isNull) {
+                this->value *= value;
             }
         }
     };
