@@ -1243,8 +1243,24 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
 
  mlir::Value frontend::sql::Parser::translateIndirection(mlir::OpBuilder& builder, TranslationContext& context, List* indirections, mlir::Value data){
    auto* listCell = indirections->head;
+   // Only used for searching a slice operator
+   auto* searchCell = listCell;
    mlir::Value result;
    auto columnType = SQLTypeInference::getType(data);
+   // Value defines if there is a slice operator
+   bool isSlice = false;
+   // Loop which checks if any T_A_Indices is a slice operator
+   while (searchCell && !isSlice) {
+      auto* node = reinterpret_cast<Node*>(searchCell->data.ptr_value);
+      if (node->type == T_A_Indices) {
+         auto* indicesExpr = reinterpret_cast<A_Indices*>(node);
+         auto* leftNode = reinterpret_cast<Node*>(indicesExpr->lidx);
+         if (leftNode) {
+            isSlice = true;
+         }
+      }
+      searchCell = searchCell->next;
+   }
    // A value which counts how many times the T_A_Indices expression occurs
    int dimensionCounter = 0;
    // Iterate over each subscript operator
@@ -1269,8 +1285,14 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
                // It is possible that there are more than 1 subscript operater, e.g. array[0][0]. Operators needs to be nested
                mlir::Value usedArray = listCell == indirections->head ? data : result;
                // If a range is requested or a single entry, call the respective function
-               if (leftNode) {
-                  mlir::Value leftIndex = translateExpression(builder, leftNode, context, true);
+               if (isSlice) {
+                  mlir::Value leftIndex;
+                  // Create left index if its not there, otherwise use defined one
+                  if (leftNode) {
+                     leftIndex = translateExpression(builder, leftNode, context, true);
+                  } else {
+                     leftIndex = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), 1));
+                  }
                   mlir::Value arrayDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), array.getDimensions()));
                   mlir::Value operaterDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), array.getDimensions() - dimensionCounter));
                   result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayRange", mlir::ValueRange({usedArray, arrayDimension, type, leftIndex, rightIndex, operaterDimension})).getRes();
