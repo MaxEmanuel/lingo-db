@@ -871,6 +871,14 @@ class CastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
             value = rewriter.create<arith::MulFOp>(loc, convertedSourceType, value, multiplier);
             rewriter.replaceOpWithNewOp<arith::FPToSIOp>(op, convertedTargetType, value);
             return success();
+         } else if (auto targetFloatType = scalarTargetType.dyn_cast_or_null<FloatType>()) {
+            if (floatType.getWidth() < targetFloatType.getWidth()) {
+               value = rewriter.create<arith::ExtFOp>(loc, convertedTargetType, value);
+            } else if (floatType.getWidth() > targetFloatType.getWidth()) {
+               value = rewriter.create<arith::TruncFOp>(loc, convertedTargetType, value);
+            }
+            rewriter.replaceOp(op, value);
+            return success();
          }
       } else if (auto decimalSourceType = scalarSourceType.dyn_cast_or_null<db::DecimalType>()) {
          if (auto decimalTargetType = scalarTargetType.dyn_cast_or_null<db::DecimalType>()) {
