@@ -147,6 +147,10 @@ namespace runtime
             this->array.elementWiseArith(toSub.getArray(), ArrayArithOperator::multiplication);
         }
 
+        void matrixMul(Array<T>& toMul) {
+            this->array.matrixMult(toMul.getArray());
+        }
+
         /**
          * This method allows scalar multiplication with int32_t type as scalar.
          * @param value         The value which represents the scalar.

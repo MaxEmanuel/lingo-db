@@ -40,6 +40,8 @@ namespace runtime {
          */
         ArrayElem() : isNull(true){}
 
+        ArrayElem(R value) : value(value), isNull(false), castToString([](R value){return std::to_string(value);}) {}
+
         /**
          * This method converts the content of a ```ArrayElem``` object to a string
          */
@@ -72,6 +74,10 @@ namespace runtime {
             return this->value;
         }
 
+        void setNull() {
+            this->isNull = true;
+        }
+
         /**
          * This method adds a value to the stored value of this ```ArrayElem```. If one of these objects represents a 
          * ```null``` value, the current ```ArrayElem``` will change to a ```null``` value.
@@ -83,6 +89,10 @@ namespace runtime {
             } else {
                 this->value += value.getValue();
             }
+        }
+
+        void add(R value) {
+            this->value += value;
         }
 
         /**

@@ -115,6 +115,8 @@ namespace runtime
          */
         static runtime::VarLen32 mulEW(runtime::VarLen32 str1, uint64_t dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, uint64_t dim2, runtime::VarLen32 type2);
 
+        static runtime::VarLen32 matrixMul(runtime::VarLen32 str1, uint64_t dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, uint64_t dim2, runtime::VarLen32 type2);
+
         /**
          * This function allows scalar multiplication with a scalar of type integer.
          * @param str       The initial array

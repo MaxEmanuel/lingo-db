@@ -221,6 +221,36 @@ runtime::VarLen32 runtime::ArrayRuntime::mulEW(runtime::VarLen32 str1, uint64_t 
     }
 }
 
+runtime::VarLen32 runtime::ArrayRuntime::matrixMul(runtime::VarLen32 str1, uint64_t dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, uint64_t dim2, runtime::VarLen32 type2) {
+    if (type1.str() != type2.str()) {
+        throw std::runtime_error("Both arrays should have the same type - Type-1: " + type1.str() + "; Type-2: " + type2.str());
+    }
+
+    if (type1.str() == "int32[]") {
+        runtime::Array<int32_t> array1(str1, dim1, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
+        runtime::Array<int32_t> array2(str2, dim2, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
+        array1.matrixMul(array2);
+        return array1.toString();
+    }  else if (type1.str() == "int64[]") {
+        runtime::Array<int64_t> array1(str1, dim1, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+        runtime::Array<int64_t> array2(str2, dim2, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+        array1.matrixMul(array2);
+        return array1.toString();
+    } else if (type1.str() == "float[]") {
+        runtime::Array<float> array1(str1, dim1, &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
+        runtime::Array<float> array2(str2, dim2, &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
+        array1.matrixMul(array2);
+        return array1.toString();
+    } else if (type1.str() == "double[]") {
+        runtime::Array<double> array1(str1, dim1, &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
+        runtime::Array<double> array2(str2, dim2, &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
+        array1.matrixMul(array2);
+        return array1.toString();
+    } else {
+        throw std::runtime_error("The subtraction operator is only supported for numeric arrays");
+    }
+}
+
 runtime::VarLen32 runtime::ArrayRuntime::scalarMultInt(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type, int64_t scalar) {
     if (type.str() == "int32[]") {
         runtime::Array<int32_t> array(str, dim, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);

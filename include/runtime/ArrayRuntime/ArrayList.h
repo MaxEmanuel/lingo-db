@@ -351,6 +351,51 @@ namespace runtime
             }
         }
 
+        void matrixMult(ArrayList<R>& other) {
+            std::vector<ArrayList<R>> result;
+            if (this->dimension > 2 || other.getDimension() > 2) {
+                throw std::runtime_error("Matrix multiplication is currently only supported with maximal 2 dimensions");
+            }
+            if (this->isNull || other.getIsNull()) {
+                return;
+            }
+            size_t numberACol = this->dimension == 1 ? this->dimension : this->size;
+            size_t numberARows = this->dimension == 1 ? this->size : this->getMaxChildSize();
+            size_t numberBCol = other.getDimension() == 1 ? other.getDimension() : other.getSize();
+            for (size_t bIndex = 0; bIndex < numberBCol; bIndex++) {
+                ArrayList<R> newColumn;
+                std::vector<ArrayElem<R>> bColumn = numberBCol == 1 ? other.getElements() : other.getContainer()[bIndex].getElements();
+                if (numberACol != bColumn.size()) {
+                    throw std::runtime_error("Matrix multiplication with, " + std::to_string(this->size) + ":" + std::to_string(bColumn.size()) + ", unequal dimensions not possible");
+                }
+                for (size_t aRowIndex = 0; aRowIndex < numberARows; aRowIndex++) {
+                    ArrayElem<R> value(0);
+                    for (size_t aColumnIndex = 0; aColumnIndex < numberACol; aColumnIndex++) {
+                        std::vector<ArrayElem<R>> aColumn = this->dimension == 1 ? this->elements : this->container[aColumnIndex].getElements();
+                        if (aColumn.size() <= aRowIndex) {
+                            throw std::runtime_error("First matrix has a uneven number of elements and is therefore not suited for matrix multiplication");
+                        }
+                        auto aValue = aColumn[aRowIndex];
+                        auto bValue = bColumn[aColumnIndex];
+                        if (aValue.getIsNull() || bValue.getIsNull()) {
+                            value.setNull();
+                            break;
+                        }
+                        value.add(aValue.getValue() * bValue.getValue());
+                    }
+                    newColumn.addElement(value);
+                }
+                result.push_back(newColumn);
+            }
+            if (numberBCol == 1) {
+                this->dimension = 1;
+                this->elements = result[0].getElements();
+            } else {
+                this->dimension = 2;
+                this->container = result;
+            }
+        }
+
         /**
          * This method implements a transpose mechanism to an ```ArrayList``` object. This means the current ```dimension```
          * of this object will be switched with the below ```dimension```. This function will therefore rearrange all affected

@@ -193,6 +193,8 @@ mlir::Value dumpValuesImpl(mlir::OpBuilder& rewriter, mlir::ValueRange loweredAr
       rt::DumpRuntime::dumpFloat(rewriter, loc)({isNull, val});
    } else if (baseType.isa<mlir::db::StringType>()) {
       rt::DumpRuntime::dumpString(rewriter, loc)({isNull, val});
+   } else if (baseType.isa<mlir::db::ArrayType>()) {
+      rt::DumpRuntime::dumpArray(rewriter, loc)({isNull, val});
    } else if (auto charType = baseType.dyn_cast_or_null<mlir::db::CharType>()) {
       Value numBytes = rewriter.create<arith::ConstantOp>(loc, rewriter.getI64IntegerAttr(charType.getBytes()));
       if (charType.getBytes() < 5) {
@@ -262,6 +264,7 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    builtinRegistry->add("ArrayAdd").implementedAs(rt::ArrayRuntime::add).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
    builtinRegistry->add("ArraySub").implementedAs(rt::ArrayRuntime::sub).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
    builtinRegistry->add("ArrayEWMul").implementedAs(rt::ArrayRuntime::mulEW).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
+   builtinRegistry->add("ArrayMatrixMul").implementedAs(rt::ArrayRuntime::matrixMul).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
    builtinRegistry->add("ArrayScalarMultInt").implementedAs(rt::ArrayRuntime::scalarMultInt).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::anyNumber}, RuntimeFunction::matchesArgument());
    builtinRegistry->add("ArrayScalarMultFloat").implementedAs(rt::ArrayRuntime::scalarMultFloat).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::anyDecimal}, RuntimeFunction::matchesArgument());
 

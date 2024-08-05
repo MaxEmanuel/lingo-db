@@ -497,7 +497,13 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          return builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
       case ExpressionType::OPERATOR_MULTIPLY:
          if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
-            //TODO
+            auto rightArray = TypeFunctions::extractArrayDataDB(builder, right);
+            auto leftArray = TypeFunctions::extractArrayDataDB(builder, left);
+            // Is needed to proof if one of the values is a mlir::db::ConstantOp (for return mlir type of the function).
+            // Otherwise the correspoding function will not be executed 
+            auto typeId = mlir::TypeID::get<mlir::db::ConstantOp>();
+            auto returnType = left.getDefiningOp()->getName().getTypeID() == typeId && right.getDefiningOp()->getName().getTypeID() != typeId ? right.getType() : left.getType();
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayMatrixMul", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
          } else if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && (getBaseType(right.getType()).isa<mlir::IntegerType>() || getBaseType(right.getType()).isa<mlir::Float32Type>() || getBaseType(right.getType()).isa<mlir::Float64Type>())) {
             auto array = TypeFunctions::extractArrayDataDB(builder, left);
             if (getBaseType(right.getType()).isa<mlir::IntegerType>()) {
