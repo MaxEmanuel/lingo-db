@@ -95,33 +95,37 @@ namespace runtime
 
         /**
          * This method joins two arrays together. It is also possible that the given ```array``` has a lower dimension than ```this```.
-         * It will add the elements to the last entry
+         * In this case it will add the complete ```array``` as last entry to the next higher dimension (e.g. if ```array``` has an dimension
+         * of 1 it will be added to the dimension 2 of ```this```).
          * @param array         A reference to the ```ArrayList``` object which should be connected to ```this```
          * @note                If the dimension value of the parameter ```array``` is larger than the dimension value of ```this```,
          *                      it will throw an ```std::runtime_error```.
          */
         void concat(ArrayList<R>& array) {
-            // If dim(this) > dim(array) push to last ArrayList entry
-            if (this->dimension > array.getDimension()) {
-                this->container[this->size - 1].concat(array);
-            // If dim(this) < dim(array)
-            } else if (this->dimension < array.getDimension()){
-                throw std::runtime_error("Left array dimension -" + std::to_string(this->dimension) + "- < -" + std::to_string(array.getDimension()) + "- as dimension of the right array.");
-            // If dim(this) == dim(array)
-            } else {
-                switch (this->dimension) {
-                // If dimension == 1, then push elements to the elements attribute
-                case 1:
+            // Compare both dimension values
+            switch (this->dimension - array.getDimension()) {
+            // If both dimensions are equal, extract childs from parameter and push it to this
+            case 0:
+                if (this->dimension == 1) {
                     for (auto& element : array.getElements()) {
                         this->elements.push_back(element);
                     }
-                    break;
-                // If dimension > 1, then push elements to the container attribute
-                default:
+                } else {
                     for (auto& element: array.getContainer()) {
                         this->container.push_back(element);
                     }
-                    break;
+                }
+                break;
+            // If the difference is +1, then push complete parameter to this
+            case 1:
+                this->container.push_back(array);
+                break;
+            // If the difference is +2,..., infinte, try to push element to last child, otherwise throw error
+            default:
+                if (this->dimension - array.getDimension() > 1) {
+                    this->container[this->size - 1].concat(array);
+                } else {
+                    throw std::runtime_error("Left array dimension -" + std::to_string(this->dimension) + "- < -" + std::to_string(array.getDimension()) + "- as dimension of the right array.");
                 }
             }
         }
@@ -252,8 +256,7 @@ namespace runtime
         /**
          * This method returns the number of elements in the array.
          * @return              The number of elements in the array
-         * @note                ```null``` values will be counted if they replace a single array element (e.g. '{1,2,3,null}' will return 4, 
-         *                      but '{{1,2}, null}' will return 2).
+         * @note                ```null``` values will not be counted (e.g. '{1,2,3,null}' will return 3 or '{{1,2}, null}' will return 2)
          */
         uint64_t getNumberElements() {
             // Proof if this represents a null value
@@ -261,7 +264,11 @@ namespace runtime
                 return 0;
             }
             if (this->dimension == 1) {
-                return this->size;
+                uint64_t number = 0;
+                for (auto& element : this->elements) {
+                    number += element.getIsNull() ? 0 : 1;
+                }
+                return number;
             } else {
                 uint64_t result = 0;
                 for (auto& element : container) {
@@ -351,13 +358,14 @@ namespace runtime
             }
         }
 
-        void matrixMult(ArrayList<R>& other) {
+        std::string matrixMult(ArrayList<R>& other) {
             std::vector<ArrayList<R>> result;
             if (this->dimension > 2 || other.getDimension() > 2) {
                 throw std::runtime_error("Matrix multiplication is currently only supported with maximal 2 dimensions");
             }
             if (this->isNull || other.getIsNull()) {
-                return;
+                std::string result = this->isNull ? this->toString() : other.toString();
+                return result.substr(0, result.size() - 2);
             }
             size_t numberACol = this->dimension == 1 ? this->dimension : this->size;
             size_t numberARows = this->dimension == 1 ? this->size : this->getMaxChildSize();
@@ -390,10 +398,16 @@ namespace runtime
             if (numberBCol == 1) {
                 this->dimension = 1;
                 this->elements = result[0].getElements();
+                if (this->elements.size() == 1) {
+                    std::string result = this->elements[0].toString();
+                    return result.substr(0, result.size() - 2);
+                }
             } else {
                 this->dimension = 2;
                 this->container = result;
             }
+            std::string array = this->toString();
+            return array.substr(0, array.size() - 2);
         }
 
         /**

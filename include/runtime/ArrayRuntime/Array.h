@@ -51,7 +51,8 @@ namespace runtime
 
         /**
          * This method joins two arrays together. It is also possible that the given ```array``` has a lower dimension than ```this```.
-         * It will add the elements to the last entry
+         * In this case it will add the complete ```array``` as last entry to the next higher dimension (e.g. if ```array``` has an dimension
+         * of 1 it will be added to the dimension 2 of ```this```).
          * @param array         A reference to the ```array``` object which should be connected to ```this```
          * @note                If the dimension value of the parameter ```array``` is larger than the dimension value of ```this```,
          *                      it will throw an ```std::runtime_error```.
@@ -106,8 +107,7 @@ namespace runtime
         /**
          * This method returns the number of elements in the array.
          * @return              The number of elements in the array as string in a ```VarLen32``` object
-         * @note                ```null``` values will be counted if they replace a single array element (e.g. '{1,2,3,null}' will return 4, 
-         *                      but '{{1,2}, null}' will return 2).
+         * @note                ```null``` values will not be counted (e.g. '{1,2,3,null}' will return 3 or '{{1,2}, null}' will return 2)
          */
         runtime::VarLen32 getCardinality() {
             uint64_t result = this->array.getNumberElements();
@@ -147,8 +147,9 @@ namespace runtime
             this->array.elementWiseArith(toSub.getArray(), ArrayArithOperator::multiplication);
         }
 
-        void matrixMul(Array<T>& toMul) {
-            this->array.matrixMult(toMul.getArray());
+        runtime::VarLen32 matrixMul(Array<T>& toMul) {
+            std::string result = this->array.matrixMult(toMul.getArray());
+            return this->castToVarLen(result);
         }
 
         /**

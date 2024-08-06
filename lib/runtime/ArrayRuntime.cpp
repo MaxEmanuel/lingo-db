@@ -157,7 +157,7 @@ runtime::VarLen32 runtime::ArrayRuntime::add(runtime::VarLen32 str1, uint64_t di
         array1.add(array2);
         return array1.toString();
     } else {
-        throw std::runtime_error("The subtraction operator is only supported for numeric arrays");
+        throw std::runtime_error("The addition operator is only supported for numeric arrays");
     }
 }
 
@@ -217,7 +217,7 @@ runtime::VarLen32 runtime::ArrayRuntime::mulEW(runtime::VarLen32 str1, uint64_t 
         array1.mulEW(array2);
         return array1.toString();
     } else {
-        throw std::runtime_error("The subtraction operator is only supported for numeric arrays");
+        throw std::runtime_error("The multiplication operator is only supported for numeric arrays");
     }
 }
 
@@ -229,25 +229,21 @@ runtime::VarLen32 runtime::ArrayRuntime::matrixMul(runtime::VarLen32 str1, uint6
     if (type1.str() == "int32[]") {
         runtime::Array<int32_t> array1(str1, dim1, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
         runtime::Array<int32_t> array2(str2, dim2, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
-        array1.matrixMul(array2);
-        return array1.toString();
+        return array1.matrixMul(array2);
     }  else if (type1.str() == "int64[]") {
         runtime::Array<int64_t> array1(str1, dim1, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
         runtime::Array<int64_t> array2(str2, dim2, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
-        array1.matrixMul(array2);
-        return array1.toString();
+        return array1.matrixMul(array2);
     } else if (type1.str() == "float[]") {
         runtime::Array<float> array1(str1, dim1, &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
         runtime::Array<float> array2(str2, dim2, &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
-        array1.matrixMul(array2);
-        return array1.toString();
+        return array1.matrixMul(array2);
     } else if (type1.str() == "double[]") {
         runtime::Array<double> array1(str1, dim1, &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
         runtime::Array<double> array2(str2, dim2, &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
-        array1.matrixMul(array2);
-        return array1.toString();
+        return array1.matrixMul(array2);
     } else {
-        throw std::runtime_error("The subtraction operator is only supported for numeric arrays");
+        throw std::runtime_error("The matrix multiplication operator is only supported for numeric arrays");
     }
 }
 
