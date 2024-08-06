@@ -104,7 +104,7 @@ namespace runtime
          * @param str1       The array which should be modified
          * @param dim1       The dimension value of the first array
          * @param type1      The type of the elements in the first array
-         * @param str2       The array which includes all elements for subtraction
+         * @param str2       The array which includes all elements for elementwise multiplication
          * @param dim2       The dimension value of the second array
          * @param type2      The type the elements in the second array
          * @returns          A modified array wrapped up as string in a ```VarLen32``` object
@@ -115,6 +115,20 @@ namespace runtime
          */
         static runtime::VarLen32 mulEW(runtime::VarLen32 str1, uint64_t dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, uint64_t dim2, runtime::VarLen32 type2);
 
+        /**
+         * This funtion allows matrix multiplication of two arrays.
+         * @param str1       The array which should be modified
+         * @param dim1       The dimension value of the first array
+         * @param type1      The type of the elements in the first array
+         * @param str2       The array which includes all elements for matrix multiplication
+         * @param dim2       The dimension value of the second array
+         * @param type2      The type the elements in the second array
+         * @returns          A modified array wrapped up as string in a ```VarLen32``` object
+         * @note             It will throw an ```std::runtime_error```, if one of the given arrays could not be created according to the given 
+         *                   ```str```, ```dim``` and ```type``` parameters
+         * @note             It will throw an ```std::runtime_error```, if both arrays have different types
+         * @note             It will throw an ```std::runtime_error```, if matrix multiplication could not be done appropriatly
+         */
         static runtime::VarLen32 matrixMul(runtime::VarLen32 str1, uint64_t dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, uint64_t dim2, runtime::VarLen32 type2);
 
         /**

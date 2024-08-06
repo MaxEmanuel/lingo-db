@@ -358,43 +358,65 @@ namespace runtime
             }
         }
 
+        /**
+         * This method computes the result of a matrix mulitplication with any primitive numeric type (currently int32_t, int64_t, float and double).
+         * @param other             The array which should be multiplied upon this array.
+         * @return                  The resulting array as string
+         * @note                    Currently this method is only supported for arrays with at most 2 dimensions. If one of the given arrays have more
+         *                          dimensions then an ```std::runtime_error``` will be thrown.
+         * @note                    This operation can only be used if both arrays have a uniform number of elements (e.g. '{{1,2},{1,2}}' or '{1,2,3}', 
+         *                          but not '{{1,2}, {1,2,3}}') - otherwise an ```std::runtime_error``` will be thrown.
+         * @note                    Both arrays should not contain any ```null``` values, otherwise an ```std::runtime_error``` will be thrown.
+         * @note                    Number of columns of the first array must equal the number of rows of the second array (according to definition of matrix
+         *                          multiplication), otherwise an ```std::runtime_error``` will be thrown.
+         */
         std::string matrixMult(ArrayList<R>& other) {
             std::vector<ArrayList<R>> result;
             if (this->dimension > 2 || other.getDimension() > 2) {
                 throw std::runtime_error("Matrix multiplication is currently only supported with maximal 2 dimensions");
             }
             if (this->isNull || other.getIsNull()) {
-                std::string result = this->isNull ? this->toString() : other.toString();
-                return result.substr(0, result.size() - 2);
+                throw std::runtime_error("Null values are not allowed here");
             }
+            // Numberof columns of matrix A
             size_t numberACol = this->dimension == 1 ? this->dimension : this->size;
+            // Number of rows of matrix A
             size_t numberARows = this->dimension == 1 ? this->size : this->getMaxChildSize();
+            // Number of columns of matrix B
             size_t numberBCol = other.getDimension() == 1 ? other.getDimension() : other.getSize();
+            // Iterate over all columns of matrix B
             for (size_t bIndex = 0; bIndex < numberBCol; bIndex++) {
                 ArrayList<R> newColumn;
+                // Get std::vector<ArrayElem<R>> or std::vector<ArrayList<R>> representing one column of matrix B
                 std::vector<ArrayElem<R>> bColumn = numberBCol == 1 ? other.getElements() : other.getContainer()[bIndex].getElements();
                 if (numberACol != bColumn.size()) {
                     throw std::runtime_error("Matrix multiplication with, " + std::to_string(this->size) + ":" + std::to_string(bColumn.size()) + ", unequal dimensions not possible");
                 }
+                // Iterate over all rows of matrix A
                 for (size_t aRowIndex = 0; aRowIndex < numberARows; aRowIndex++) {
                     ArrayElem<R> value(0);
+                    // Iterate over all columns of matrix A
                     for (size_t aColumnIndex = 0; aColumnIndex < numberACol; aColumnIndex++) {
+                        // Get std::vector<ArrayElem<R>> or std::vector<ArrayList<R>> representing one column of matrix A
                         std::vector<ArrayElem<R>> aColumn = this->dimension == 1 ? this->elements : this->container[aColumnIndex].getElements();
                         if (aColumn.size() <= aRowIndex) {
                             throw std::runtime_error("First matrix has a uneven number of elements and is therefore not suited for matrix multiplication");
                         }
+                        // Get single ArrayElems and multiply them together
                         auto aValue = aColumn[aRowIndex];
                         auto bValue = bColumn[aColumnIndex];
                         if (aValue.getIsNull() || bValue.getIsNull()) {
-                            value.setNull();
-                            break;
+                            throw std::runtime_error("Null values are not allowed here");
                         }
                         value.add(aValue.getValue() * bValue.getValue());
                     }
+                    // Add new value to new container representing a single column
                     newColumn.addElement(value);
                 }
+                // Add new column to new container representing the complete matrix
                 result.push_back(newColumn);
             }
+            // Adjust the current container and return the result as string by calling toString method
             if (numberBCol == 1) {
                 this->dimension = 1;
                 this->elements = result[0].getElements();

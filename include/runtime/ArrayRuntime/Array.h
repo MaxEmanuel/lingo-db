@@ -147,6 +147,18 @@ namespace runtime
             this->array.elementWiseArith(toSub.getArray(), ArrayArithOperator::multiplication);
         }
 
+        /**
+         * This method computes the result of a matrix mulitplication with any primitive numeric type (currently int32_t, int64_t, float and double).
+         * @param toMul             The array which should be multiplied upon this array.
+         * @return                  The resulting array as ```VarLen32``` object
+         * @note                    Currently this method is only supported for arrays with at most 2 dimensions. If one of the given arrays have more
+         *                          dimensions then an ```std::runtime_error``` will be thrown.
+         * @note                    This operation can only be used if both arrays have a uniform number of elements (e.g. '{{1,2},{1,2}}' or '{1,2,3}', 
+         *                          but not '{{1,2}, {1,2,3}}') - otherwise an ```std::runtime_error``` will be thrown.
+         * @note                    Both arrays should not contain any ```null``` values, otherwise an ```std::runtime_error``` will be thrown.
+         * @note                    Number of columns of the first array must equal the number of rows of the second array (according to definition of matrix
+         *                          multiplication), otherwise an ```std::runtime_error``` will be thrown.
+         */
         runtime::VarLen32 matrixMul(Array<T>& toMul) {
             std::string result = this->array.matrixMult(toMul.getArray());
             return this->castToVarLen(result);

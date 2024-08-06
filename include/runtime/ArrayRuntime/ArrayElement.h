@@ -40,6 +40,11 @@ namespace runtime {
          */
         ArrayElem() : isNull(true){}
 
+        /**
+        *  This constructor creates an instance of ```ArrayElem``` storing the given value.
+        *  @param value         The value which this instance should store.
+        *  @note                This constructor will use the ```std::to_string()``` to convert the value to a string.
+         */
         ArrayElem(R value) : value(value), isNull(false), castToString([](R value){return std::to_string(value);}) {}
 
         /**
@@ -74,6 +79,9 @@ namespace runtime {
             return this->value;
         }
 
+        /**
+         * This method allows to change the representation to an ```null``` value.
+         */
         void setNull() {
             this->isNull = true;
         }
@@ -91,6 +99,10 @@ namespace runtime {
             }
         }
 
+        /**
+         * This method allows to add an value or type R to the current stored value.
+         * @param value         The value which should be added to the current value.
+         */
         void add(R value) {
             this->value += value;
         }
