@@ -437,41 +437,62 @@ namespace runtime
          * of this object will be switched with the below ```dimension```. This function will therefore rearrange all affected
          * elements. E.g. '{{1,2,3},{4,5,6}}' will be changed to '{{1,4},{2,5},{3,6}}', because this object has a 2x3 structure
          * and will be changed to a 3x2 structure.
-         * @return
+         * @note
          */
         void transpose(){
             std::vector<ArrayList<R>> result;
-            size_t lowerDim = this->getMaxChildSize();
+            size_t rows = this->dimension == 1 ? this->size : this->getMaxChildSize();
             // Iterate over 0 to new upper dimension (goal: merge every entry with a common index together)
-            for (size_t dim = 0; dim < lowerDim; dim++) {
+            for (size_t row = 0; row < rows; row++) {
                 ArrayList<R> newElement;
-                // Iterate over all children to be able to access their list elements
-                for (auto& element : this->container) {
-                    if (this->dimension == 2) {
-                        // If this element is a null value, add also a null value to the new ArrayList
-                        if (element.getIsNull()){
-                            ArrayElem<R> value;
-                            newElement.addElement(value);
-                        // If current element has an entry on index dim (otherwise do nothing)
-                        } else if (element.getSize() > dim) {
-                            // Add this element as an entry to the new ArrayList
-                            newElement.addElement(element.getElements()[dim]);
-                        }
-                    } else if (this->dimension > 2) {
-                        // If this element is a null value, add also a null value to the new ArrayList
-                        if (element.getIsNull()){
-                            ArrayList<R> value;
-                            newElement.addContainer(value, this->dimension - 1);
-                        // If current element has an entry on index dim (otherwise do nothing)
-                        } else if (element.getSize() > dim) {
-                            // Add this element as an entry to the new ArrayList
-                            newElement.addContainer(element.getContainer()[dim], this->dimension - 1);
+                // Special case: array with 1 colunmn -> array with n columns and 1 row
+                if (this->dimension == 1) {
+                    auto& element = this->elements[row];
+                    if (element.getIsNull()) {
+                        ArrayElem<R> value;
+                        newElement.addElement(value);
+                    } else {
+                        newElement.addElement(element);
+                    }
+                // Case: array with n columns and k rows
+                } else {
+                    // Iterate over all children to be able to access their list elements
+                    for (auto& element : this->container) {
+                        if (this->dimension == 2) {
+                            // If this element is a null value, add also a null value to the new ArrayList
+                            if (element.getIsNull()){
+                                ArrayElem<R> value;
+                                newElement.addElement(value);
+                            // If current element has an entry on index row (otherwise do nothing)
+                            } else if (element.getSize() > row) {
+                                // Add this element as an entry to the new ArrayList
+                                newElement.addElement(element.getElements()[row]);
+                            }
+                        } else if (this->dimension > 2) {
+                            // If this element is a null value, add also a null value to the new ArrayList
+                            if (element.getIsNull()){
+                                ArrayList<R> value;
+                                newElement.addContainer(value, this->dimension - 1);
+                            // If current element has an entry on index row (otherwise do nothing)
+                            } else if (element.getSize() > row) {
+                                // Add this element as an entry to the new ArrayList
+                                newElement.addContainer(element.getContainer()[row], this->dimension - 1);
+                            }
                         }
                     }
                 }
                 result.push_back(newElement);
             }
-            this->container = result;
+            // Adjust dimension value especially for special case like [5:1] -> [1:5] or [1:5] -> [5:1]
+            if (this->dimension == 2 && rows == 1) {
+                this->dimension = 1;
+                this->elements = result[0].getElements();
+            } else if (this->dimension == 1 && rows > 1) {
+                this->dimension = 2;
+                this->container = result;
+            } else {
+                this->container = result;
+            }
         }
 
         /*################################################################################################################################################

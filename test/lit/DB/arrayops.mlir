@@ -336,6 +336,127 @@ module {
         %VecWMa_42 = db.runtime_call "ArrayMatrixMul" (%vector1T, %dim2, %intType, %matrix1, %dim2, %intType) : (!db.array<2,"int32[]">, i64, !db.string, !db.array<2,"int32[]">, i64, !db.string) -> !db.array<2,"int32[]">
         db.runtime_call "DumpValue" (%VecWMa_42) : (!db.array<2,"int32[]">) -> ()
 
+        // SCALAR MULT WITH INT
+
+        %intScalar = db.constant (4) : i64
+
+        // {1.1,2.2,3.3} * 4 -> {4.4,8.8,13.2}
+
+        //CHECK: array("{4.400000, 8.800000, 13.200000}")
+        %oneDim_43 = db.runtime_call "ArrayScalarMultInt" (%floatArray1, %dim1, %floatType, %intScalar) : (!db.array<1,"float[]">, i64, !db.string, i64) -> !db.array<1,"float[]">
+        db.runtime_call "DumpValue" (%oneDim_43) : (!db.array<1,"float[]">) -> ()
+
+        // {{1,2,3},{4,5,6}} * 4 -> {{4, 8, 12}, {16, 20, 24}}
+
+        //CHECK: array("{{[{]}}{4, 8, 12}, {16, 20, 24}}")
+        %twoDim_44 = db.runtime_call "ArrayScalarMultInt" (%intArray2, %dim2, %intType, %intScalar) : (!db.array<2,"int32[]">, i64, !db.string, i64) -> !db.array<2,"int32[]">
+        db.runtime_call "DumpValue" (%twoDim_44) : (!db.array<2,"int32[]">) -> ()
+
+        // {{{1,2,3,4},{5,6,7,8},{9,10,11,12}},{{1,2,3,4},{5,6,7,8},{9,10,11,12}}} * 4
+        // -> {{{4, 8, 12, 16}, {20, 24, 28, 32}, {36, 40, 44, 48}}, {{4, 8, 12, 16}, {20, 24, 28, 32}, {36, 40, 44, 48}}}
+
+        //CHECK: array("{{[{]}}{{[{]}}{4, 8, 12, 16}, {20, 24, 28, 32}, {36, 40, 44, 48}}, {{[{]}}{4, 8, 12, 16}, {20, 24, 28, 32}, {36, 40, 44, 48}}}")
+        %threeDim_45 = db.runtime_call "ArrayScalarMultInt" (%intArray3, %dim3, %intType, %intScalar) : (!db.array<3,"int32[]">, i64, !db.string, i64) -> !db.array<3,"int32[]">
+        db.runtime_call "DumpValue" (%threeDim_45) : (!db.array<3,"int32[]">) -> ()
+
+        // {{1,2,3},Null} * 4 -> {{4,8,12},null}
+
+        //CHECK: array("{{[{]}}{4, 8, 12}, null}")
+        %NullElem_46 = db.runtime_call "ArrayScalarMultInt" (%intArray2Null1, %dim2, %intType, %intScalar) : (!db.array<2,"int32[]">, i64, !db.string, i64) -> !db.array<2,"int32[]">
+        db.runtime_call "DumpValue" (%NullElem_46) : (!db.array<2,"int32[]">) -> ()
+
+        // SCALAR MULT WITH FLOAT
+        //TODO
+
+        %floatScalar = db.constant ("4.4") : !db.decimal<10,7>
+
+        // {1.1,2.2,3.3} * 4 -> {4.4,8.8,13.2}
+
+        //sCHECK: array("{4.400000, 8.800000, 13.200000}")
+        //%oneDim_47 = db.runtime_call "ArrayScalarMultFloat" (%floatArray1, %dim1, %floatType, %floatScalar) : (!db.array<1,"float[]">, i64, !db.string, !db.decimal<10,7>) -> !db.array<1,"float[]">
+        //db.runtime_call "DumpValue" (%oneDim_47) : (!db.array<1,"float[]">) -> ()
+
+        // {{1,2,3},{4,5,6}} * 4 -> {{4, 8, 12}, {16, 20, 24}}
+
+        //sCHECK: array("{{[{]}}{4, 8, 12}, {16, 20, 24}}")
+        //%twoDim_48 = db.runtime_call "ArrayScalarMultFloat" (%intArray2, %dim2, %intType, %floatScalar) : (!db.array<2,"int32[]">, i64, !db.string, !db.decimal<10,7>) -> !db.array<2,"int32[]">
+        //db.runtime_call "DumpValue" (%twoDim_48) : (!db.array<2,"int32[]">) -> ()
+
+        // {{{1,2,3,4},{5,6,7,8},{9,10,11,12}},{{1,2,3,4},{5,6,7,8},{9,10,11,12}}} * 4
+        // -> {{{4, 8, 12, 16}, {20, 24, 28, 32}, {36, 40, 44, 48}}, {{4, 8, 12, 16}, {20, 24, 28, 32}, {36, 40, 44, 48}}}
+
+        //sCHECK: array("{{[{]}}{{[{]}}{4, 8, 12, 16}, {20, 24, 28, 32}, {36, 40, 44, 48}}, {{[{]}}{4, 8, 12, 16}, {20, 24, 28, 32}, {36, 40, 44, 48}}}")
+        //%threeDim_49 = db.runtime_call "ArrayScalarMultFloat" (%intArray3, %dim3, %intType, %floatScalar) : (!db.array<3,"int32[]">, i64, !db.string, !db.decimal<10,7>) -> !db.array<3,"int32[]">
+        //db.runtime_call "DumpValue" (%threeDim_49) : (!db.array<3,"int32[]">) -> ()
+
+        // {{1,2,3},Null} * 4 -> {{4,8,12},null}
+
+        //sCHECK: array("{{[{]}}{4, 8, 12}, null}")
+        //%NullElem_50 = db.runtime_call "ArrayScalarMultFloat" (%intArray2Null1, %dim2, %intType, %floatScalar) : (!db.array<2,"int32[]">, i64, !db.string, !db.decimal<10,7>) -> !db.array<2,"int32[]">
+        //db.runtime_call "DumpValue" (%NullElem_50) : (!db.array<2,"int32[]">) -> ()
+
+        // TRANSPOSE
+
+        // {1.1,2.2,3.3} -> {{1.1},{2.2},{3.3}}
+
+        //CHECK: array("{{[{]}}{1.100000}, {2.200000}, {3.300000}}")
+        %oneDim_51 = db.runtime_call "ArrayTranspose" (%floatArray1, %dim1, %floatType) : (!db.array<1,"float[]">, i64, !db.string) -> !db.array<1,"float[]">
+        db.runtime_call "DumpValue" (%oneDim_51) : (!db.array<1,"float[]">) -> ()
+
+        // {{1,2,3},{4,5,6}} -> {{1,4}, {2,5}, {3,6}}
+
+        //CHECK: array("{{[{]}}{1, 4}, {2, 5}, {3, 6}}")
+        %twoDim_52 = db.runtime_call "ArrayTranspose" (%intArray2, %dim2, %intType) : (!db.array<2,"int32[]">, i64, !db.string) -> !db.array<2,"int32[]">
+        db.runtime_call "DumpValue" (%twoDim_52) : (!db.array<2,"int32[]">) -> ()
+
+        // {{{1,2,3,4},{5,6,7,8},{9,10,11,12}},{{1,2,3,4},{5,6,7,8},{9,10,11,12}}}
+        // -> {{{1,2,3,4},{1,2,3,4}},{{5,6,7,8},{5,6,7,8}},{{9,10,11,12},{9,10,11,12}}}
+
+        //CHECK: array("{{[{]}}{{[{]}}{1, 2, 3, 4}, {1, 2, 3, 4}}, {{[{]}}{5, 6, 7, 8}, {5, 6, 7, 8}}, {{[{]}}{9, 10, 11, 12}, {9, 10, 11, 12}}}")
+        %threeDim_53 = db.runtime_call "ArrayTranspose" (%intArray3, %dim3, %intType) : (!db.array<3,"int32[]">, i64, !db.string) -> !db.array<3,"int32[]">
+        db.runtime_call "DumpValue" (%threeDim_53) : (!db.array<3,"int32[]">) -> ()
+
+        // {{1,2,3},Null} -> {{1,null},{2,null},{3,null}}
+
+        //CHECK: array("{{[{]}}{1, null}, {2, null}, {3, null}}")
+        %NullElem_54 = db.runtime_call "ArrayTranspose" (%intArray2Null1, %dim2, %intType) : (!db.array<2,"int32[]">, i64, !db.string) -> !db.array<2,"int32[]">
+        db.runtime_call "DumpValue" (%NullElem_54) : (!db.array<2,"int32[]">) -> ()
+
+        %intArray4 = db.constant ( "{{2},{3},{4}}" ) : !db.array<2,"int32[]">
+
+        // {{2},{3},{4}} -> {2, 3, 4}
+
+        //CHECK: array("{2, 3, 4}")
+        %intTwoDimSpec_55 = db.runtime_call "ArrayTranspose" (%intArray4, %dim2, %intType) : (!db.array<2,"int32[]">, i64, !db.string) -> !db.array<2,"int32[]">
+        db.runtime_call "DumpValue" (%intTwoDimSpec_55) : (!db.array<2,"int32[]">) -> ()
+
+        // CASTS
+
+        //CHECK: int(3)
+        %int32Value = db.constant ("3") : !db.array<2,"int32[]">
+        %intCast_56 = db.cast %int32Value : !db.array<2,"int32[]"> -> i32
+        db.runtime_call "DumpValue" (%intCast_56) : (i32) -> ()
+
+        //CHECK: int(281474976710656)
+        %int64Value = db.constant ("281474976710656") : !db.array<3,"int32[]">
+        %intCast_57 = db.cast %int64Value : !db.array<3,"int32[]"> -> i64
+        db.runtime_call "DumpValue" (%intCast_57) : (i64) -> ()
+
+        // CHECK: float(4.5)
+        %floatValue = db.constant ("4.5") : !db.array<1,"int32[]">
+        %floatCast_58 = db.cast %floatValue : !db.array<1,"int32[]"> -> f32
+        db.runtime_call "DumpValue" (%floatCast_58) : (f32) -> ()
+
+        //CHECK: float(44.5566)
+        %doubleValue = db.constant ("44.5566") : !db.array<2,"int32[]">
+        %doubleCast_59 = db.cast %doubleValue : !db.array<2,"int32[]"> -> f64
+        db.runtime_call "DumpValue" (%doubleCast_59) : (f64) -> ()
+
+        //CHECK: array("{1, 2, 3}")
+        %arrayValue = db.constant ("{1,2,3}") : !db.array<2,"int32[]">
+        %arrayCast_60 = db.cast %arrayValue : !db.array<2,"int32[]"> -> !db.array<1,"int32[]">
+        db.runtime_call "DumpValue" (%arrayCast_60) : (!db.array<1,"int32[]">) -> ()
+
         return
     }
 }
