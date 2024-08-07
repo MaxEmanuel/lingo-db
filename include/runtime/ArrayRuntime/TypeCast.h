@@ -1,5 +1,6 @@
 #include <string>
 #include <algorithm>
+#include <type_traits>
 
 namespace runtime
 {
@@ -53,7 +54,17 @@ namespace runtime
          */
         template<typename R>
         static std::string numericToString(R value) {
-            return std::to_string(value);
+            std::string result = std::to_string(value);
+            if (std::is_same<R, float>::value || std::is_same<R, double>::value) {
+                // Remove trailing zeros
+                result.erase(result.find_last_not_of('0') + 1, std::string::npos);
+    
+                // Remove the decimal point if it's the last character
+                if (result.back() == '.') {
+                    result.pop_back();
+                }
+            }
+            return result;
         };
     };
 } // namespace runtime

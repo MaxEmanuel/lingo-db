@@ -40,7 +40,7 @@ module {
 
         // {{1.1,2.2,3.3},{4.4,5.5,6.6}} || {{1.1,2.2,3.3},{4.4,5.5,6.6}} -> {{1.1,2.2,3.3},{4.4,5.5,6.6}, {1.1,2.2,3.3},{4.4,5.5,6.6}}
 
-        //CHECK: array("{{[{]}}{1.100000, 2.200000, 3.300000}, {4.400000, 5.500000, 6.600000}, {1.100000, 2.200000, 3.300000}, {4.400000, 5.500000, 6.600000}}")
+        //CHECK: array("{{[{]}}{1.1, 2.2, 3.3}, {4.4, 5.5, 6.6}, {1.1, 2.2, 3.3}, {4.4, 5.5, 6.6}}")
         %twoDim_2 = db.runtime_call "ConcatenateArray" (%floatArray2, %dim2, %floatType, %floatArray2, %dim2, %floatType) : (!db.array<2,"float[]">, i64, !db.string, !db.array<2,"float[]">, i64, !db.string) -> !db.array<2,"float[]">
         db.runtime_call "DumpValue" (%twoDim_2) : (!db.array<2,"float[]">) -> ()
 
@@ -79,7 +79,7 @@ module {
 
         // {1.1,2.2,3.3}[1:2] -> {1.100000, 2.200000}
 
-        //CHECK: array("{1.100000, 2.200000}")
+        //CHECK: array("{1.1, 2.2}")
         %oneDim_7 = db.runtime_call "ArrayRange" (%floatArray1, %dim1, %floatType, %start, %stop, %subDim1) : (!db.array<1,"float[]">, i64, !db.string, i64, i64, i64) -> !db.array<1,"float[]">
         db.runtime_call "DumpValue" (%oneDim_7) : (!db.array<1,"float[]">) -> ()
 
@@ -121,7 +121,7 @@ module {
 
         // {1.1,2.2,3.3}[2] -> 2.200000
 
-        //CHECK: array("2.200000")
+        //CHECK: array("2.2")
         %oneDim_12 = db.runtime_call "ArrayElement" (%floatArray1, %dim1, %floatType, %index2) : (!db.array<1,"float[]">, i64, !db.string, i64) -> !db.array<1,"float[]">
         db.runtime_call "DumpValue" (%oneDim_12) : (!db.array<1,"float[]">) -> ()
 
@@ -208,7 +208,7 @@ module {
 
         // {1.1,2.2,3.3} + {1.1,2.2,3.3} -> {2.2,4.4,6.6}
 
-        //CHECK: array("{2.200000, 4.400000, 6.600000}")
+        //CHECK: array("{2.2, 4.4, 6.6}")
         %oneDim_24 = db.runtime_call "ArrayAdd" (%floatArray1, %dim1, %floatType, %floatArray1, %dim1, %floatType) : (!db.array<1,"float[]">, i64, !db.string, !db.array<1,"float[]">, i64, !db.string) -> !db.array<1,"float[]">
         db.runtime_call "DumpValue" (%oneDim_24) : (!db.array<1,"float[]">) -> ()
 
@@ -241,7 +241,7 @@ module {
 
         // {1.1,2.2,3.3} - {1.1,2.2,3.3} -> {0,0,0}
 
-        //CHECK: array("{0.000000, 0.000000, 0.000000}")
+        //CHECK: array("{0, 0, 0}")
         %oneDim_29 = db.runtime_call "ArraySub" (%floatArray1, %dim1, %floatType, %floatArray1, %dim1, %floatType) : (!db.array<1,"float[]">, i64, !db.string, !db.array<1,"float[]">, i64, !db.string) -> !db.array<1,"float[]">
         db.runtime_call "DumpValue" (%oneDim_29) : (!db.array<1,"float[]">) -> ()
 
@@ -274,7 +274,7 @@ module {
 
         // {1.1,2.2,3.3} ** {1.1,2.2,3.3} -> {1.21,4.84,10.89}
 
-        //CHECK: array("{1.210000, 4.840000, 10.889999}")
+        //CHECK: array("{1.21, 4.84, 10.889999}")
         %oneDim_34 = db.runtime_call "ArrayEWMul" (%floatArray1, %dim1, %floatType, %floatArray1, %dim1, %floatType) : (!db.array<1,"float[]">, i64, !db.string, !db.array<1,"float[]">, i64, !db.string) -> !db.array<1,"float[]">
         db.runtime_call "DumpValue" (%oneDim_34) : (!db.array<1,"float[]">) -> ()
 
@@ -342,7 +342,7 @@ module {
 
         // {1.1,2.2,3.3} * 4 -> {4.4,8.8,13.2}
 
-        //CHECK: array("{4.400000, 8.800000, 13.200000}")
+        //CHECK: array("{4.4, 8.8, 13.2}")
         %oneDim_43 = db.runtime_call "ArrayScalarMultInt" (%floatArray1, %dim1, %floatType, %intScalar) : (!db.array<1,"float[]">, i64, !db.string, i64) -> !db.array<1,"float[]">
         db.runtime_call "DumpValue" (%oneDim_43) : (!db.array<1,"float[]">) -> ()
 
@@ -372,7 +372,7 @@ module {
 
         // {1.1,2.2,3.3} * 4 -> {4.4,8.8,13.2}
 
-        //sCHECK: array("{4.400000, 8.800000, 13.200000}")
+        //sCHECK: array("{4.4, 8.8, 13.2}")
         //%oneDim_47 = db.runtime_call "ArrayScalarMultFloat" (%floatArray1, %dim1, %floatType, %floatScalar) : (!db.array<1,"float[]">, i64, !db.string, !db.decimal<10,7>) -> !db.array<1,"float[]">
         //db.runtime_call "DumpValue" (%oneDim_47) : (!db.array<1,"float[]">) -> ()
 
@@ -399,7 +399,7 @@ module {
 
         // {1.1,2.2,3.3} -> {{1.1},{2.2},{3.3}}
 
-        //CHECK: array("{{[{]}}{1.100000}, {2.200000}, {3.300000}}")
+        //CHECK: array("{{[{]}}{1.1}, {2.2}, {3.3}}")
         %oneDim_51 = db.runtime_call "ArrayTranspose" (%floatArray1, %dim1, %floatType) : (!db.array<1,"float[]">, i64, !db.string) -> !db.array<1,"float[]">
         db.runtime_call "DumpValue" (%oneDim_51) : (!db.array<1,"float[]">) -> ()
 
