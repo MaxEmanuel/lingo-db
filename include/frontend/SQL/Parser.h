@@ -297,6 +297,9 @@ struct Parser {
    //translate target list in selection and also consider aggregation and groupby
    std::pair<mlir::Value, TargetInfo> translateSelectionTargetList(mlir::OpBuilder& builder, List* groupBy, Node* having, List* targetList, List* sortClause, List* distinctClause, mlir::Value tree, TranslationContext& context, ResolverScope& scope);
 
+   //translate update statement
+   void translateUpdateStmt(mlir::OpBuilder& builder, UpdateStmt* stmt);
+
    //translate insert statement
    void translateInsertStmt(mlir::OpBuilder& builder, InsertStmt* stmt);
 

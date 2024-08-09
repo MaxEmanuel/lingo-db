@@ -503,7 +503,9 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
             // Otherwise the correspoding function will not be executed 
             auto typeId = mlir::TypeID::get<mlir::db::ConstantOp>();
             auto returnType = left.getDefiningOp()->getName().getTypeID() == typeId && right.getDefiningOp()->getName().getTypeID() != typeId ? right.getType() : left.getType();
-            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayMatrixMul", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
+            auto result = builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayMatrixMul", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
+            result.setType(mlir::db::NullableType::get(mlir::db::ArrayType::get(builder.getContext(), 2, "int32[]")));
+            return builder.create<mlir::db::RuntimeCall>(loc, result.getType(), "ArrayDimChange", mlir::ValueRange({result, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
          } else if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && (getBaseType(right.getType()).isa<mlir::IntegerType>() || getBaseType(right.getType()).isa<mlir::Float32Type>() || getBaseType(right.getType()).isa<mlir::Float64Type>())) {
             auto array = TypeFunctions::extractArrayDataDB(builder, left);
             if (getBaseType(right.getType()).isa<mlir::IntegerType>()) {
@@ -1481,8 +1483,8 @@ std::optional<mlir::Value> frontend::sql::Parser::translate(mlir::OpBuilder& bui
             break;
          }
          case T_UpdateStmt: {
-            auto test = reinterpret_cast<UpdateStmt*>(statement);
-            auto tes2 = 9;
+            translateUpdateStmt(builder, reinterpret_cast<UpdateStmt*>(statement));
+            break;
          }
          default:
            throw std::runtime_error("unsupported statement type");
@@ -1658,6 +1660,31 @@ std::vector<std::variant<size_t, std::string>> frontend::sql::Parser::getTypeMod
    }
    return typeModifiers;
 }
+void frontend::sql::Parser::translateUpdateStmt(mlir::OpBuilder& builder, UpdateStmt* stmt) {
+   // reinterpret_cast<ResTarget*>(stmt.target_list_->head->data.ptr_value) = Liste der Spaltennamen
+   // Get table name and table
+   RangeVar* relation = stmt->relation_;
+   std::string tableName = relation->relname_ != nullptr ? relation->relname_ : "";
+   auto rel = catalog.findRelation(tableName);
+   // Proof if table exist
+   if (!rel) {
+     throw std::runtime_error("Sorry, but the given table does not exist");
+   }
+
+   // Get all column names which should be updated
+   std::vector<std::string> columnsToUpdate;
+   if (stmt->target_list_) {
+      for (auto* cell = stmt->target_list_->head; cell != nullptr; cell = cell->next) {
+         auto* target = reinterpret_cast<ResTarget*>(cell->data.ptr_value);
+         columnsToUpdate.emplace_back(target->name_);
+      }
+   } else {
+      throw std::runtime_error("Please enter a column name(s) with its updated value (SET statement missing)");
+   }
+
+   //translateExpression
+}
+
 void frontend::sql::Parser::translateInsertStmt(mlir::OpBuilder& builder, InsertStmt* stmt) {
    assert(stmt->with_clause_ == nullptr);
    assert(stmt->on_conflict_clause_ == nullptr);
