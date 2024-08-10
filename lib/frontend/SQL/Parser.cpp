@@ -508,7 +508,11 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
             auto rightRawData = TypeFunctions::extractArrayRawData(builder, right);
             auto result = builder.create<mlir::db::RuntimeCall>(loc, right.getType(), "ArrayMatrixMul", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
             // Set the new type of the array. It can be possible that after the matrix multiplication the dimension value changes
-            result.setType(mlir::db::NullableType::get(mlir::db::ArrayType::get(builder.getContext(), std::get<0>(rightRawData), std::get<1>(rightRawData))));
+            if (left.getType().isa<mlir::db::NullableType>()) {
+               result.setType(mlir::db::NullableType::get(mlir::db::ArrayType::get(builder.getContext(), std::get<0>(rightRawData), std::get<1>(rightRawData))));
+            } else {
+               result.setType(mlir::db::ArrayType::get(builder.getContext(), std::get<0>(rightRawData), std::get<1>(rightRawData)));
+            }
             return result;
          } else if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && (getBaseType(right.getType()).isa<mlir::IntegerType>() || getBaseType(right.getType()).isa<mlir::Float32Type>() || getBaseType(right.getType()).isa<mlir::Float64Type>())) {
             auto array = TypeFunctions::extractArrayDataDB(builder, left);
