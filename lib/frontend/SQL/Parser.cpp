@@ -474,10 +474,7 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
             auto rightArray = TypeFunctions::extractArrayDataDB(builder, right);
             auto leftArray = TypeFunctions::extractArrayDataDB(builder, left);
-            // Is needed to proof if one of the values is a mlir::db::ConstantOp (for return mlir type of the function).
-            // Otherwise the correspoding function will not be executed 
-            auto typeId = mlir::TypeID::get<mlir::db::ConstantOp>();
-            auto returnType = left.getDefiningOp()->getName().getTypeID() == typeId && right.getDefiningOp()->getName().getTypeID() != typeId ? right.getType() : left.getType();
+            auto returnType = TypeFunctions::getReturnType(left, right);
             return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayAdd", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
          }
          return builder.create<mlir::db::AddOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
@@ -488,10 +485,7 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
             auto rightArray = TypeFunctions::extractArrayDataDB(builder, right);
             auto leftArray = TypeFunctions::extractArrayDataDB(builder, left);
-            // Is needed to proof if one of the values is a mlir::db::ConstantOp (for return mlir type of the function).
-            // Otherwise the correspoding function will not be executed 
-            auto typeId = mlir::TypeID::get<mlir::db::ConstantOp>();
-            auto returnType = left.getDefiningOp()->getName().getTypeID() == typeId && right.getDefiningOp()->getName().getTypeID() != typeId ? right.getType() : left.getType();
+            auto returnType = TypeFunctions::getReturnType(left, right);
             return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArraySub", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
          }
          return builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
@@ -499,13 +493,11 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
             auto rightArray = TypeFunctions::extractArrayDataDB(builder, right);
             auto leftArray = TypeFunctions::extractArrayDataDB(builder, left);
-            // Is needed to proof if one of the values is a mlir::db::ConstantOp (for return mlir type of the function).
-            // Otherwise the correspoding function will not be executed 
-            auto typeId = mlir::TypeID::get<mlir::db::ConstantOp>();
-            auto returnType = left.getDefiningOp()->getName().getTypeID() == typeId && right.getDefiningOp()->getName().getTypeID() != typeId ? right.getType() : left.getType();
-            auto result = builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayMatrixMul", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
-            result.setType(mlir::db::NullableType::get(mlir::db::ArrayType::get(builder.getContext(), 2, "int32[]")));
-            return builder.create<mlir::db::RuntimeCall>(loc, result.getType(), "ArrayDimChange", mlir::ValueRange({result, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
+            auto rightRawData = TypeFunctions::extractArrayRawData(builder, right);
+            auto result = builder.create<mlir::db::RuntimeCall>(loc, right.getType(), "ArrayMatrixMul", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
+            // Set the new type of the array. It can be possible that after the matrix multiplication the dimension value changes
+            result.setType(mlir::db::NullableType::get(mlir::db::ArrayType::get(builder.getContext(), std::get<0>(rightRawData), std::get<1>(rightRawData))));
+            return result;
          } else if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && (getBaseType(right.getType()).isa<mlir::IntegerType>() || getBaseType(right.getType()).isa<mlir::Float32Type>() || getBaseType(right.getType()).isa<mlir::Float64Type>())) {
             auto array = TypeFunctions::extractArrayDataDB(builder, left);
             if (getBaseType(right.getType()).isa<mlir::IntegerType>()) {
@@ -526,10 +518,7 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
             auto rightArray = TypeFunctions::extractArrayDataDB(builder, right);
             auto leftArray = TypeFunctions::extractArrayDataDB(builder, left);
-            // Is needed to proof if one of the values is a mlir::db::ConstantOp (for return mlir type of the function).
-            // Otherwise the correspoding function will not be executed 
-            auto typeId = mlir::TypeID::get<mlir::db::ConstantOp>();
-            auto returnType = left.getDefiningOp()->getName().getTypeID() == typeId && right.getDefiningOp()->getName().getTypeID() != typeId ? right.getType() : left.getType();
+            auto returnType = TypeFunctions::getReturnType(left, right);
             return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayEWMul", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
          }
          return mlir::Value();
@@ -1661,7 +1650,8 @@ std::vector<std::variant<size_t, std::string>> frontend::sql::Parser::getTypeMod
    return typeModifiers;
 }
 void frontend::sql::Parser::translateUpdateStmt(mlir::OpBuilder& builder, UpdateStmt* stmt) {
-   // reinterpret_cast<ResTarget*>(stmt.target_list_->head->data.ptr_value) = Liste der Spaltennamen
+   TranslationContext context;
+   
    // Get table name and table
    RangeVar* relation = stmt->relation_;
    std::string tableName = relation->relname_ != nullptr ? relation->relname_ : "";
@@ -1673,16 +1663,56 @@ void frontend::sql::Parser::translateUpdateStmt(mlir::OpBuilder& builder, Update
 
    // Get all column names which should be updated
    std::vector<std::string> columnsToUpdate;
+   // Get all new values
+   std::vector<mlir::Value> updates;
    if (stmt->target_list_) {
       for (auto* cell = stmt->target_list_->head; cell != nullptr; cell = cell->next) {
          auto* target = reinterpret_cast<ResTarget*>(cell->data.ptr_value);
          columnsToUpdate.emplace_back(target->name_);
+         mlir::Value update = translateExpression(builder, target->val_, context);
+         updates.emplace_back(update);
       }
    } else {
       throw std::runtime_error("Please enter a column name(s) with its updated value (SET statement missing)");
    }
 
-   //translateExpression
+   std::vector<mlir::Value> valuesToCast;
+   std::unordered_map<std::string, mlir::Value> columnNameToUpdate;
+
+   // Prepare an empty list of operations (which needs to be filled) which at the end should execute the given query (including the generated code)
+   mlir::Block* block = new mlir::Block;
+   mlir::OpBuilder mapBuilder(builder.getContext());
+   block->addArgument(mlir::tuples::TupleType::get(builder.getContext()), builder.getUnknownLoc());
+   auto tupleScope = context.createTupleScope();
+   mlir::Value tuple = block->getArgument(0);
+   context.setCurrentTuple(tuple);
+
+   mapBuilder.setInsertionPointToStart(block);
+
+   std::unordered_map<std::string, mlir::Attribute> insertedCols;
+
+   std::vector<mlir::Attribute> createdCols;
+   auto mapName = attrManager.getUniqueScope("map");
+   /* for (size_t i = 0; i < insertColNames.size(); i++) {
+      auto attrRef = attrManager.createRef(targetInfo.namedResults[i].second);
+      auto currentType = attrRef.getColumn().type;
+      auto tableType = tableColumnTypes.at(insertColNames[i]);
+      mlir::Value expr = mapBuilder.create<mlir::tuples::GetColumnOp>(mapBuilder.getUnknownLoc(), attrRef.getColumn().type, attrRef, tuple);
+      if (currentType != tableType) {
+         auto attrDef = attrManager.createDef(mapName, std::string("inserted") + std::to_string(i));
+         attrDef.getColumn().type = tableType;
+
+         createdCols.push_back(attrDef);
+         mlir::Value casted = SQLTypeInference::castValueToType(mapBuilder, expr, tableType);
+
+         createdValues.push_back(casted);
+         columnNameToCreatedValue[insertColNames[i]] = casted;
+         insertedCols[insertColNames[i]] = attrManager.createRef(&attrDef.getColumn());
+      } else {
+         columnNameToCreatedValue[insertColNames[i]] = expr;
+         insertedCols[insertColNames[i]] = attrRef;
+      }
+   } */
 }
 
 void frontend::sql::Parser::translateInsertStmt(mlir::OpBuilder& builder, InsertStmt* stmt) {
