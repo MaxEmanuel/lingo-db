@@ -149,60 +149,60 @@ module {
 
         // {1.1,2.2,3.3} -> [1:3]
 
-        //CHECK: array("[1:3]")
-        %oneDim_15 = db.runtime_call "ArrayDimensions" (%floatArray1, %dim1, %floatType) : (!db.array<1,"float[]">, i64, !db.string) -> !db.array<1,"float[]">
-        db.runtime_call "DumpValue" (%oneDim_15) : (!db.array<1,"float[]">) -> ()
+        //CHECK: string("[1:3]")
+        %oneDim_15 = db.runtime_call "ArrayDimensions" (%floatArray1, %dim1, %floatType) : (!db.array<1,"float[]">, i64, !db.string) -> !db.string
+        db.runtime_call "DumpValue" (%oneDim_15) : (!db.string) -> ()
 
         // {{'earth', 'moon', 'mars'},{'jupiter', 'saturn', 'neptun'}} -> [1:2][1:3]
 
-        //CHECK: array("[1:2][1:3]")
-        %twoDim_16 = db.runtime_call "ArrayDimensions" (%stringArray2, %dim2, %stringType) : (!db.array<2,"string[]">, i64, !db.string) -> !db.array<2,"string[]">
-        db.runtime_call "DumpValue" (%twoDim_16) : (!db.array<2,"string[]">) -> ()
+        //CHECK: string("[1:2][1:3]")
+        %twoDim_16 = db.runtime_call "ArrayDimensions" (%stringArray2, %dim2, %stringType) : (!db.array<2,"string[]">, i64, !db.string) -> !db.string
+        db.runtime_call "DumpValue" (%twoDim_16) : (!db.string) -> ()
 
         // {{{1,2,3,4},{5,6,7,8},{9,10,11,12}},{{1,2,3,4},{5,6,7,8},{9,10,11,12}}} -> [1:2][1:3][1:4]
 
-        //CHECK: array("[1:2][1:3][1:4]")
-        %threeDim_17 = db.runtime_call "ArrayDimensions" (%intArray3, %dim3, %intType) : (!db.array<3,"int32[]">, i64, !db.string) -> !db.array<3,"int32[]">
-        db.runtime_call "DumpValue" (%threeDim_17) : (!db.array<3,"int32[]">) -> ()
+        //CHECK: string("[1:2][1:3][1:4]")
+        %threeDim_17 = db.runtime_call "ArrayDimensions" (%intArray3, %dim3, %intType) : (!db.array<3,"int32[]">, i64, !db.string) -> !db.string
+        db.runtime_call "DumpValue" (%threeDim_17) : (!db.string) -> ()
 
         %arrayDim = db.constant ( "{{1,2},{4,5,6},{3,3,3,3}}" ) : !db.array<2,"int32[]">
 
-        //CHECK: array("[1:3][1:2]")
-        %unequalElems_18 = db.runtime_call "ArrayDimensions" (%arrayDim, %dim2, %intType) : (!db.array<2,"int32[]">, i64, !db.string) -> !db.array<2,"int32[]">
-        db.runtime_call "DumpValue" (%unequalElems_18) : (!db.array<2,"int32[]">) -> ()
+        //CHECK: string("[1:3][1:2]")
+        %unequalElems_18 = db.runtime_call "ArrayDimensions" (%arrayDim, %dim2, %intType) : (!db.array<2,"int32[]">, i64, !db.string) -> !db.string
+        db.runtime_call "DumpValue" (%unequalElems_18) : (!db.string) -> ()
 
 
         // CARDINALITY
 
         // {1.1,2.2,3.3} -> 3
 
-        //CHECK: array("3")
-        %oneDim_19 = db.runtime_call "ArrayCardinality" (%floatArray1, %dim1, %floatType) : (!db.array<1,"float[]">, i64, !db.string) -> !db.array<1,"float[]">
-        db.runtime_call "DumpValue" (%oneDim_19) : (!db.array<1,"float[]">) -> ()
+        //CHECK: int(3)
+        %oneDim_19 = db.runtime_call "ArrayCardinality" (%floatArray1, %dim1, %floatType) : (!db.array<1,"float[]">, i64, !db.string) -> i64
+        db.runtime_call "DumpValue" (%oneDim_19) : (i64) -> ()
 
         // {{'earth', 'moon', 'mars'},{'jupiter', 'saturn', 'neptun'}} -> 6
 
-        //CHECK: array("6")
-        %twoDim_20 = db.runtime_call "ArrayCardinality" (%stringArray2, %dim2, %stringType) : (!db.array<2,"string[]">, i64, !db.string) -> !db.array<2,"string[]">
-        db.runtime_call "DumpValue" (%twoDim_20) : (!db.array<2,"string[]">) -> ()
+        //CHECK: int(6)
+        %twoDim_20 = db.runtime_call "ArrayCardinality" (%stringArray2, %dim2, %stringType) : (!db.array<2,"string[]">, i64, !db.string) -> i64
+        db.runtime_call "DumpValue" (%twoDim_20) : (i64) -> ()
 
         // {{{1,2,3,4},{5,6,7,8},{9,10,11,12}},{{1,2,3,4},{5,6,7,8},{9,10,11,12}}} -> 24
 
-        //CHECK: array("24")
-        %threeDim_21 = db.runtime_call "ArrayCardinality" (%intArray3, %dim3, %intType) : (!db.array<3,"int32[]">, i64, !db.string) -> !db.array<3,"int32[]">
-        db.runtime_call "DumpValue" (%threeDim_21) : (!db.array<3,"int32[]">) -> ()
+        //CHECK: int(24)
+        %threeDim_21 = db.runtime_call "ArrayCardinality" (%intArray3, %dim3, %intType) : (!db.array<3,"int32[]">, i64, !db.string) -> i64
+        db.runtime_call "DumpValue" (%threeDim_21) : (i64) -> ()
 
         // {{1,2,3},Null} -> 3
 
-        //CHECK: array("3")
-        %NullElem_22 = db.runtime_call "ArrayCardinality" (%intArray2Null1, %dim2, %intType) : (!db.array<2,"int32[]">, i64, !db.string) -> !db.array<2,"int32[]">
-        db.runtime_call "DumpValue" (%NullElem_22) : (!db.array<2,"int32[]">) -> ()
+        //CHECK: int(3)
+        %NullElem_22 = db.runtime_call "ArrayCardinality" (%intArray2Null1, %dim2, %intType) : (!db.array<2,"int32[]">, i64, !db.string) -> i64
+        db.runtime_call "DumpValue" (%NullElem_22) : (i64) -> ()
 
         // "{{1,2,3},{4,Null,6}}" -> 5
 
-        //CHECK: array("5")
-        %NullValue_23 = db.runtime_call "ArrayCardinality" (%intArray2Null2, %dim2, %intType) : (!db.array<2,"int32[]">, i64, !db.string) -> !db.array<2,"int32[]">
-        db.runtime_call "DumpValue" (%NullValue_23) : (!db.array<2,"int32[]">) -> ()
+        //CHECK: int(5)
+        %NullValue_23 = db.runtime_call "ArrayCardinality" (%intArray2Null2, %dim2, %intType) : (!db.array<2,"int32[]">, i64, !db.string) -> i64
+        db.runtime_call "DumpValue" (%NullValue_23) : (i64) -> ()
 
         // ADD
 

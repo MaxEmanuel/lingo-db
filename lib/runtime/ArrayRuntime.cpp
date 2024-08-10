@@ -109,7 +109,7 @@ runtime::VarLen32 runtime::ArrayRuntime::getDimensions(runtime::VarLen32 str, ui
     return str;
 }
 
-runtime::VarLen32 runtime::ArrayRuntime::getCardinality(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type) {
+uint64_t runtime::ArrayRuntime::getCardinality(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type) {
     if (type.str() == "int32[]") {
         runtime::Array<int32_t> array(str, dim, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
         return  array.getCardinality();
@@ -128,7 +128,7 @@ runtime::VarLen32 runtime::ArrayRuntime::getCardinality(runtime::VarLen32 str, u
     } else {
         throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
     }
-    return str;
+    return 0;
 }
 
 runtime::VarLen32 runtime::ArrayRuntime::add(runtime::VarLen32 str1, uint64_t dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, uint64_t dim2, runtime::VarLen32 type2) {

@@ -357,17 +357,29 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
    if (funcName == "array_dims") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
       auto arrayData = TypeFunctions::extractArrayDataDB(builder, val);
-      return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "ArrayDimensions", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
+      auto result = builder.create<mlir::db::RuntimeCall>(loc, mlir::db::StringType::get(builder.getContext()), "ArrayDimensions", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
+      if (val.getType().isa<mlir::db::NullableType>()) {
+         result.setType(mlir::db::NullableType::get(mlir::db::StringType::get(builder.getContext())));
+      } else {
+         result.setType(mlir::db::StringType::get(builder.getContext()));
+      }
+      return result;
    }
    if (funcName == "cardinality") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
       auto arrayData = TypeFunctions::extractArrayDataDB(builder, val);
-      return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "ArrayCardinality", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
+      auto result = builder.create<mlir::db::RuntimeCall>(loc, mlir::IntegerType::get(builder.getContext(), 64), "ArrayCardinality", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
+      if (val.getType().isa<mlir::db::NullableType>()) {
+         result.setType(mlir::db::NullableType::get(mlir::IntegerType::get(builder.getContext(), 64)));
+      } else {
+         result.setType(mlir::IntegerType::get(builder.getContext(), 64));
+      }
+      return result;
    }
    if (funcName == "transpose") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
       auto arrayData = TypeFunctions::extractArrayDataDB(builder, val);
-      return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "ArrayTranspose", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
+      return builder.create<mlir::db::RuntimeCall>(loc, mlir::db::StringType::get(builder.getContext()), "ArrayTranspose", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
    }
 
   throw std::runtime_error("could not translate func call");

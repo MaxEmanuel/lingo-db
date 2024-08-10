@@ -57,15 +57,15 @@ namespace runtime
         static runtime::VarLen32 getDimensions(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type);
 
         /**
-         * This function returns the number of elements inside the array as ```VarLen32``` object.
+         * This function returns the number of elements inside the array.
          * @param str       The initial array
          * @param dim       The amount of dimension of the given array
          * @param type      The type of the elements from the given array
-         * @returns         A VarLen32 object containing the number of elements in the array
+         * @returns         The number of elements which this array contains
          * @note            If the array could not be created according to the given str, dim and type parameters, it will throw an
          *                  ```std::runtime_error```.
          */
-        static runtime::VarLen32 getCardinality(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type);
+        static uint64_t getCardinality(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type);
 
         /**
          * This funtion allows the addition of two arrays.
