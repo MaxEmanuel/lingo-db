@@ -1310,8 +1310,15 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
                   mlir::Value operaterDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), array.getDimensions() - dimensionCounter));
                   result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayRange", mlir::ValueRange({usedArray, arrayDimension, type, leftIndex, rightIndex, operaterDimension})).getRes();
                } else {
-                  mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), array.getDimensions() - dimensionCounter));
-                  result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayElement", mlir::ValueRange({usedArray, dimensionValue, type, rightIndex})).getRes();
+                  auto currentDimension = array.getDimensions() - dimensionCounter;
+                  mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), currentDimension));
+                  result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  mlir::db::ArrayType::get(builder.getContext(), currentDimension - 1, array.getType()), "ArrayElement", mlir::ValueRange({usedArray, dimensionValue, type, rightIndex})).getRes();
+                  // Set the new type of the array. It can be possible that after the matrix multiplication the dimension value changes
+                  if (data.getType().isa<mlir::db::NullableType>()) {
+                     result.setType(mlir::db::NullableType::get(mlir::db::ArrayType::get(builder.getContext(), currentDimension - 1, array.getType())));
+                  } else {
+                     result.setType(mlir::db::ArrayType::get(builder.getContext(), currentDimension - 1, array.getType()));
+                  }
                }
                dimensionCounter++;
             } else {
@@ -1705,30 +1712,27 @@ void frontend::sql::Parser::translateUpdateStmt(mlir::OpBuilder& builder, Update
 
    mapBuilder.setInsertionPointToStart(block);
 
-   std::unordered_map<std::string, mlir::Attribute> insertedCols;
+   auto tableMetaData = rel->getMetaData();
+   std::vector<mlir::Attribute> colMemberNames;
+   std::vector<mlir::Attribute> orderedColNamesAttrs;
+   std::vector<mlir::Attribute> orderedColAttrs;
+   std::vector<mlir::Attribute> colTypes;
+   auto& memberManager = builder.getContext()->getLoadedDialect<mlir::subop::SubOperatorDialect>()->getMemberManager();
 
-   std::vector<mlir::Attribute> createdCols;
-   auto mapName = attrManager.getUniqueScope("map");
-   /* for (size_t i = 0; i < insertColNames.size(); i++) {
-      auto attrRef = attrManager.createRef(targetInfo.namedResults[i].second);
-      auto currentType = attrRef.getColumn().type;
-      auto tableType = tableColumnTypes.at(insertColNames[i]);
-      mlir::Value expr = mapBuilder.create<mlir::tuples::GetColumnOp>(mapBuilder.getUnknownLoc(), attrRef.getColumn().type, attrRef, tuple);
-      if (currentType != tableType) {
-         auto attrDef = attrManager.createDef(mapName, std::string("inserted") + std::to_string(i));
-         attrDef.getColumn().type = tableType;
-
-         createdCols.push_back(attrDef);
-         mlir::Value casted = SQLTypeInference::castValueToType(mapBuilder, expr, tableType);
-
-         createdValues.push_back(casted);
-         columnNameToCreatedValue[insertColNames[i]] = casted;
-         insertedCols[insertColNames[i]] = attrManager.createRef(&attrDef.getColumn());
-      } else {
-         columnNameToCreatedValue[insertColNames[i]] = expr;
-         insertedCols[insertColNames[i]] = attrRef;
+   for (auto tableColumnName : tableMetaData->getOrderedColumns()) {
+      for (auto setColumnName : columnsToUpdate) {
+         if (tableColumnName == setColumnName) {
+            colMemberNames.push_back(builder.getStringAttr(memberManager.getUniqueMember(tableColumnName)));
+            orderedColNamesAttrs.push_back(builder.getStringAttr(setColumnName));
+           //orderedColAttrs.push_back(insertedCols.at(x));
+            //colTypes.push_back(mlir::TypeAttr::get(insertedCols.at(x).cast<mlir::tuples::ColumnRefAttr>().getColumn().type));
+         }
       }
-   } */
+   
+   }
+
+   // auto colRef = attrManager.createRef(&colDef.getColumn());
+
 }
 
 void frontend::sql::Parser::translateInsertStmt(mlir::OpBuilder& builder, InsertStmt* stmt) {

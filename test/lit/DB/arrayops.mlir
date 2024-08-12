@@ -77,7 +77,7 @@ module {
         %subDim2 = db.constant (2) : i64
         %subDim3 = db.constant (3) : i64
 
-        // {1.1,2.2,3.3}[1:2] -> {1.100000, 2.200000}
+        // {1.1,2.2,3.3}[1:2] -> {1.1, 2.2}
 
         //CHECK: array("{1.1, 2.2}")
         %oneDim_7 = db.runtime_call "ArrayRange" (%floatArray1, %dim1, %floatType, %start, %stop, %subDim1) : (!db.array<1,"float[]">, i64, !db.string, i64, i64, i64) -> !db.array<1,"float[]">
@@ -119,7 +119,7 @@ module {
         %index2 = db.constant (2) : i64
         %index3 = db.constant (3) : i64
 
-        // {1.1,2.2,3.3}[2] -> 2.200000
+        // {1.1,2.2,3.3}[2] -> 2.2
 
         //CHECK: array("2.2")
         %oneDim_12 = db.runtime_call "ArrayElement" (%floatArray1, %dim1, %floatType, %index2) : (!db.array<1,"float[]">, i64, !db.string, i64) -> !db.array<1,"float[]">
@@ -307,7 +307,6 @@ module {
 
         %vector1 = db.constant ( "{1,2,3}" ) : !db.array<1,"int32[]">
         %vector1T = db.constant ( "{{1},{2},{3}}" ) : !db.array<2,"int32[]">
-        %vector1TNull = db.constant ( "{{1},Null,{3}}" ) : !db.array<2,"int32[]">
 
         %matrix1 = db.constant ( "{{3,2,1},{4,5,6}}" ) : !db.array<2,"int32[]">
         %matrix2 = db.constant ( "{{4,5},{6,7},{8,9},{10,11}}" ) : !db.array<2,"int32[]">

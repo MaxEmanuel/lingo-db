@@ -51,12 +51,6 @@ mlir::ResultRange mlir::util::FunctionHelper::call(OpBuilder& builder, mlir::Loc
    for (size_t i = 0; i < funcOp.getFunctionType().getNumInputs(); i++) {
       mlir::Value converted = convertValue(builder, values[i], funcOp.getFunctionType().getInput(i), loc);
       convertedValues.push_back(converted);
-      if (converted.getType() != funcOp.getFunctionType().getInput(i)) {
-         int er = 5;
-      }
-      if (function.getMangledName() == "_ZN7runtime12ArrayRuntime11castToArrayENS_8VarLen32EmS1_") {
-         int er = 5;
-      }
       assert(converted.getType() == funcOp.getFunctionType().getInput(i));
    }
    auto funcCall = builder.create<func::CallOp>(loc, funcOp, convertedValues);

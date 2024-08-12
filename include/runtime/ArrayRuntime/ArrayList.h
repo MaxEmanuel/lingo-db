@@ -639,7 +639,7 @@ namespace runtime
                 }
                 // If no elements could be encountered, means that the array would probably have a false specification (dim(array) < this->dimension).
                 if (this->container.size() == 0){
-                    throw std::runtime_error("The entered array instance has a smaller dimension than specified. Pleasre ensure that your instance should have a dimension of: " + std::to_string(this->dimension)); 
+                    throw std::runtime_error("The entered array instance has a smaller dimension than specified. Please ensure that your instance should have a dimension of: " + std::to_string(this->dimension)); 
                 }
             } else {
                 this->isNull = true;
@@ -686,7 +686,7 @@ namespace runtime
                 }
                 // If no elements could be encountered, means that the array would probably have a false specification (dim(array) < this->dimension).
                 if (this->elements.size() == 0){
-                    throw std::runtime_error("The entered array instance has a smaller dimension than specified. Pleasre ensure that your instance should have a dimension of: " + std::to_string(this->dimension));  
+                    throw std::runtime_error("The entered array instance has a smaller dimension than specified. Please ensure that your instance should have a dimension of: " + std::to_string(this->dimension));  
                 }
             } else {
                  this->isNull = true;
