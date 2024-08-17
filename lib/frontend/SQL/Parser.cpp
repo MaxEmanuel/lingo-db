@@ -444,6 +444,15 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                values.push_back(value);
                break;
             }
+            case T_A_ArrayExpr: {
+               auto* arrayExpr = reinterpret_cast<Node*>(expr);
+               std::string array = translateArrayToString(arrayExpr);
+               // Delete last ','
+               array = array.substr(0, array.size() - 1);
+               types.push_back(mlir::db::StringType::get(builder.getContext()));
+               values.push_back(builder.getStringAttr(array));
+               break;
+            }
             default: {
               throw std::runtime_error("could not handle values content");
             }
@@ -1246,6 +1255,12 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
          mlir::Value data = translateExpression(builder, reinterpret_cast<Node*>(indirectionExpr->arg), context, true);
          return translateIndirection(builder, context, indirections, data);
       }
+      case T_A_ArrayExpr: {
+         std::string array = translateArrayToString(node);
+         // Delete last ','
+         array = array.substr(0, array.size() - 1);
+         return builder.create<mlir::db::ConstantOp>(loc, mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array));
+      }
       default: {
         throw std::runtime_error("unsupported expression type");
       }
@@ -1254,86 +1269,128 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
    return mlir::Value();
 }
 
- mlir::Value frontend::sql::Parser::translateIndirection(mlir::OpBuilder& builder, TranslationContext& context, List* indirections, mlir::Value data){
-   auto* listCell = indirections->head;
-   // Only used for searching a slice operator
-   auto* searchCell = listCell;
-   mlir::Value result;
-   auto columnType = SQLTypeInference::getType(data);
-   // Value defines if there is a slice operator
-   bool isSlice = false;
-   // Loop which checks if any T_A_Indices is a slice operator
-   while (searchCell && !isSlice) {
-      auto* node = reinterpret_cast<Node*>(searchCell->data.ptr_value);
-      if (node->type == T_A_Indices) {
-         auto* indicesExpr = reinterpret_cast<A_Indices*>(node);
-         auto* leftNode = reinterpret_cast<Node*>(indicesExpr->lidx);
-         if (leftNode) {
-            isSlice = true;
-         }
-      }
-      searchCell = searchCell->next;
-   }
-   // A value which counts how many times the T_A_Indices expression occurs
-   int dimensionCounter = 0;
-   // Iterate over each subscript operator
-   while (listCell) {
-      auto* node = reinterpret_cast<Node*>(listCell->data.ptr_value);
-      // Proof which type this subscript operator has
-      switch (node->type) {
-         // E.g. array[0] or array[0:9]
-         case T_A_Indices: {
-            // Get all received informations 
-            auto* indicesExpr = reinterpret_cast<A_Indices*>(node);
-            // leftNode = represents start index
-            auto* leftNode = reinterpret_cast<Node*>(indicesExpr->lidx);
-            // rightNode = represents end index or single index
-            auto* rightNode = reinterpret_cast<Node*>(indicesExpr->uidx);
-            // Proof which columnType is used for the subscript operator
-            if (columnType.isa<mlir::db::ArrayType>()){
-               // Get all informations from the columnType
-               auto array = columnType.dyn_cast<mlir::db::ArrayType>();
-               mlir::Value type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
-               mlir::Value rightIndex = translateExpression(builder, rightNode, context, true);
-               // It is possible that there are more than 1 subscript operater, e.g. array[0][0]. Operators needs to be nested
-               mlir::Value usedArray = listCell == indirections->head ? data : result;
-               // If a range is requested or a single entry, call the respective function
-               if (isSlice) {
-                  mlir::Value leftIndex;
-                  // Create left index if its not there, otherwise use defined one
-                  if (leftNode) {
-                     leftIndex = translateExpression(builder, leftNode, context, true);
-                  } else {
-                     leftIndex = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), 1));
-                  }
-                  mlir::Value arrayDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), array.getDimensions()));
-                  mlir::Value operaterDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), array.getDimensions() - dimensionCounter));
-                  result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayRange", mlir::ValueRange({usedArray, arrayDimension, type, leftIndex, rightIndex, operaterDimension})).getRes();
-               } else {
-                  auto currentDimension = array.getDimensions() - dimensionCounter;
-                  mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), currentDimension));
-                  result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  mlir::db::ArrayType::get(builder.getContext(), currentDimension - 1, array.getType()), "ArrayElement", mlir::ValueRange({usedArray, dimensionValue, type, rightIndex})).getRes();
-                  // Set the new type of the array. It can be possible that after the matrix multiplication the dimension value changes
-                  if (data.getType().isa<mlir::db::NullableType>()) {
-                     result.setType(mlir::db::NullableType::get(mlir::db::ArrayType::get(builder.getContext(), currentDimension - 1, array.getType())));
-                  } else {
-                     result.setType(mlir::db::ArrayType::get(builder.getContext(), currentDimension - 1, array.getType()));
-                  }
-               }
-               dimensionCounter++;
-            } else {
-               throw std::runtime_error("Subscript operators is currently only available for arrays");
+mlir::Value frontend::sql::Parser::translateIndirection(mlir::OpBuilder& builder, TranslationContext& context, List* indirections, mlir::Value data){
+  auto* listCell = indirections->head;
+  // Only used for searching a slice operator
+  auto* searchCell = listCell;
+  mlir::Value result;
+  auto columnType = SQLTypeInference::getType(data);
+  // Value defines if there is a slice operator
+  bool isSlice = false;
+  // Loop which checks if any T_A_Indices is a slice operator
+  while (searchCell && !isSlice) {
+     auto* node = reinterpret_cast<Node*>(searchCell->data.ptr_value);
+     if (node->type == T_A_Indices) {
+        auto* indicesExpr = reinterpret_cast<A_Indices*>(node);
+        auto* leftNode = reinterpret_cast<Node*>(indicesExpr->lidx);
+        if (leftNode) {
+           isSlice = true;
+        }
+     }
+     searchCell = searchCell->next;
+  }
+  // A value which counts how many times the T_A_Indices expression occurs
+  int dimensionCounter = 0;
+  // Iterate over each subscript operator
+  while (listCell) {
+     auto* node = reinterpret_cast<Node*>(listCell->data.ptr_value);
+     // Proof which type this subscript operator has
+     switch (node->type) {
+        // E.g. array[0] or array[0:9]
+        case T_A_Indices: {
+           // Get all received informations 
+           auto* indicesExpr = reinterpret_cast<A_Indices*>(node);
+           // leftNode = represents start index
+           auto* leftNode = reinterpret_cast<Node*>(indicesExpr->lidx);
+           // rightNode = represents end index or single index
+           auto* rightNode = reinterpret_cast<Node*>(indicesExpr->uidx);
+           // Proof which columnType is used for the subscript operator
+           if (columnType.isa<mlir::db::ArrayType>()){
+              // Get all informations from the columnType
+              auto array = columnType.dyn_cast<mlir::db::ArrayType>();
+              mlir::Value type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
+              mlir::Value rightIndex = translateExpression(builder, rightNode, context, true);
+              // It is possible that there are more than 1 subscript operater, e.g. array[0][0]. Operators needs to be nested
+              mlir::Value usedArray = listCell == indirections->head ? data : result;
+              // If a range is requested or a single entry, call the respective function
+              if (isSlice) {
+                 mlir::Value leftIndex;
+                 // Create left index if its not there, otherwise use defined one
+                 if (leftNode) {
+                    leftIndex = translateExpression(builder, leftNode, context, true);
+                 } else {
+                    leftIndex = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), 1));
+                 }
+                 mlir::Value arrayDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), array.getDimensions()));
+                 mlir::Value operaterDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), array.getDimensions() - dimensionCounter));
+                 result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayRange", mlir::ValueRange({usedArray, arrayDimension, type, leftIndex, rightIndex, operaterDimension})).getRes();
+              } else {
+                 auto currentDimension = array.getDimensions() - dimensionCounter;
+                 mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), currentDimension));
+                 result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  mlir::db::ArrayType::get(builder.getContext(), currentDimension - 1, array.getType()), "ArrayElement", mlir::ValueRange({usedArray, dimensionValue, type, rightIndex})).getRes();
+                 // Set the new type of the array. It can be possible that after the matrix multiplication the dimension value changes
+                 if (data.getType().isa<mlir::db::NullableType>()) {
+                    result.setType(mlir::db::NullableType::get(mlir::db::ArrayType::get(builder.getContext(), currentDimension - 1, array.getType())));
+                 } else {
+                    result.setType(mlir::db::ArrayType::get(builder.getContext(), currentDimension - 1, array.getType()));
+                 }
+              }
+              dimensionCounter++;
+           } else {
+              throw std::runtime_error("Subscript operators is currently only available for arrays");
+           }
+           break;
+        }
+        default: {
+           throw std::runtime_error("An entered subscript operator is not supported");
+        }
+     }
+     listCell = listCell->next;
+  }
+  return result;
+}
+
+std::string frontend::sql::Parser::translateArrayToString(Node* data) {
+   // Proof is element is single value
+   if (data->type == T_A_Const) {
+       auto constVal = reinterpret_cast<A_Const*>(data)->val_;
+         switch (constVal.type_) {
+            case T_Integer: return std::to_string(constVal.val_.ival_) + ",";
+            case T_Float:
+            case T_String: {
+               std::string value = constVal.val_.str_;
+               return value + ",";
             }
-            break;
+            case T_Null: return "null,";
+            default:throw std::runtime_error("unsupported value type for array construction");
          }
-         default: {
-            throw std::runtime_error("An entered subscript operator is not supported");
-         }
+   // Proof if element is a list of elements
+   } else if (data->type == T_A_ArrayExpr) {
+      auto* array = reinterpret_cast<A_ArrayExpr*>(data);
+      // Return null if list is empty
+      if (!array->elements) {
+         return "null,";
       }
-      listCell = listCell->next;
+      // Iterate over each element in list and extract its value
+      std::string result = "{";
+      auto* cell = array->elements->head;
+      while (cell) {
+         auto* element = reinterpret_cast<Node*>(cell->data.ptr_value);
+         std::string subResult = translateArrayToString(element);
+         result += subResult;
+         cell = cell->next;
+      }
+      // Delete last ','
+      result = result.substr(0, result.size() - 1);
+      result += "},";
+      // If list contains only single null value, do not use any brackets
+      if (array->elements->length == 1 && result.find("null") != std::string::npos){
+         result = "null,";
+      } 
+      return result;
    }
-   return result;
- }
+   throw std::runtime_error("unsupported expression type for array construction");
+}
 
 void frontend::sql::Parser::translateCreateStatement(mlir::OpBuilder& builder, CreateStmt* statement) {
    RangeVar* relation = statement->relation_;
