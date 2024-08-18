@@ -66,5 +66,17 @@ namespace runtime
             }
             return result;
         };
+
+        /**
+         * This static method converts a primitive numeric value into a ```runtime::VarLen32``` defined as an array, e.g. '{1}'
+         */
+        template<typename R>
+        static runtime::VarLen32 numericToArrayVarLen(R value, uint64_t dim) {
+            std::string result = std::to_string(value);
+            result = std::string(dim, '{') + result + std::string(dim, '}');
+            char* array = new char[result.length()];           
+            memcpy(array, result.data(), result.length());     
+            return runtime::VarLen32((uint8_t*) array, result.length());
+        };
     };
 } // namespace runtime

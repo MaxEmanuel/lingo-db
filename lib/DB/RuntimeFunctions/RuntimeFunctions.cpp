@@ -270,7 +270,7 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    builtinRegistry->add("ArrayScalarMultInt").implementedAs(rt::ArrayRuntime::scalarMultInt).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::anyNumber}, RuntimeFunction::matchesArgument());
    builtinRegistry->add("ArrayScalarMultFloat").implementedAs(rt::ArrayRuntime::scalarMultFloat).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::float64}, RuntimeFunction::matchesArgument());
 
-   builtinRegistry->add("ArrayDimChange").implementedAs(rt::ArrayRuntime::castToArray).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsAnyArray).needsWrapping();
+   builtinRegistry->add("ArrayDimChange").implementedAs(rt::ArrayRuntime::arrayToArray).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsAnyArray).needsWrapping();
 
    builtinRegistry->add("Like").implementedAs(rt::StringRuntime::like).matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::stringLike}, resTypeIsBool);
    builtinRegistry->add("ConstLike").matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::stringLike}, resTypeIsBool).implementedAs(constLikeImpl).needsWrapping();

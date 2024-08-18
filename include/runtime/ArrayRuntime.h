@@ -205,7 +205,43 @@ namespace runtime
          * @returns         The value as new array
          * @note            If the array could not be converted to other array, it will throw an ```std::runtime_error```.
          */
-        static runtime::VarLen32 castToArray(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type);
+        static runtime::VarLen32 arrayToArray(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type);
+
+        /**
+         * This function casts an integer with 32 bit into a array stored as ```runtime::VarLen32```. It will add automatically
+         * the '{}' brackets depending on the given dimension number.
+         * @param value     The initial value
+         * @param dim       The dimension of the final array
+         * @returns         The array as ```runtime::VarLen32``` object.
+         */
+        static runtime::VarLen32 int32ToArray(int32_t value, uint64_t dim);
+
+        /**
+         * This function casts an integer with 64 bit into a array stored as ```runtime::VarLen32```. It will add automatically
+         * the '{}' brackets depending on the given dimension number.
+         * @param value     The initial value
+         * @param dim       The dimension of the final array
+         * @returns         The array as ```runtime::VarLen32``` object.
+         */
+        static runtime::VarLen32 int64ToArray(int64_t value, uint64_t dim);
+
+        /**
+         * This function casts a float into a array stored as ```runtime::VarLen32```. It will add automatically
+         * the '{}' brackets depending on the given dimension number.
+         * @param value     The initial value
+         * @param dim       The dimension of the final array
+         * @returns         The array as ```runtime::VarLen32``` object.
+         */
+        static runtime::VarLen32 floatToArray(float value, uint64_t dim);
+
+        /**
+         * This function casts a double into a array stored as ```runtime::VarLen32```. It will add automatically
+         * the '{}' brackets depending on the given dimension number.
+         * @param value     The initial value
+         * @param dim       The dimension of the final array
+         * @returns         The array as ```runtime::VarLen32``` object.
+         */
+        static runtime::VarLen32 doubleToArray(double value, uint64_t dim);
     };
     
 } // namespace runtime

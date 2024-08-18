@@ -356,7 +356,7 @@ double runtime::ArrayRuntime::castToDouble(runtime::VarLen32 str) {
     return 0;
 }
 
-runtime::VarLen32 runtime::ArrayRuntime::castToArray(runtime::VarLen32 str, uint64_t dimensions, runtime::VarLen32 type) {
+runtime::VarLen32 runtime::ArrayRuntime::arrayToArray(runtime::VarLen32 str, uint64_t dimensions, runtime::VarLen32 type) {
    if (type.str() == "int32[]") {
       runtime::Array<int32_t> array(str, dimensions, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
       return array.toString();
@@ -376,4 +376,20 @@ runtime::VarLen32 runtime::ArrayRuntime::castToArray(runtime::VarLen32 str, uint
       throw std::runtime_error("The entered type - " + type.str() + " - is currently not supported");
    }
    return str;
+}
+
+runtime::VarLen32 runtime::ArrayRuntime::int32ToArray(int32_t value, uint64_t dim) {
+    return runtime::TypeCasts::numericToArrayVarLen(value, dim);
+}
+
+runtime::VarLen32 runtime::ArrayRuntime::int64ToArray(int64_t value, uint64_t dim) {
+    return runtime::TypeCasts::numericToArrayVarLen(value, dim);
+}
+
+runtime::VarLen32 runtime::ArrayRuntime::floatToArray(float value, uint64_t dim) {
+    return runtime::TypeCasts::numericToArrayVarLen(value, dim);
+}
+
+runtime::VarLen32 runtime::ArrayRuntime::doubleToArray(double value, uint64_t dim) {
+    return runtime::TypeCasts::numericToArrayVarLen(value, dim);
 }

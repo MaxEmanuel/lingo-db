@@ -25,7 +25,8 @@ namespace runtime
          * This constructor creates a new array instance based on the given array parameter.
          * 
          * @param array         The array as string which should be converted to a more accessible array structure. Be aware that each entry must be
-         *                      defined with ```{}``` brackets
+         *                      defined with ```{}``` brackets. The only special is if the ```dimension``` value is 1 and ```array``` consists out of
+         *                      a single string, then ```{}``` brackets will be added.
          * @param dimension     Defines how many dimensions the array has. Should fit with the given array structure from the array parameter
          * @param typeCast      A function which allows to convert a string to the defined type ```T``` (also necessary for string arrays)
          * @param stringCast    A function which allows to cast a value of type ```T``` into a string (also necessay for string arrays)
@@ -36,7 +37,12 @@ namespace runtime
          * @note                If the given array parameter does not correspond to the defined array signatur a ```std::runtime::error``` will be thrown,
          *                      e.g. ```array = [1,2,3,4]```
          */
-        Array(std::string array, uint64_t dimension, TypeCast typeCast, StringCast stringCast) : array(ArrayList<T>(array, dimension, typeCast, stringCast)) {}
+        Array(std::string array, uint64_t dimension, TypeCast typeCast, StringCast stringCast) {
+            if (array.find('{') == std::string::npos && dimension == 1) {
+                array = "{" + array + "}";
+            }
+            this->array = ArrayList<T>(array, dimension, typeCast, stringCast);
+        }
 
         /**
          * This method converts the complete array structure back to a string.
