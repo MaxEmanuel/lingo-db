@@ -40,10 +40,9 @@ namespace runtime
 
         /**
          * This static method converts a std::string into a std::string. It will remove the following 
-         * characters from the string: ```' '```,```'``` and ```"```. 
+         * characters from the string: ```'``` and ```"```. 
          */
         static std::string stringToString(std::string value) {
-            value.erase(std::remove(value.begin(), value.end(), ' '), value.end());
             value.erase(std::remove(value.begin(), value.end(), '\''), value.end());
             value.erase(std::remove(value.begin(), value.end(), '"'), value.end());
             return value;
