@@ -367,16 +367,18 @@ struct Parser {
    mlir::Value translateIndirection(mlir::OpBuilder& builder, TranslationContext& context, List* indirections, mlir::Value data);
 
    /**
-    * This function translates an array expression (```T_A_ArrayExpr``` -> ```std::string```) into a string. Therefore it will
+    * This function translates an array expression (```T_A_ArrayExpr``` -> ```mlir::Value```) into a sequence of mlir operations. Therefore it will
     * extract every element stored in the given data node.
+    * @param builder       Object which is used to be able of creating mlir operations
+    * @param context       ???
     * @param data          The node containing array elements
-    * @returns             The array as a string (e.g. '{1,2,4}') 
+    * @returns             The array as a mlir::Value (e.g. '{1,2,4}') 
     * @note                Only the following ```T_A_Const``` types are supported: ```T_Integer```, ```T_Float```, ```T_String``` and ```T_Null``` .
     *                      Otherwise an ```std::runtime_error``` will be thrown.
-    * @note                If the type of the given ```Node*``` is not ```T_A_Const``` or ```T_A_ArrayExpr``` an ```std::runtime_error``` will be thrown.
-    * @note                The last character is an ```,```.
+    * @note                If the type of the given ```Node*``` is not ```T_A_Const```, ```T_A_ArrayExpr``` or ```T_ColumnRef``` an 
+    *                      ```std::runtime_error``` will be thrown.
     */
-   std::string translateArrayToString(Node* data);
+   mlir::Value translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, Node* data);
 
    //translate list of constant values into relalg::ConstRelationOp
    std::pair<mlir::Value, TargetInfo> translateConstRelation(List* valuesLists, mlir::OpBuilder& builder);
