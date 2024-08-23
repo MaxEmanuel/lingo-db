@@ -34,8 +34,6 @@ namespace runtime
          *                      will be thrown, e.g. ``` array = '{1,2,3,4}' ``` and ``` dimension = 2 ```
          * @note                If a entered value cannot be converted to the specified type then a ```std::runtime_error``` will be thrown
          *                      (e.g. 'Hello World' -> int)
-         * @note                If the given array parameter does not correspond to the defined array signatur a ```std::runtime::error``` will be thrown,
-         *                      e.g. ```array = [1,2,3,4]```
          */
         Array(std::string array, uint64_t dimension, TypeCast typeCast, StringCast stringCast) {
             if (array.find('{') == std::string::npos && dimension == 1) {
