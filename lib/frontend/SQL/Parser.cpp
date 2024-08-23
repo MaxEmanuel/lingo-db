@@ -356,8 +356,8 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
    }
    if (funcName == "array_dims") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
-      auto arrayData = TypeFunctions::extractArrayDataDB(builder, val);
-      auto result = builder.create<mlir::db::RuntimeCall>(loc, mlir::db::StringType::get(builder.getContext()), "ArrayDimensions", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
+      auto array = TypeFunctions::castToArrayIfNecessary(builder, val);
+      auto result = builder.create<mlir::db::RuntimeCall>(loc, mlir::db::StringType::get(builder.getContext()), "ArrayDimensions", mlir::ValueRange({array.array, array.dimension, array.type})).getRes();
       if (val.getType().isa<mlir::db::NullableType>()) {
          result.setType(mlir::db::NullableType::get(mlir::db::StringType::get(builder.getContext())));
       } else {
@@ -367,8 +367,8 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
    }
    if (funcName == "cardinality") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
-      auto arrayData = TypeFunctions::extractArrayDataDB(builder, val);
-      auto result = builder.create<mlir::db::RuntimeCall>(loc, mlir::IntegerType::get(builder.getContext(), 64), "ArrayCardinality", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
+      auto array = TypeFunctions::castToArrayIfNecessary(builder, val);
+      auto result = builder.create<mlir::db::RuntimeCall>(loc, mlir::IntegerType::get(builder.getContext(), 64), "ArrayCardinality", mlir::ValueRange({array.array, array.dimension, array.type})).getRes();
       if (val.getType().isa<mlir::db::NullableType>()) {
          result.setType(mlir::db::NullableType::get(mlir::IntegerType::get(builder.getContext(), 64)));
       } else {
@@ -378,8 +378,8 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
    }
    if (funcName == "transpose") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
-      auto arrayData = TypeFunctions::extractArrayDataDB(builder, val);
-      return builder.create<mlir::db::RuntimeCall>(loc, mlir::db::StringType::get(builder.getContext()), "ArrayTranspose", mlir::ValueRange({val, std::get<0>(arrayData), std::get<1>(arrayData)})).getRes();
+      auto array = TypeFunctions::castToArrayIfNecessary(builder, val);
+      return builder.create<mlir::db::RuntimeCall>(loc, array.array.getType(), "ArrayTranspose", mlir::ValueRange({array.array, array.dimension, array.type})).getRes();
    }
 
   throw std::runtime_error("could not translate func call");
@@ -492,59 +492,55 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          if (getBaseType(left.getType()).isa<mlir::db::DateType>() && getBaseType(right.getType()).isa<mlir::db::IntervalType>()) {
             return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "DateAdd", mlir::ValueRange({left, right})).getRes();
          }
-         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
-            auto rightArray = TypeFunctions::extractArrayDataDB(builder, right);
-            auto leftArray = TypeFunctions::extractArrayDataDB(builder, left);
-            auto returnType = TypeFunctions::getReturnType(left, right);
-            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayAdd", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
+         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() || getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            auto data = TypeFunctions::castToArrayIfNecessary(builder, left, right);
+            auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array);
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayAdd", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
          }
          return builder.create<mlir::db::AddOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
       case ExpressionType::OPERATOR_MINUS:
          if (left.getType().isa<mlir::db::DateType>() && right.getType().isa<mlir::db::IntervalType>()) {
             return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "DateSubtract", mlir::ValueRange({left, right})).getRes();
          }
-         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
-            auto rightArray = TypeFunctions::extractArrayDataDB(builder, right);
-            auto leftArray = TypeFunctions::extractArrayDataDB(builder, left);
-            auto returnType = TypeFunctions::getReturnType(left, right);
-            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArraySub", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
+         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() || getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            auto data = TypeFunctions::castToArrayIfNecessary(builder, left, right);
+            auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array);
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArraySub", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
          }
          return builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
       case ExpressionType::OPERATOR_MULTIPLY:
-         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
-            auto rightArray = TypeFunctions::extractArrayDataDB(builder, right);
-            auto leftArray = TypeFunctions::extractArrayDataDB(builder, left);
-            auto rightRawData = TypeFunctions::extractArrayRawData(builder, right);
-            auto result = builder.create<mlir::db::RuntimeCall>(loc, right.getType(), "ArrayMatrixMul", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
-            // Set the new type of the array. It can be possible that after the matrix multiplication the dimension value changes
-            if (left.getType().isa<mlir::db::NullableType>()) {
-               result.setType(mlir::db::NullableType::get(mlir::db::ArrayType::get(builder.getContext(), std::get<0>(rightRawData), std::get<1>(rightRawData))));
-            } else {
-               result.setType(mlir::db::ArrayType::get(builder.getContext(), std::get<0>(rightRawData), std::get<1>(rightRawData)));
-            }
+         // Matrix-Multiplication if both values are of type array or at least one of them, whereby the other one could only be a string
+         if ((getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) ||
+             (getBaseType(left.getType()).isa<mlir::db::StringType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) ||
+             (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::StringType>())) {
+            auto data = TypeFunctions::castToArrayIfNecessary(builder, left, right);
+            auto rightRawData = TypeFunctions::extractArrayRawData(builder, std::get<1>(data).array);
+            auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array, false);
+            auto result = builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayMatrixMul", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
             return result;
+         // Scalar-Multiplication if right value is a primitve numeric type
          } else if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && (getBaseType(right.getType()).isa<mlir::IntegerType>() || getBaseType(right.getType()).isa<mlir::Float32Type>() || getBaseType(right.getType()).isa<mlir::Float64Type>())) {
             auto array = TypeFunctions::extractArrayDataDB(builder, left);
             if (getBaseType(right.getType()).isa<mlir::IntegerType>()) {
-               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultInt", mlir::ValueRange({left, std::get<0>(array), std::get<1>(array), right})).getRes();
+               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultInt", mlir::ValueRange({left, array.dimension, array.type, right})).getRes();
             } else {
-               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultFloat", mlir::ValueRange({left, std::get<0>(array), std::get<1>(array), right})).getRes();
+               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultFloat", mlir::ValueRange({left, array.dimension, array.type, right})).getRes();
             }
+         // Scalar-Multiplication if left value is a primitve numeric type
          } else if ((getBaseType(left.getType()).isa<mlir::IntegerType>() || getBaseType(left.getType()).isa<mlir::Float32Type>() || getBaseType(left.getType()).isa<mlir::Float64Type>()) && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
             auto array = TypeFunctions::extractArrayDataDB(builder, right);
             if (getBaseType(left.getType()).isa<mlir::IntegerType>()) {
-               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultInt", mlir::ValueRange({right, std::get<0>(array), std::get<1>(array), left})).getRes();
+               return builder.create<mlir::db::RuntimeCall>(loc, right.getType(), "ArrayScalarMultInt", mlir::ValueRange({right, array.dimension, array.type, left})).getRes();
             } else {
-               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultFloat", mlir::ValueRange({right, std::get<0>(array), std::get<1>(array), left})).getRes();
+               return builder.create<mlir::db::RuntimeCall>(loc, right.getType(), "ArrayScalarMultFloat", mlir::ValueRange({right, array.dimension, array.type, left})).getRes();
             }
          }
          return builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonNumber(builder, {left, right}));
       case ExpressionType::OPERATOR_SPECIAL_MULTIPLY:
-         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
-            auto rightArray = TypeFunctions::extractArrayDataDB(builder, right);
-            auto leftArray = TypeFunctions::extractArrayDataDB(builder, left);
-            auto returnType = TypeFunctions::getReturnType(left, right);
-            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayEWMul", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
+         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() || getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            auto data = TypeFunctions::castToArrayIfNecessary(builder, left, right);
+            auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array);
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayEWMul", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
          }
          return mlir::Value();
       case ExpressionType::OPERATOR_DIVIDE:
@@ -584,27 +580,9 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          auto baseType = SQLTypeInference::getCommonBaseType(mlir::TypeRange{leftType, rightType});
          // Look if one value is an array, then call 'ConcatenateArray', otherwise 'Concatenate'
          if (baseType.isa<mlir::db::ArrayType>()) {
-            // Here initialise necessary parameters to be able of calling runtime::ArrayRuntime::concat
-            std::tuple<mlir::Value, mlir::Value> leftArray, rightArray;
-            // If left value is not an array (is not casted), assign to him the attributes (type and dimension) from the actual array type.
-            // In this case it must be the right value
-            if (!leftType.isa<mlir::db::ArrayType>()) {
-               auto array = rightType.dyn_cast<mlir::db::ArrayType>();
-               leftArray = TypeFunctions::extractArrayDataDB(builder, right);
-               left = SQLTypeInference::castValueToType(builder, left, mlir::db::ArrayType::get(builder.getContext(), array.getDimensions(), array.getType()));
-            } else {
-               leftArray = TypeFunctions::extractArrayDataDB(builder, left);
-            }
-            // If right value is not an array (is not casted), assign to him the attributes (type and dimension) from the actual array type.
-            // In this case it must be the left value
-            if (!rightType.isa<mlir::db::ArrayType>()) {
-               auto array = leftType.dyn_cast<mlir::db::ArrayType>();
-               rightArray = TypeFunctions::extractArrayDataDB(builder, left);
-               right = SQLTypeInference::castValueToType(builder, right, mlir::db::ArrayType::get(builder.getContext(), array.getDimensions(), array.getType())); 
-            } else {
-               rightArray = TypeFunctions::extractArrayDataDB(builder, right);    
-            }
-            return builder.create<mlir::db::RuntimeCall>(loc,  left.getType(), "ConcatenateArray", mlir::ValueRange({left, std::get<0>(leftArray), std::get<1>(leftArray), right, std::get<0>(rightArray), std::get<1>(rightArray)})).getRes();
+            auto data = TypeFunctions::castToArrayIfNecessary(builder, left, right);
+            auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array);
+            return builder.create<mlir::db::RuntimeCall>(loc,  returnType, "ConcatenateArray", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
          }
 
          auto leftValue = SQLTypeInference::castValueToType(builder, left, mlir::db::StringType::get(builder.getContext()));

@@ -259,7 +259,7 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
             result = rt::StringRuntime::toDate(rewriter, loc)({valueToCast})[0];
          } else if (auto arrayType = scalarTargetType.dyn_cast_or_null<mlir::db::ArrayType>()) {
             auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
-            result = rt::StringRuntime::toArray(rewriter, loc)({valueToCast, std::get<0>(arrayData), std::get<1>(arrayData)})[0];
+            result = rt::StringRuntime::toArray(rewriter, loc)({valueToCast, arrayData.dimension, arrayData.type})[0];
          }
       } else if (auto intWidth = getIntegerWidth(scalarSourceType, false)) {
          result = rt::StringRuntime::fromInt(rewriter, loc)({valueToCast})[0];
@@ -326,24 +326,24 @@ class ArrayCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
          // ArrayType -> ArrayType (if meta data changes like dimension or type)
          } else if (auto targetArray = scalarTargetType.dyn_cast_or_null<mlir::db::ArrayType>()) {
             auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
-            result = rt::ArrayRuntime::arrayToArray(rewriter, loc)({valueToCast, std::get<0>(arrayData), std::get<1>(arrayData)})[0];
+            result = rt::ArrayRuntime::arrayToArray(rewriter, loc)({valueToCast, arrayData.dimension, arrayData.type})[0];
          }
       // Int -> ArrayType
       } else if (auto integerType = scalarSourceType.dyn_cast_or_null<mlir::IntegerType>()) {
          auto intWidth = getIntegerWidth(scalarSourceType, false);
          auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
          if (intWidth < 64) {
-            result = rt::ArrayRuntime::int32ToArray(rewriter, loc)({valueToCast, std::get<0>(arrayData)})[0];
+            result = rt::ArrayRuntime::int32ToArray(rewriter, loc)({valueToCast, arrayData.dimension})[0];
          } else {
-            result = rt::ArrayRuntime::int64ToArray(rewriter, loc)({valueToCast, std::get<0>(arrayData)})[0];
+            result = rt::ArrayRuntime::int64ToArray(rewriter, loc)({valueToCast, arrayData.dimension})[0];
          }
       // Float -> ArrayType
       } else if (auto floatType = scalarSourceType.dyn_cast_or_null<mlir::FloatType>()) {
          auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
          if (floatType.getWidth() == 32) {
-            result = rt::ArrayRuntime::floatToArray(rewriter, loc)({valueToCast, std::get<0>(arrayData)})[0];
+            result = rt::ArrayRuntime::floatToArray(rewriter, loc)({valueToCast, arrayData.dimension})[0];
          } else {
-            result = rt::ArrayRuntime::doubleToArray(rewriter, loc)({valueToCast, std::get<0>(arrayData)})[0];
+            result = rt::ArrayRuntime::doubleToArray(rewriter, loc)({valueToCast, arrayData.dimension})[0];
          } 
       }
       if (result) {
