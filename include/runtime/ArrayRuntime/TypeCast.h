@@ -43,6 +43,9 @@ namespace runtime
          * characters from the string: ```'``` and ```"```. 
          */
         static std::string stringToString(std::string value) {
+            if (value.find('"') != std::string::npos) {
+                value = value.substr(value.find("\""));
+            }
             value.erase(std::remove(value.begin(), value.end(), '\''), value.end());
             value.erase(std::remove(value.begin(), value.end(), '"'), value.end());
             return value;
