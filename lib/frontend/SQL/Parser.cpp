@@ -333,8 +333,6 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       return builder.create<mlir::db::RuntimeCall>(loc, str.getType(), "Substring", mlir::ValueRange({str, from, to})).getRes();
    }
    if (funcName == "random") {
-      //mlir::Value lowerBound = builder.create<mlir::arith::ConstantIntOp>(builder.getUnknownLoc(), 0.0f, builder.getF64Type());
-      //mlir::Value upperBound = builder.create<mlir::arith::ConstantIntOp>(builder.getUnknownLoc(), 1.0f, builder.getF64Type());
       return builder.create<mlir::db::RuntimeCall>(loc, builder.getF64Type(), "Random", mlir::ValueRange({})).getRes();
    }
    if (funcName == "abs") {
@@ -1748,12 +1746,6 @@ std::pair<std::string, std::shared_ptr<runtime::ColumnMetaData>> frontend::sql::
       }
    }
    std::string name = columnDef->colname_;
-   
-   // Proof if entered type is an array
-   if (typeName->array_bounds_){
-      auto* arrayType = reinterpret_cast<A_ArrayExpr*>(typeName->array_bounds_->head->data.ptr_value);
-      auto dimensions = typeName->array_bounds_->length;
-   }
    std::string datatypeName = reinterpret_cast<value*>(typeName->names_->tail->data.ptr_value)->val_.str_;
    auto columnMetaData = std::make_shared<runtime::ColumnMetaData>();
    columnMetaData->setColumnType(createColumnType(datatypeName, !isNotNull, typeModifiers, typeName->array_bounds_));

@@ -200,16 +200,6 @@ using A_Indirection = struct A_Indirection{
 	List	   *indirection;	/* subscripts and/or field names and/or * */
 };
 
-/*
- * A_ArrayExpr - an ARRAY[] construct
- */
-typedef struct A_ArrayExpr
-{
-	NodeTag		type;
-	List	   *elements;		/* array element expressions */
-	int			location;		/* token location, or -1 if unknown */
-} A_ArrayExpr;
-
 using NullTestType = enum NullTestType { IS_NULL,
                                          IS_NOT_NULL };
 
