@@ -259,7 +259,23 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
       } else if (auto intWidth = getIntegerWidth(scalarSourceType, false)) {
          result = rt::StringRuntime::fromInt(rewriter, loc)({valueToCast})[0];
       } else if (auto floatType = scalarSourceType.dyn_cast_or_null<FloatType>()) {
-         result = floatType.getWidth() == 32 ? rt::StringRuntime::fromFloat32(rewriter, loc)({valueToCast})[0] : rt::StringRuntime::fromFloat64(rewriter, loc)({valueToCast})[0];
+         // HELLO WORLD
+         switch (floatType.getWidth()) {
+            case 16:
+               result = rt::StringRuntime::fromTFloat(rewriter, loc)({valueToCast})[0];
+               break;
+            case 32: {
+               result = rt::StringRuntime::fromFloat32(rewriter, loc)({valueToCast})[0];
+               break;
+            }
+            case 64: {
+               result = rt::StringRuntime::fromFloat64(rewriter, loc)({valueToCast})[0];
+               break;
+            }
+            default: {
+               return failure();
+            }
+         }
       } else if (auto decimalSourceType = scalarSourceType.dyn_cast_or_null<db::DecimalType>()) {
          auto scale = rewriter.create<arith::ConstantOp>(loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(decimalSourceType.getS()));
          result = rt::StringRuntime::fromDecimal(rewriter, loc)({valueToCast, scale})[0];
@@ -854,6 +870,14 @@ class CastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
             auto multiplier = rewriter.create<arith::ConstantOp>(loc, convertedSourceType, FloatAttr::get(convertedSourceType, powf(10, decimalTargetType.getS())));
             value = rewriter.create<arith::MulFOp>(loc, convertedSourceType, value, multiplier);
             rewriter.replaceOpWithNewOp<arith::FPToSIOp>(op, convertedTargetType, value);
+            return success();
+         } else if (auto targetFloatType = scalarTargetType.dyn_cast_or_null<FloatType>()) {
+            if (floatType.getWidth() < targetFloatType.getWidth()) {
+               value = rewriter.create<arith::ExtFOp>(loc, convertedTargetType, value);
+            } else if (floatType.getWidth() > targetFloatType.getWidth()) {
+               value = rewriter.create<arith::TruncFOp>(loc, convertedTargetType, value);
+            }
+            rewriter.replaceOp(op, value);
             return success();
          }
       } else if (auto decimalSourceType = scalarSourceType.dyn_cast_or_null<db::DecimalType>()) {

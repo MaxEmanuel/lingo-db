@@ -1,12 +1,19 @@
 #include <iomanip>
 #include <iostream>
 
+#define NDEBUG
+#include <arrow/array.h>
+#include <arrow/datum.h> // Include the header file for arrow::Datum
 #include <arrow/pretty_print.h>
+#include <arrow/scalar.h>
 #include <arrow/table.h>
+#include <arrow/visit_array_inline.h>
+#undef NDEBUG
 
 #include "execution/ResultProcessing.h"
 #include "runtime/TableBuilder.h"
 #include <functional>
+#include <arrow/status.h>
 
 namespace {
 unsigned char hexval(unsigned char c) {
@@ -32,6 +39,41 @@ class TableRetriever : public execution::ResultProcessor {
    }
 };
 
+class PrintHalfFloat : public arrow::ArrayVisitor {
+   std::ostringstream partial;
+
+   public:
+   arrow::Result<std::string> Compute(std::shared_ptr<arrow::Array> array) {
+      ARROW_RETURN_NOT_OK(arrow::VisitArrayInline(*array, this));
+      return partial.str();
+   }
+
+   // Default implementation
+   arrow::Status Visit(const arrow::Array& array) {
+      return arrow::Status::NotImplemented("Can not compute sum for array of type ", array.type()->ToString());
+   }
+
+   arrow::Status Visit(const arrow::HalfFloatArray& array) {
+      unsigned index = 0;
+      for (std::optional<typename arrow::HalfFloatType::c_type> value : array) {
+         if (value.has_value()) {
+            // convert the half float to a regular float
+            unsigned int proc = static_cast<unsigned>(value.value()) << 16;
+            float tmp = *reinterpret_cast<float*>(&proc);
+            // append the float to the accumulator
+            partial << tmp;
+            if (index < array.length() - 1) {
+               // add the element separator if this is not the last element
+               partial << ",\n";
+            }
+            ++index;
+         }
+      }
+
+      return arrow::Status::OK();
+   }
+};
+
 void printTable(const std::shared_ptr<arrow::Table>& table) {
    // Do not output anything for insert or copy statements
    if (table->columns().empty()) {
@@ -52,7 +94,23 @@ void printTable(const std::shared_ptr<arrow::Table>& table) {
       convertHex.push_back(table->schema()->field(positions.size())->type()->id() == arrow::Type::FIXED_SIZE_BINARY);
       rowSep += std::string(33, '-');
       std::stringstream sstr;
-      arrow::PrettyPrint(*c.get(), options, &sstr); //NOLINT (clang-diagnostic-unused-result)
+      if (table->schema()->field(positions.size())->type()->id() != arrow::Type::HALF_FLOAT) {
+         // for every data type other than half floats, we can use arrow's pretty print
+         arrow::PrettyPrint(*c.get(), options, &sstr); //NOLINT (clang-diagnostic-unused-result)
+      } else {
+         // this is necessary, because arrow does not implement pretty printing for half floats,
+         // instead it would interpret the bit representation as an integer
+         sstr << "[\n[\n";
+         PrintHalfFloat printer;
+         for (unsigned i = 0; i < c->num_chunks(); i++) {
+            sstr << printer.Compute(c->chunk(i)).ValueOrDie();
+            if (i < c->num_chunks() - 1) {
+               sstr << ",\n";
+            }
+         }
+         sstr << "\n]\n]";
+      }
+
       columnReps.push_back(sstr.str());
       positions.push_back(0);
    }
