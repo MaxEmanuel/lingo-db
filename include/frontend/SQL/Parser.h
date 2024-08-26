@@ -380,6 +380,8 @@ struct Parser {
     */
    mlir::Value translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, Node* data);
 
+   void translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, std::vector<mlir::Attribute>& list, Node* data);
+
    //translate list of constant values into relalg::ConstRelationOp
    std::pair<mlir::Value, TargetInfo> translateConstRelation(List* valuesLists, mlir::OpBuilder& builder);
 

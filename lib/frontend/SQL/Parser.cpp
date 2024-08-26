@@ -1250,7 +1250,10 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
          return translateIndirection(builder, context, indirections, data);
       }
       case T_A_ArrayExpr: {
-         return translateArrayToString(builder, context, node);
+         std::vector<mlir::Attribute> data;
+         translateArrayToString(builder, context, data, node);
+         //auto test = builder.getArrayAttr(data);
+         return builder.create<mlir::db::ConstantOp>(loc, mlir::db::ArrayType::get(builder.getContext(), 1, "int32[]"), builder.getArrayAttr(data));
       }
       default: {
         throw std::runtime_error("unsupported expression type");
@@ -1379,6 +1382,55 @@ mlir::Value frontend::sql::Parser::translateArrayToString(mlir::OpBuilder& build
       mlir::Value close = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("}"));
       result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), result.getType(), "Concatenate", mlir::ValueRange({result, close})).getRes();
       return result;
+   }
+   throw std::runtime_error("unsupported expression type for array construction");
+}
+
+void frontend::sql::Parser::translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, std::vector<mlir::Attribute>& list, Node* data) {
+   // Proof is element is single value
+   if (data->type == T_A_Const) {
+       auto constVal = reinterpret_cast<A_Const*>(data)->val_;
+         switch (constVal.type_) {
+            case T_Integer: {
+               list.push_back(builder.getStringAttr(std::to_string(constVal.val_.ival_)));
+               return;
+            }
+            case T_Float:
+            case T_String: {
+               list.push_back(builder.getStringAttr(constVal.val_.str_));
+               return;
+            }
+            case T_Null: {
+               list.push_back(builder.getStringAttr("null"));
+               return;
+            }
+            default:throw std::runtime_error("unsupported value type for array construction");
+         }
+   } else if (data->type == T_ColumnRef) {
+      const auto* attr = resolveColRef(data, context);
+      list.push_back(attrManager.createRef(attr));
+      return;
+   // Proof if element is a list of elements
+   } else if (data->type == T_A_ArrayExpr) {
+      auto* array = reinterpret_cast<A_ArrayExpr*>(data);
+      // Return null if list is empty
+      if (!array->elements) {
+         list.push_back(builder.getStringAttr("null"));
+         return;
+      }
+      // Iterate over each element in list and extract its value
+      list.push_back(builder.getStringAttr("{"));
+      auto* cell = array->elements->head;
+      while (cell) {
+         auto* element = reinterpret_cast<Node*>(cell->data.ptr_value);
+         translateArrayToString(builder, context, list, element);
+         if (cell->next != nullptr) {
+            list.push_back(builder.getStringAttr(","));
+         }
+         cell = cell->next;
+      }
+      list.push_back(builder.getStringAttr("}"));
+      return;
    }
    throw std::runtime_error("unsupported expression type for array construction");
 }

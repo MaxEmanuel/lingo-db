@@ -345,7 +345,6 @@ class ArrayCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
          } else {
             result = rt::ArrayRuntime::doubleToArray(rewriter, loc)({valueToCast, arrayData.dimension})[0];
          } 
-      }
       if (result) {
          rewriter.replaceOp(castOp, result);
          return success();
@@ -781,6 +780,16 @@ class ConstantLowering : public OpConversionPattern<mlir::db::ConstantOp> {
          parseArg = floatAttr.getValueAsDouble();
       } else if (auto stringAttr = constantOp.getValue().dyn_cast_or_null<StringAttr>()) {
          parseArg = stringAttr.str();
+      } else if (auto arrayAttr = constantOp.getValue().dyn_cast_or_null<ArrayAttr>()) {
+         std::string result = "";
+         for (size_t index = 0; index < arrayAttr.size(); index++) {
+            if (auto value = arrayAttr[index].dyn_cast_or_null<StringAttr>()) {
+               result += value.str();
+            } else if (auto value = arrayAttr[index].dyn_cast_or_null<mlir::tuples::ColumnRefAttr>()) {
+               auto test = 9;
+            }
+         }
+         parseArg = result;
       } else {
          return failure();
       }
