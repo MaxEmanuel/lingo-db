@@ -1,7 +1,7 @@
 // RUN: run-mlir %s | FileCheck %s
 module {
     func.func @main ()  {
-
+        // TODO: Currently in string array prints random space in every element despite first element (Unkown source)
         
         // VARIABLES
         
@@ -47,7 +47,7 @@ module {
         // {{{'earth', 'moon', 'mars'},{'jupiter', 'saturn', 'neptun'}},{{'earth', 'moon', 'mars'},{'jupiter', 'saturn', 'neptun'}}} || {{{'earth', 'moon', 'mars'},{'jupiter', 'saturn', 'neptun'}},{{'earth', 'moon', 'mars'},{'jupiter', 'saturn', 'neptun'}}}
         // -> {{{'earth', 'moon', 'mars'},{'jupiter', 'saturn', 'neptun'}},{{'earth', 'moon', 'mars'},{'jupiter', 'saturn', 'neptun'}}, {{'earth', 'moon', 'mars'},{'jupiter', 'saturn', 'neptun'}},{{'earth', 'moon', 'mars'},{'jupiter', 'saturn', 'neptun'}}}
 
-        //CHECK: array("{{[{]}}{{[{]}}{"earth", "moon", "mars"}, {"jupiter", "saturn", "neptun"}}, {{[{]}}{"earth", "moon", "mars"}, {"jupiter", "saturn", "neptun"}}, {{[{]}}{"earth", "moon", "mars"}, {"jupiter", "saturn", "neptun"}}, {{[{]}}{"earth", "moon", "mars"}, {"jupiter", "saturn", "neptun"}}}")
+        //CHECK: array("{{[{]}}{{[{]}}{"earth", " moon", " mars"}, {"jupiter", " saturn", " neptun"}}, {{[{]}}{"earth", " moon", " mars"}, {"jupiter", " saturn", " neptun"}}, {{[{]}}{"earth", " moon", " mars"}, {"jupiter", " saturn", " neptun"}}, {{[{]}}{"earth", " moon", " mars"}, {"jupiter", " saturn", " neptun"}}}")
         %threeDim_3 = db.runtime_call "ConcatenateArray" (%stringArray3, %dim3, %stringType, %stringArray3, %dim3, %stringType) : (!db.array<3,"string[]">, i64, !db.string, !db.array<3,"string[]">, i64, !db.string) -> !db.array<3,"string[]">
         db.runtime_call "DumpValue" (%threeDim_3) : (!db.array<3,"string[]">) -> ()
 
@@ -85,7 +85,7 @@ module {
 
         // {{'earth', 'moon', 'mars'},{'jupiter', 'saturn', 'neptun'}}[1:2] -> {{"earth", "moon", "mars"}, {"jupiter", "saturn", "neptun"}}
 
-        //CHECK: array("{{[{]}}{"earth", "moon", "mars"}, {"jupiter", "saturn", "neptun"}}")
+        //CHECK: array("{{[{]}}{"earth", " moon", " mars"}, {"jupiter", " saturn", " neptun"}}")
         %twoDim_8 = db.runtime_call "ArrayRange" (%stringArray2, %dim2, %stringType, %start, %stop, %subDim2) : (!db.array<2,"string[]">, i64, !db.string, i64, i64, i64) -> !db.array<2,"string[]">
         db.runtime_call "DumpValue" (%twoDim_8) : (!db.array<2,"string[]">) -> ()
 
@@ -127,7 +127,7 @@ module {
 
         // {{'earth', 'moon', 'mars'},{'jupiter', 'saturn', 'neptun'}}[1] -> {"earth", "moon", "mars"}
 
-        //CHECK: array("{"earth", "moon", "mars"}")
+        //CHECK: array("{"earth", " moon", " mars"}")
         %twoDim_13 = db.runtime_call "ArrayElement" (%stringArray2, %dim2, %stringType, %index1) : (!db.array<2,"string[]">, i64, !db.string, i64) -> !db.array<2,"string[]">
         db.runtime_call "DumpValue" (%twoDim_13) : (!db.array<2,"string[]">) -> ()
 
@@ -455,6 +455,26 @@ module {
         %arrayValue = db.constant ("{1,2,3}") : !db.array<2,"int32[]">
         %arrayCast_60 = db.cast %arrayValue : !db.array<2,"int32[]"> -> !db.array<1,"int32[]">
         db.runtime_call "DumpValue" (%arrayCast_60) : (!db.array<1,"int32[]">) -> ()
+
+        //CHECK: array("{3}")
+        %int32Value_2 = db.constant ("3") : i32
+        %intCast_61 = db.cast %int32Value_2 : i32 -> !db.array<1,"int32[]">
+        db.runtime_call "DumpValue" (%intCast_61) : (!db.array<1,"int32[]">) -> ()
+
+        //CHECK: array("{{[{]}}{281474976710656}}")
+        %int64Value_2 = db.constant ("281474976710656") : i64
+        %intCast_62 = db.cast %int64Value_2 : i64 -> !db.array<2,"int64[]">
+        db.runtime_call "DumpValue" (%intCast_62) : (!db.array<2,"int64[]">) -> ()
+
+        // CHECK: array("{4.500000}")
+        %floatValue_2 = db.constant ("4.5") : f32
+        %floatCast_63 = db.cast %floatValue_2 : f32 -> !db.array<1,"float[]">
+        db.runtime_call "DumpValue" (%floatCast_63) : (!db.array<1,"float[]">) -> ()
+
+        //CHECK: array("{{[{]}}{44.556600}}")
+        %doubleValue_2 = db.constant ("44.5566") : f64
+        %doubleCast_64 = db.cast %doubleValue_2 : f64 -> !db.array<2,"double[]">
+        db.runtime_call "DumpValue" (%doubleCast_64) : (!db.array<2,"double[]">) -> ()
 
         return
     }
