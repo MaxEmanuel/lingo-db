@@ -111,7 +111,6 @@ namespace runtime
         /**
          * This method returns the number of elements in the array.
          * @return              The number of elements in the array
-         * @note                ```null``` values will not be counted (e.g. '{1,2,3,null}' will return 3 or '{{1,2}, null}' will return 2)
          */
         uint64_t getCardinality() {
             return this->array.getNumberElements();

@@ -256,19 +256,14 @@ namespace runtime
         /**
          * This method returns the number of elements in the array.
          * @return              The number of elements in the array
-         * @note                ```null``` values will not be counted (e.g. '{1,2,3,null}' will return 3 or '{{1,2}, null}' will return 2)
          */
         uint64_t getNumberElements() {
             // Proof if this represents a null value
             if (this->isNull) {
-                return 0;
+                return 1;
             }
             if (this->dimension == 1) {
-                uint64_t number = 0;
-                for (auto& element : this->elements) {
-                    number += element.getIsNull() ? 0 : 1;
-                }
-                return number;
+                return this->elements.size();
             } else {
                 uint64_t result = 0;
                 for (auto& element : container) {

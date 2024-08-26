@@ -192,15 +192,15 @@ module {
         %threeDim_21 = db.runtime_call "ArrayCardinality" (%intArray3, %dim3, %intType) : (!db.array<3,"int32[]">, i64, !db.string) -> i64
         db.runtime_call "DumpValue" (%threeDim_21) : (i64) -> ()
 
-        // {{1,2,3},Null} -> 3
+        // {{1,2,3},Null} -> 4
 
-        //CHECK: int(3)
+        //CHECK: int(4)
         %NullElem_22 = db.runtime_call "ArrayCardinality" (%intArray2Null1, %dim2, %intType) : (!db.array<2,"int32[]">, i64, !db.string) -> i64
         db.runtime_call "DumpValue" (%NullElem_22) : (i64) -> ()
 
-        // "{{1,2,3},{4,Null,6}}" -> 5
+        // "{{1,2,3},{4,Null,6}}" -> 6
 
-        //CHECK: int(5)
+        //CHECK: int(6)
         %NullValue_23 = db.runtime_call "ArrayCardinality" (%intArray2Null2, %dim2, %intType) : (!db.array<2,"int32[]">, i64, !db.string) -> i64
         db.runtime_call "DumpValue" (%NullValue_23) : (i64) -> ()
 
