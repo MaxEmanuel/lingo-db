@@ -18,6 +18,7 @@ struct DumpRuntime {
    static void dumpIntervalDaytime(bool null, uint64_t interval);
    static void dumpFloat(bool null, double val);
    static void dumpString(bool null, runtime::VarLen32 string);
+   static void dumpArray(bool null, runtime::VarLen32 array);
    static void dumpChar(bool null, uint64_t val, size_t bytes);
 };
 } // namespace runtime

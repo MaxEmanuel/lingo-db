@@ -28,7 +28,9 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
 #include "runtime-defs/StringRuntime.h"
+#include "runtime-defs/ArrayRuntime.h"
 #include <mlir/Dialect/util/FunctionHelper.h>
+#include "mlir-support/typeHelper.h"
 
 using namespace mlir;
 
@@ -255,6 +257,9 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
             }
          } else if (scalarTargetType.isa<mlir::db::DateType>()) {
             result = rt::StringRuntime::toDate(rewriter, loc)({valueToCast})[0];
+         } else if (auto arrayType = scalarTargetType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
+            result = rt::StringRuntime::toArray(rewriter, loc)({valueToCast, arrayData.dimension, arrayData.type})[0];
          }
       } else if (auto intWidth = getIntegerWidth(scalarSourceType, false)) {
          result = rt::StringRuntime::fromInt(rewriter, loc)({valueToCast})[0];
@@ -284,6 +289,81 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
          result = rt::StringRuntime::fromChar(rewriter, loc)({valueToCast, bytes})[0];
       } else if (scalarSourceType.isa<mlir::db::DateType>()) {
          result = rt::StringRuntime::fromDate(rewriter, loc)({valueToCast})[0];
+      }
+      if (result) {
+         rewriter.replaceOp(castOp, result);
+         return success();
+      } else {
+         return failure();
+      }
+   }
+};
+
+class ArrayCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
+   public:
+   using OpConversionPattern<mlir::db::CastOp>::OpConversionPattern;
+
+   LogicalResult matchAndRewrite(mlir::db::CastOp castOp, OpAdaptor adaptor, ConversionPatternRewriter& rewriter) const override {
+      auto loc = castOp->getLoc();
+      auto scalarSourceType = castOp.getVal().getType();
+      auto scalarTargetType = castOp.getType();
+      auto convertedTargetType = typeConverter->convertType(scalarTargetType);
+
+      // If type is wrapped inside a nullable, get the type inside from nullable
+      if (scalarSourceType.isa<mlir::db::NullableType>()) {
+         scalarSourceType = scalarSourceType.dyn_cast<mlir::db::NullableType>().getType();
+      }
+      if (scalarTargetType.isa<mlir::db::NullableType>()) {
+         scalarTargetType = scalarTargetType.dyn_cast<mlir::db::NullableType>().getType();
+      }
+
+      // If both type are not db::ArrayType -> wrong cast conversion function
+      if (!scalarSourceType.isa<mlir::db::ArrayType>() && !scalarTargetType.isa<mlir::db::ArrayType>()) return failure();
+
+      mlir::Value valueToCast = adaptor.getVal();
+      mlir::Value result;
+
+      // If scalarSourceType == ArrayType, then ArrayType -> OtherType
+      if (auto arrayType = scalarSourceType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+         // ArrayType -> Integer (int32_t / int64_t)
+         if (auto intWidth = getIntegerWidth(scalarTargetType, false)) {
+            if (intWidth < 64) {
+               result = rt::ArrayRuntime::castToInt32(rewriter, loc)({valueToCast})[0];
+            } else {
+               result = rt::ArrayRuntime::castToInt64(rewriter, loc)({valueToCast})[0];
+            }
+         // ArrayType -> Float / Double
+         } else if (auto floatType = scalarTargetType.dyn_cast_or_null<FloatType>()) {
+            if (floatType.getWidth() == 32) {
+               result = rt::ArrayRuntime::castToFloat(rewriter, loc)({valueToCast})[0];
+            } else {
+               result = rt::ArrayRuntime::castToDouble(rewriter, loc)({valueToCast})[0];
+            }  
+         // ArrayType -> ArrayType (if meta data changes like dimension or type)
+         } else if (auto targetArray = scalarTargetType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
+            result = rt::ArrayRuntime::arrayToArray(rewriter, loc)({valueToCast, arrayData.dimension, arrayData.type})[0];
+         }
+      // Int -> ArrayType
+      } else if (auto integerType = scalarSourceType.dyn_cast_or_null<mlir::IntegerType>()) {
+         auto intWidth = getIntegerWidth(scalarSourceType, false);
+         auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
+         if (intWidth < 64) {
+            result = rt::ArrayRuntime::int32ToArray(rewriter, loc)({valueToCast, arrayData.dimension})[0];
+         } else {
+            result = rt::ArrayRuntime::int64ToArray(rewriter, loc)({valueToCast, arrayData.dimension})[0];
+         }
+      // Float -> ArrayType
+      } else if (auto floatType = scalarSourceType.dyn_cast_or_null<mlir::FloatType>()) {
+         auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
+         if (floatType.getWidth() == 32) {
+            result = rt::ArrayRuntime::floatToArray(rewriter, loc)({valueToCast, arrayData.dimension})[0];
+         } else {
+            result = rt::ArrayRuntime::doubleToArray(rewriter, loc)({valueToCast, arrayData.dimension})[0];
+         } 
+      } else if (scalarSourceType.isa<NoneType>()) {
+         auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
+         result = rt::ArrayRuntime::nullToArray(rewriter, loc)({arrayData.dimension})[0];
       }
       if (result) {
          rewriter.replaceOp(castOp, result);
@@ -682,6 +762,8 @@ class ConstantLowering : public OpConversionPattern<mlir::db::ConstantOp> {
          }
       } else if (auto stringType = type.dyn_cast_or_null<mlir::db::StringType>()) {
          typeConstant = arrow::Type::type::STRING;
+      } else if (auto arrayType = type.dyn_cast_or_null<mlir::db::ArrayType>()){
+         typeConstant = arrow::Type::type::STRING;
       } else if (auto dateType = type.dyn_cast_or_null<mlir::db::DateType>()) {
          if (dateType.getUnit() == mlir::db::DateUnitAttr::day) {
             typeConstant = arrow::Type::type::DATE32;
@@ -718,6 +800,16 @@ class ConstantLowering : public OpConversionPattern<mlir::db::ConstantOp> {
          parseArg = floatAttr.getValueAsDouble();
       } else if (auto stringAttr = constantOp.getValue().dyn_cast_or_null<StringAttr>()) {
          parseArg = stringAttr.str();
+      } else if (auto arrayAttr = constantOp.getValue().dyn_cast_or_null<ArrayAttr>()) {
+         std::string result = "";
+         for (size_t index = 0; index < arrayAttr.size(); index++) {
+            if (auto value = arrayAttr[index].dyn_cast_or_null<StringAttr>()) {
+               result += value.str();
+            } else if (auto value = arrayAttr[index].dyn_cast_or_null<mlir::tuples::ColumnRefAttr>()) {
+               auto test = 9;
+            }
+         }
+         parseArg = result;
       } else {
          return failure();
       }
@@ -738,6 +830,10 @@ class ConstantLowering : public OpConversionPattern<mlir::db::ConstantOp> {
       } else if (type.isa<mlir::db::StringType>()) {
          std::string str = std::get<std::string>(parseResult);
 
+         rewriter.replaceOpWithNewOp<mlir::util::CreateConstVarLen>(constantOp, mlir::util::VarLen32Type::get(rewriter.getContext()), rewriter.getStringAttr(str));
+         return success();
+      } else if (type.isa<mlir::db::ArrayType>()){
+         std::string str = std::get<std::string>(parseResult);
          rewriter.replaceOpWithNewOp<mlir::util::CreateConstVarLen>(constantOp, mlir::util::VarLen32Type::get(rewriter.getContext()), rewriter.getStringAttr(str));
          return success();
       } else {
@@ -1085,6 +1181,9 @@ void DBToStdLoweringPass::runOnOperation() {
    typeConverter.addConversion([&](::mlir::db::StringType t) {
       return mlir::util::VarLen32Type::get(ctxt);
    });
+   typeConverter.addConversion([&](::mlir::db::ArrayType t) {
+      return mlir::util::VarLen32Type::get(ctxt);
+   });
    typeConverter.addConversion([&](::mlir::db::TimestampType t) {
       return mlir::IntegerType::get(ctxt, 64);
    });
@@ -1179,6 +1278,7 @@ void DBToStdLoweringPass::runOnOperation() {
    patterns.insert<StringCmpOpLowering>(typeConverter, ctxt);
    patterns.insert<CharCmpOpLowering>(typeConverter, ctxt);
    patterns.insert<StringCastOpLowering>(typeConverter, ctxt);
+   patterns.insert<ArrayCastOpLowering>(typeConverter, ctxt);
    patterns.insert<RuntimeCallLowering>(typeConverter, ctxt);
    patterns.insert<CmpOpLowering>(typeConverter, ctxt);
    patterns.insert<BetweenLowering>(typeConverter, ctxt);

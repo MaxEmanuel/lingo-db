@@ -99,6 +99,8 @@ std::unique_ptr<support::eval::expr> mlir::relalg::buildEvalExpr(mlir::Value val
          }
       } else if (auto stringType = type.dyn_cast_or_null<mlir::db::StringType>()) {
          typeConstant = arrow::Type::type::STRING;
+      } else if (auto stringType = type.dyn_cast_or_null<mlir::db::ArrayType>()) {
+         typeConstant = arrow::Type::type::STRING;
       } else if (auto dateType = type.dyn_cast_or_null<mlir::db::DateType>()) {
          if (dateType.getUnit() == mlir::db::DateUnitAttr::day) {
             typeConstant = arrow::Type::type::DATE32;

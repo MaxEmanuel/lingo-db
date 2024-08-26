@@ -59,6 +59,7 @@ enum class ExpressionType {
    OPERATOR_MINUS,
    OPERATOR_MULTIPLY,
    OPERATOR_DIVIDE,
+   OPERATOR_SPECIAL_MULTIPLY,
    OPERATOR_CONCAT,
    OPERATOR_MOD,
    OPERATOR_CAST,
@@ -141,6 +142,15 @@ struct SQLTypeInference {
       bool floatPresent = left.isa<mlir::FloatType>() || right.isa<mlir::FloatType>();
       bool decimalPresent = left.isa<mlir::db::DecimalType>() || right.isa<mlir::db::DecimalType>();
       bool datePresent = left.isa<mlir::db::DateType>() || right.isa<mlir::db::DateType>();
+      bool arrayPresent = left.isa<mlir::db::ArrayType>() || right.isa<mlir::db::ArrayType>();
+      if (arrayPresent) {
+         if (auto leftType = left.dyn_cast_or_null<mlir::db::ArrayType>()){
+            return mlir::db::ArrayType::get(left.getContext(), leftType.getDimensions(), leftType.getType());
+         } else {
+            auto rightType = right.dyn_cast_or_null<mlir::db::ArrayType>();
+            return mlir::db::ArrayType::get(right.getContext(), rightType.getDimensions(), rightType.getType());
+         }
+      }
       if (datePresent) return getHigherDateType(left, right);
       if (stringPresent) return mlir::db::StringType::get(left.getContext());
       if (charPresent) return left == right ? left : mlir::db::StringType::get(left.getContext());
@@ -191,6 +201,15 @@ struct SQLTypeInference {
          return toCommonBaseTypes(builder, values);
       }
    }
+
+   static mlir::Type getType(mlir::Value value) {
+      auto type = value.getType();
+      if (auto nullable = value.getType().dyn_cast_or_null<mlir::db::NullableType>()){
+         type = nullable.getType();
+      }
+      return type;
+   }
+   
 };
 #define T_FakeNode T_TidScan
 struct FakeNode : Node {
@@ -278,11 +297,14 @@ struct Parser {
    //translate target list in selection and also consider aggregation and groupby
    std::pair<mlir::Value, TargetInfo> translateSelectionTargetList(mlir::OpBuilder& builder, List* groupBy, Node* having, List* targetList, List* sortClause, List* distinctClause, mlir::Value tree, TranslationContext& context, ResolverScope& scope);
 
+   //translate update statement
+   void translateUpdateStmt(mlir::OpBuilder& builder, UpdateStmt* stmt);
+
    //translate insert statement
    void translateInsertStmt(mlir::OpBuilder& builder, InsertStmt* stmt);
 
    //creates a column type from the given information
-   runtime::ColumnType createColumnType(std::string datatypeName, bool isNull, std::vector<std::variant<size_t, std::string>> typeModifiers);
+   runtime::ColumnType createColumnType(std::string datatypeName, bool isNull, std::vector<std::variant<size_t, std::string>> typeModifiers, List* arrayBounds);
 
    //translate a column definition in a create statment
    std::pair<std::string, std::shared_ptr<runtime::ColumnMetaData>> translateColumnDef(ColumnDef* columnDef);
@@ -331,6 +353,34 @@ struct Parser {
 
    //translate a complete from clause into a single value of type tuple stream (connect single items with cross-products)
    mlir::Value translateFromClause(mlir::OpBuilder& builder, SelectStmt* stmt, TranslationContext& context, ResolverScope& scope);
+
+   /**
+    * This funtion translates an indirection-expression into mlir operations. Indirection expressions could be the following operations:
+    * Subscript operator, e.g. array[0] or array[0:9]
+    * Dot operator, e.g. class.method
+    * Star operator, e.g. select * from test_table
+    * @param builder       Object which is used to be able of creating mlir operations
+    * @param context       ??
+    * @param indirections  A list of nodes which represents the different used indirection-operators
+    * @param data          Object which represents the column definition
+    */
+   mlir::Value translateIndirection(mlir::OpBuilder& builder, TranslationContext& context, List* indirections, mlir::Value data);
+
+   /**
+    * This function translates an array expression (```T_A_ArrayExpr``` -> ```mlir::Value```) into a sequence of mlir operations. Therefore it will
+    * extract every element stored in the given data node.
+    * @param builder       Object which is used to be able of creating mlir operations
+    * @param context       ???
+    * @param data          The node containing array elements
+    * @returns             The array as a mlir::Value (e.g. '{1,2,4}') 
+    * @note                Only the following ```T_A_Const``` types are supported: ```T_Integer```, ```T_Float```, ```T_String``` and ```T_Null``` .
+    *                      Otherwise an ```std::runtime_error``` will be thrown.
+    * @note                If the type of the given ```Node*``` is not ```T_A_Const```, ```T_A_ArrayExpr``` or ```T_ColumnRef``` an 
+    *                      ```std::runtime_error``` will be thrown.
+    */
+   mlir::Value translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, Node* data);
+
+   void translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, std::vector<mlir::Attribute>& list, Node* data);
 
    //translate list of constant values into relalg::ConstRelationOp
    std::pair<mlir::Value, TargetInfo> translateConstRelation(List* valuesLists, mlir::OpBuilder& builder);

@@ -96,6 +96,14 @@ void runtime::DumpRuntime::dumpString(bool null, runtime::VarLen32 string) {
       std::cout << "string(\"" << string.str() << "\")" << std::endl;
    }
 }
+
+void runtime::DumpRuntime::dumpArray(bool null, runtime::VarLen32 array) {
+   if (null) {
+      std::cout << "array(NULL)" << std::endl;
+   } else {
+      std::cout << "array(\"" << array.str() << "\")" << std::endl;
+   }
+}
 void runtime::DumpRuntime::dumpChar(bool null, uint64_t val, size_t bytes) {
    std::cout << "char<" << bytes << ">";
    if (null) {

@@ -7,6 +7,7 @@
 #include "runtime-defs/FloatRuntime.h"
 #include "runtime-defs/IntegerRuntime.h"
 #include "runtime-defs/StringRuntime.h"
+#include "runtime-defs/ArrayRuntime.h"
 #include "runtime-defs/Timing.h"
 #include "runtime/DateRuntime.h"
 
@@ -192,6 +193,8 @@ mlir::Value dumpValuesImpl(mlir::OpBuilder& rewriter, mlir::ValueRange loweredAr
       rt::DumpRuntime::dumpFloat(rewriter, loc)({isNull, val});
    } else if (baseType.isa<mlir::db::StringType>()) {
       rt::DumpRuntime::dumpString(rewriter, loc)({isNull, val});
+   } else if (baseType.isa<mlir::db::ArrayType>()) {
+      rt::DumpRuntime::dumpArray(rewriter, loc)({isNull, val});
    } else if (auto charType = baseType.dyn_cast_or_null<mlir::db::CharType>()) {
       Value numBytes = rewriter.create<arith::ConstantOp>(loc, rewriter.getI64IntegerAttr(charType.getBytes()));
       if (charType.getBytes() < 5) {
@@ -245,12 +248,29 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    auto resTypeIsF64 = [](mlir::Type t, mlir::TypeRange) { return t.isF64(); };
    auto resTypeIsBool = [](mlir::Type t, mlir::TypeRange) { return t.isInteger(1); };
    auto resTypeIsIndex = [](mlir::Type t, mlir::TypeRange) { return t.isIndex(); };
+   auto resTypeIsAnyArray = [](mlir::Type t, mlir::TypeRange) { return t.isa<mlir::db::ArrayType>(); };
+   auto resTypeIsAnyString = [](mlir::Type t, mlir::TypeRange) { return t.isa<mlir::db::StringType>(); };
    builtinRegistry->add("Substring").implementedAs(rt::StringRuntime::substr).matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::intLike, RuntimeFunction::intLike}, RuntimeFunction::matchesArgument());
    builtinRegistry->add("StringFind").implementedAs(rt::StringRuntime::findNext).matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::stringLike, RuntimeFunction::intLike}, resTypeIsI64);
    builtinRegistry->add("StringLength").implementedAs(rt::StringRuntime::len).matchesTypes({RuntimeFunction::stringLike}, resTypeIsI64);
 
    builtinRegistry->add("ToUpper").implementedAs(rt::StringRuntime::toUpper).matchesTypes({RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
    builtinRegistry->add("Concatenate").implementedAs(rt::StringRuntime::concat).matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
+   builtinRegistry->add("ConcatenateArray").implementedAs(rt::ArrayRuntime::concat).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsAnyArray).needsWrapping();
+   builtinRegistry->add("ArrayRange").implementedAs(rt::ArrayRuntime::getRange).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::intLike, RuntimeFunction::intLike, RuntimeFunction::intLike}, RuntimeFunction::matchesArgument());
+   builtinRegistry->add("ArrayElement").implementedAs(rt::ArrayRuntime::getEntry).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayDimensions").implementedAs(rt::ArrayRuntime::getDimensions).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsAnyString).needsWrapping();
+   builtinRegistry->add("ArrayCardinality").implementedAs(rt::ArrayRuntime::getCardinality).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsI64).needsWrapping();
+   builtinRegistry->add("ArrayTranspose").implementedAs(rt::ArrayRuntime::transpose).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
+
+   builtinRegistry->add("ArrayAdd").implementedAs(rt::ArrayRuntime::add).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsAnyArray).needsWrapping();
+   builtinRegistry->add("ArraySub").implementedAs(rt::ArrayRuntime::sub).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
+   builtinRegistry->add("ArrayEWMul").implementedAs(rt::ArrayRuntime::mulEW).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
+   builtinRegistry->add("ArrayMatrixMul").implementedAs(rt::ArrayRuntime::matrixMul).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsAnyArray).needsWrapping();
+   builtinRegistry->add("ArrayScalarMultInt").implementedAs(rt::ArrayRuntime::scalarMultInt).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::anyNumber}, RuntimeFunction::matchesArgument());
+   builtinRegistry->add("ArrayScalarMultFloat").implementedAs(rt::ArrayRuntime::scalarMultFloat).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::float64}, RuntimeFunction::matchesArgument());
+
+   builtinRegistry->add("ArrayDimChange").implementedAs(rt::ArrayRuntime::arrayToArray).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsAnyArray).needsWrapping();
 
    builtinRegistry->add("Like").implementedAs(rt::StringRuntime::like).matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::stringLike}, resTypeIsBool);
    builtinRegistry->add("ConstLike").matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::stringLike}, resTypeIsBool).implementedAs(constLikeImpl).needsWrapping();

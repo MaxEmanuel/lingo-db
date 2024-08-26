@@ -128,6 +128,15 @@ def DB_StringType : DB_Type<"String","string"> {
     }];
 }
 
+def DB_ArrayType : DB_Type<"Array", "array"> {
+    let summary = "array";
+    let description = [{
+        An array for a specific type with fixed number of dimensions
+    }];
+    let parameters = (ins "int":$dimensions, "std::string":$type);
+    let assemblyFormat = "`<` $dimensions `,` $type `>` ";
+}
+
 def AnyBool: AnyTypeOf<[I1,NullableType]>;
 def NullableDBType: AnyTypeOf<[AnyType,NullableType]>;
 

@@ -1,6 +1,7 @@
 #include "frontend/SQL/Parser.h"
 #include "mlir/Dialect/SubOperator/SubOperatorDialect.h"
 #include "mlir/Dialect/SubOperator/SubOperatorOps.h"
+#include "mlir-support/typeHelper.h"
 #include <regex>
 namespace {
 
@@ -149,6 +150,7 @@ frontend::sql::ExpressionType frontend::sql::stringToExpressionType(const std::s
       .Case("+", ExpressionType::OPERATOR_PLUS)
       .Case("-", ExpressionType::OPERATOR_MINUS)
       .Case("*", ExpressionType::OPERATOR_MULTIPLY)
+      .Case("**", ExpressionType::OPERATOR_SPECIAL_MULTIPLY)
       .Case("/", ExpressionType::OPERATOR_DIVIDE)
       .Case("||", ExpressionType::OPERATOR_CONCAT)
       .Case("%", ExpressionType::OPERATOR_MOD)
@@ -357,6 +359,50 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       auto packed = builder.create<mlir::util::PackOp>(loc, values);
       return builder.create<mlir::db::Hash>(loc, builder.getIndexType(), packed);
    }
+   if (funcName == "array_dims") {
+      auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
+      auto array = TypeFunctions::castToArrayIfNecessary(builder, val);
+      auto result = builder.create<mlir::db::RuntimeCall>(loc, mlir::db::StringType::get(builder.getContext()), "ArrayDimensions", mlir::ValueRange({array.array, array.dimension, array.type})).getRes();
+      if (val.getType().isa<mlir::db::NullableType>()) {
+         result.setType(mlir::db::NullableType::get(mlir::db::StringType::get(builder.getContext())));
+      } else {
+         result.setType(mlir::db::StringType::get(builder.getContext()));
+      }
+      return result;
+   }
+   if (funcName == "cardinality") {
+      auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
+      auto array = TypeFunctions::castToArrayIfNecessary(builder, val);
+      auto result = builder.create<mlir::db::RuntimeCall>(loc, mlir::IntegerType::get(builder.getContext(), 64), "ArrayCardinality", mlir::ValueRange({array.array, array.dimension, array.type})).getRes();
+      if (val.getType().isa<mlir::db::NullableType>()) {
+         result.setType(mlir::db::NullableType::get(mlir::IntegerType::get(builder.getContext(), 64)));
+      } else {
+         result.setType(mlir::IntegerType::get(builder.getContext(), 64));
+      }
+      return result;
+   }
+   if (funcName == "transpose") {
+      auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
+      auto array = TypeFunctions::castToArrayIfNecessary(builder, val);
+      return builder.create<mlir::db::RuntimeCall>(loc, array.array.getType(), "ArrayTranspose", mlir::ValueRange({array.array, array.dimension, array.type})).getRes();
+   }
+   if (funcName == "array_prepand") {
+      auto left = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
+      auto right = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->tail->data.ptr_value), context);
+      auto array = TypeFunctions::castToArrayIfNecessary(builder, right);
+      auto arrayData = TypeFunctions::castToArrayIfNecessary(builder, left, array.array);
+      auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(arrayData).array, std::get<1>(arrayData).array, false);
+      return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ConcatenateArray", mlir::ValueRange({std::get<0>(arrayData).array, std::get<0>(arrayData).dimension, std::get<0>(arrayData).type, std::get<1>(arrayData).array, std::get<1>(arrayData).dimension, std::get<1>(arrayData).type})).getRes();
+   }
+   if (funcName == "array_append") {
+      auto left = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
+      auto right = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->tail->data.ptr_value), context);
+      auto array = TypeFunctions::castToArrayIfNecessary(builder, left);
+      auto arrayData = TypeFunctions::castToArrayIfNecessary(builder, array.array, right);
+      auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(arrayData).array, std::get<1>(arrayData).array);
+      return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ConcatenateArray", mlir::ValueRange({std::get<0>(arrayData).array, std::get<0>(arrayData).dimension, std::get<0>(arrayData).type, std::get<1>(arrayData).array, std::get<1>(arrayData).dimension, std::get<1>(arrayData).type})).getRes();
+   }
+
   throw std::runtime_error("could not translate func call");
    return mlir::Value();
 }
@@ -419,6 +465,15 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                values.push_back(value);
                break;
             }
+            case T_A_ArrayExpr: {
+               auto* arrayExpr = reinterpret_cast<Node*>(expr);
+               //mlir::Value array = translateArrayToString(builder, builder.getContext(), arrayExpr);
+               //array.getValue();
+               //auto test = array.getType().dyn_cast<mlir::db::StringType>();
+               types.push_back(mlir::db::StringType::get(builder.getContext()));
+               //values.push_back(builder.getStringAttr(array));
+               break;
+            }
             default: {
               throw std::runtime_error("could not handle values content");
             }
@@ -458,14 +513,57 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          if (getBaseType(left.getType()).isa<mlir::db::DateType>() && getBaseType(right.getType()).isa<mlir::db::IntervalType>()) {
             return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "DateAdd", mlir::ValueRange({left, right})).getRes();
          }
+         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() || getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            auto data = TypeFunctions::castToArrayIfNecessary(builder, left, right);
+            auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array);
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayAdd", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
+         }
          return builder.create<mlir::db::AddOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
       case ExpressionType::OPERATOR_MINUS:
          if (left.getType().isa<mlir::db::DateType>() && right.getType().isa<mlir::db::IntervalType>()) {
             return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "DateSubtract", mlir::ValueRange({left, right})).getRes();
          }
+         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() || getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            auto data = TypeFunctions::castToArrayIfNecessary(builder, left, right);
+            auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array);
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArraySub", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
+         }
          return builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
       case ExpressionType::OPERATOR_MULTIPLY:
+         // Matrix-Multiplication if both values are of type array or at least one of them, whereby the other one could only be a string
+         if ((getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) ||
+             (getBaseType(left.getType()).isa<mlir::db::StringType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) ||
+             (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::StringType>())) {
+            auto data = TypeFunctions::castToArrayIfNecessary(builder, left, right);
+            auto rightRawData = TypeFunctions::extractArrayRawData(builder, std::get<1>(data).array);
+            auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array, false);
+            auto result = builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayMatrixMul", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
+            return result;
+         // Scalar-Multiplication if right value is a primitve numeric type
+         } else if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && (getBaseType(right.getType()).isa<mlir::IntegerType>() || getBaseType(right.getType()).isa<mlir::Float32Type>() || getBaseType(right.getType()).isa<mlir::Float64Type>())) {
+            auto array = TypeFunctions::extractArrayDataDB(builder, left);
+            if (getBaseType(right.getType()).isa<mlir::IntegerType>()) {
+               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultInt", mlir::ValueRange({left, array.dimension, array.type, right})).getRes();
+            } else {
+               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultFloat", mlir::ValueRange({left, array.dimension, array.type, right})).getRes();
+            }
+         // Scalar-Multiplication if left value is a primitve numeric type
+         } else if ((getBaseType(left.getType()).isa<mlir::IntegerType>() || getBaseType(left.getType()).isa<mlir::Float32Type>() || getBaseType(left.getType()).isa<mlir::Float64Type>()) && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            auto array = TypeFunctions::extractArrayDataDB(builder, right);
+            if (getBaseType(left.getType()).isa<mlir::IntegerType>()) {
+               return builder.create<mlir::db::RuntimeCall>(loc, right.getType(), "ArrayScalarMultInt", mlir::ValueRange({right, array.dimension, array.type, left})).getRes();
+            } else {
+               return builder.create<mlir::db::RuntimeCall>(loc, right.getType(), "ArrayScalarMultFloat", mlir::ValueRange({right, array.dimension, array.type, left})).getRes();
+            }
+         }
          return builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonNumber(builder, {left, right}));
+      case ExpressionType::OPERATOR_SPECIAL_MULTIPLY:
+         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() || getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            auto data = TypeFunctions::castToArrayIfNecessary(builder, left, right);
+            auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array);
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayEWMul", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
+         }
+         return mlir::Value();
       case ExpressionType::OPERATOR_DIVIDE:
          return builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonNumber(builder, {left, right}));
       case ExpressionType::OPERATOR_MOD:
@@ -498,10 +596,20 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          return opType == ExpressionType::COMPARE_NOT_LIKE ? builder.create<mlir::db::NotOp>(loc, like) : like;
       }
       case ExpressionType::OPERATOR_CONCAT: {
-         auto leftString = SQLTypeInference::castValueToType(builder, left, mlir::db::StringType::get(builder.getContext()));
-         auto rightString = SQLTypeInference::castValueToType(builder, right, mlir::db::StringType::get(builder.getContext()));
-         mlir::Type resType = right.getType().isa<mlir::db::NullableType>() ? rightString.getType() : leftString.getType();
-         return builder.create<mlir::db::RuntimeCall>(loc, resType, "Concatenate", mlir::ValueRange({leftString, rightString})).getRes();
+         auto leftType = SQLTypeInference::getType(left);
+         auto rightType = SQLTypeInference::getType(right);
+         auto baseType = SQLTypeInference::getCommonBaseType(mlir::TypeRange{leftType, rightType});
+         // Look if one value is an array, then call 'ConcatenateArray', otherwise 'Concatenate'
+         if (baseType.isa<mlir::db::ArrayType>()) {
+            auto data = TypeFunctions::castToArrayIfNecessary(builder, left, right);
+            auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array);
+            return builder.create<mlir::db::RuntimeCall>(loc,  returnType, "ConcatenateArray", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
+         }
+
+         auto leftValue = SQLTypeInference::castValueToType(builder, left, mlir::db::StringType::get(builder.getContext()));
+         auto rightValue = SQLTypeInference::castValueToType(builder, right, mlir::db::StringType::get(builder.getContext()));
+         mlir::Type resType = right.getType().isa<mlir::db::NullableType>() ? rightValue.getType() : leftValue.getType();
+         return builder.create<mlir::db::RuntimeCall>(loc, resType, "Concatenate", mlir::ValueRange({leftValue, rightValue})).getRes();
       }
       default:
         throw std::runtime_error("unsupported expression type");
@@ -967,7 +1075,7 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
                auto* castNode = reinterpret_cast<TypeCast*>(node);
                auto* typeName = reinterpret_cast<value*>(castNode->type_name_->names_->tail->data.ptr_value)->val_.str_;
                auto toCast = translateExpression(builder, castNode->arg_, context);
-               auto columnType = createColumnType(typeName, false, getTypeModList(castNode->type_name_->typmods_));
+               auto columnType = createColumnType(typeName, false, getTypeModList(castNode->type_name_->typmods_), castNode->type_name_->array_bounds_);
                auto resType = createTypeFromColumnType(builder.getContext(), columnType);
                if (auto constOp = mlir::dyn_cast_or_null<mlir::db::ConstantOp>(toCast.getDefiningOp())) {
                   if (auto intervalType = resType.dyn_cast<mlir::db::IntervalType>()) {
@@ -1140,6 +1248,18 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
          auto* coalesceExpr = reinterpret_cast<AExpr*>(node);
          return translateCoalesceExpression(builder, context, reinterpret_cast<List*>(coalesceExpr->lexpr_)->head);
       }
+      case T_A_Indirection: {
+         auto* indirectionExpr = reinterpret_cast<A_Indirection*>(node);
+         auto* indirections = reinterpret_cast<List*>(indirectionExpr->indirection);
+         mlir::Value data = translateExpression(builder, reinterpret_cast<Node*>(indirectionExpr->arg), context, true);
+         return translateIndirection(builder, context, indirections, data);
+      }
+      case T_A_ArrayExpr: {
+         std::vector<mlir::Attribute> data;
+         translateArrayToString(builder, context, data, node);
+         //auto test = builder.getArrayAttr(data);
+         return builder.create<mlir::db::ConstantOp>(loc, mlir::db::ArrayType::get(builder.getContext(), 1, "int32[]"), builder.getArrayAttr(data));
+      }
       default: {
         throw std::runtime_error("unsupported expression type");
       }
@@ -1147,6 +1267,179 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
   throw std::runtime_error("should never happen");
    return mlir::Value();
 }
+
+mlir::Value frontend::sql::Parser::translateIndirection(mlir::OpBuilder& builder, TranslationContext& context, List* indirections, mlir::Value data){
+  auto* listCell = indirections->head;
+  // Only used for searching a slice operator
+  auto* searchCell = listCell;
+  mlir::Value result;
+  auto columnType = SQLTypeInference::getType(data);
+  // Value defines if there is a slice operator
+  bool isSlice = false;
+  // Loop which checks if any T_A_Indices is a slice operator
+  while (searchCell && !isSlice) {
+     auto* node = reinterpret_cast<Node*>(searchCell->data.ptr_value);
+     if (node->type == T_A_Indices) {
+        auto* indicesExpr = reinterpret_cast<A_Indices*>(node);
+        auto* leftNode = reinterpret_cast<Node*>(indicesExpr->lidx);
+        if (leftNode) {
+           isSlice = true;
+        }
+     }
+     searchCell = searchCell->next;
+  }
+  // A value which counts how many times the T_A_Indices expression occurs
+  int dimensionCounter = 0;
+  // Iterate over each subscript operator
+  while (listCell) {
+     auto* node = reinterpret_cast<Node*>(listCell->data.ptr_value);
+     // Proof which type this subscript operator has
+     switch (node->type) {
+        // E.g. array[0] or array[0:9]
+        case T_A_Indices: {
+           // Get all received informations 
+           auto* indicesExpr = reinterpret_cast<A_Indices*>(node);
+           // leftNode = represents start index
+           auto* leftNode = reinterpret_cast<Node*>(indicesExpr->lidx);
+           // rightNode = represents end index or single index
+           auto* rightNode = reinterpret_cast<Node*>(indicesExpr->uidx);
+           // Proof which columnType is used for the subscript operator
+           if (columnType.isa<mlir::db::ArrayType>()){
+              // Get all informations from the columnType
+              auto array = columnType.dyn_cast<mlir::db::ArrayType>();
+              mlir::Value type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(array.getType()));
+              mlir::Value rightIndex = translateExpression(builder, rightNode, context, true);
+              // It is possible that there are more than 1 subscript operater, e.g. array[0][0]. Operators needs to be nested
+              mlir::Value usedArray = listCell == indirections->head ? data : result;
+              // If a range is requested or a single entry, call the respective function
+              if (isSlice) {
+                 mlir::Value leftIndex;
+                 // Create left index if its not there, otherwise use defined one
+                 if (leftNode) {
+                    leftIndex = translateExpression(builder, leftNode, context, true);
+                 } else {
+                    leftIndex = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), 1));
+                 }
+                 mlir::Value arrayDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), array.getDimensions()));
+                 mlir::Value operaterDimension = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), array.getDimensions() - dimensionCounter));
+                 result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  data.getType(), "ArrayRange", mlir::ValueRange({usedArray, arrayDimension, type, leftIndex, rightIndex, operaterDimension})).getRes();
+              } else {
+                 auto currentDimension = array.getDimensions() - dimensionCounter;
+                 mlir::Value dimensionValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getIntegerAttr(builder.getI64Type(), currentDimension));
+                 result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(),  mlir::db::ArrayType::get(builder.getContext(), currentDimension - 1, array.getType()), "ArrayElement", mlir::ValueRange({usedArray, dimensionValue, type, rightIndex})).getRes();
+                 // Set the new type of the array. It can be possible that after the matrix multiplication the dimension value changes
+                 if (data.getType().isa<mlir::db::NullableType>()) {
+                    result.setType(mlir::db::NullableType::get(mlir::db::ArrayType::get(builder.getContext(), currentDimension - 1, array.getType())));
+                 } else {
+                    result.setType(mlir::db::ArrayType::get(builder.getContext(), currentDimension - 1, array.getType()));
+                 }
+              }
+              dimensionCounter++;
+           } else {
+              throw std::runtime_error("Subscript operators is currently only available for arrays");
+           }
+           break;
+        }
+        default: {
+           throw std::runtime_error("An entered subscript operator is not supported");
+        }
+     }
+     listCell = listCell->next;
+  }
+  return result;
+}
+
+mlir::Value frontend::sql::Parser::translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, Node* data) {
+   // Proof is element is single value
+   if (data->type == T_A_Const) {
+       auto constVal = reinterpret_cast<A_Const*>(data)->val_;
+         switch (constVal.type_) {
+            case T_Integer: return builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(std::to_string(constVal.val_.ival_)));
+            case T_Float:
+            case T_String: return builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(constVal.val_.str_));
+            case T_Null: return builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("null"));
+            default:throw std::runtime_error("unsupported value type for array construction");
+         }
+   } else if (data->type == T_ColumnRef) {
+      const auto* attr = resolveColRef(data, context);
+      mlir::Value result = builder.create<mlir::tuples::GetColumnOp>(builder.getUnknownLoc(), attr->type, attrManager.createRef(attr), context.getCurrentTuple());
+      return SQLTypeInference::castValueToType(builder, result, mlir::db::StringType::get(builder.getContext()));
+   // Proof if element is a list of elements
+   } else if (data->type == T_A_ArrayExpr) {
+      auto* array = reinterpret_cast<A_ArrayExpr*>(data);
+      // Return null if list is empty
+      if (!array->elements) {
+         return builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("null"));
+      }
+      // Iterate over each element in list and extract its value
+      mlir::Value result = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("{"));
+      auto* cell = array->elements->head;
+      while (cell) {
+         auto* element = reinterpret_cast<Node*>(cell->data.ptr_value);
+         mlir::Value subResult = translateArrayToString(builder, context, element);
+         result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), result.getType(), "Concatenate", mlir::ValueRange({result, subResult})).getRes();
+         if (cell->next != nullptr) {
+            mlir::Value comma = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(","));
+            result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), result.getType(), "Concatenate", mlir::ValueRange({result, comma})).getRes();
+         }
+         cell = cell->next;
+      }
+      mlir::Value close = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("}"));
+      result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), result.getType(), "Concatenate", mlir::ValueRange({result, close})).getRes();
+      return result;
+   }
+   throw std::runtime_error("unsupported expression type for array construction");
+}
+
+void frontend::sql::Parser::translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, std::vector<mlir::Attribute>& list, Node* data) {
+   // Proof is element is single value
+   if (data->type == T_A_Const) {
+       auto constVal = reinterpret_cast<A_Const*>(data)->val_;
+         switch (constVal.type_) {
+            case T_Integer: {
+               list.push_back(builder.getStringAttr(std::to_string(constVal.val_.ival_)));
+               return;
+            }
+            case T_Float:
+            case T_String: {
+               list.push_back(builder.getStringAttr(constVal.val_.str_));
+               return;
+            }
+            case T_Null: {
+               list.push_back(builder.getStringAttr("null"));
+               return;
+            }
+            default:throw std::runtime_error("unsupported value type for array construction");
+         }
+   } else if (data->type == T_ColumnRef) {
+      const auto* attr = resolveColRef(data, context);
+      list.push_back(attrManager.createRef(attr));
+      return;
+   // Proof if element is a list of elements
+   } else if (data->type == T_A_ArrayExpr) {
+      auto* array = reinterpret_cast<A_ArrayExpr*>(data);
+      // Return null if list is empty
+      if (!array->elements) {
+         list.push_back(builder.getStringAttr("null"));
+         return;
+      }
+      // Iterate over each element in list and extract its value
+      list.push_back(builder.getStringAttr("{"));
+      auto* cell = array->elements->head;
+      while (cell) {
+         auto* element = reinterpret_cast<Node*>(cell->data.ptr_value);
+         translateArrayToString(builder, context, list, element);
+         if (cell->next != nullptr) {
+            list.push_back(builder.getStringAttr(","));
+         }
+         cell = cell->next;
+      }
+      list.push_back(builder.getStringAttr("}"));
+      return;
+   }
+   throw std::runtime_error("unsupported expression type for array construction");
+}
+
 void frontend::sql::Parser::translateCreateStatement(mlir::OpBuilder& builder, CreateStmt* statement) {
    RangeVar* relation = statement->relation_;
    std::string tableName = relation->relname_ != nullptr ? relation->relname_ : "";
@@ -1306,6 +1599,10 @@ std::optional<mlir::Value> frontend::sql::Parser::translate(mlir::OpBuilder& bui
             translateInsertStmt(builder, reinterpret_cast<InsertStmt*>(statement));
             break;
          }
+         case T_UpdateStmt: {
+            translateUpdateStmt(builder, reinterpret_cast<UpdateStmt*>(statement));
+            break;
+         }
          default:
            throw std::runtime_error("unsupported statement type");
       }
@@ -1350,8 +1647,7 @@ std::shared_ptr<runtime::TableMetaData> frontend::sql::Parser::translateTableMet
    tableMetaData->setNumRows(0);
    return tableMetaData;
 }
-// This function creates the corresponding columnType object depending on the user input (in CREATE TABLE())
-runtime::ColumnType frontend::sql::Parser::createColumnType(std::string datatypeName, bool isNull, std::vector<std::variant<size_t, std::string>> typeModifiers) {
+runtime::ColumnType frontend::sql::Parser::createColumnType(std::string datatypeName, bool isNull, std::vector<std::variant<size_t, std::string>> typeModifiers, List* arrayBounds) {
    datatypeName = llvm::StringSwitch<std::string>(datatypeName)
                      .Case("bpchar", "char")
                      .Case("varchar", "string")
@@ -1409,6 +1705,21 @@ runtime::ColumnType frontend::sql::Parser::createColumnType(std::string datatype
          typeModifiers.push_back("daytime");
       }
    }
+   // Proof if the entered type is an array
+   if (arrayBounds) {
+      auto dimensions = static_cast<size_t>(arrayBounds->length);
+      // Add some additional information with integer to be able of distinguishing between int32_t and int64_t
+      if (typeModifiers.size() != 0) {
+         auto size = std::get<size_t>(typeModifiers[0]);
+         if (size == 32ull && datatypeName == "int") {
+            datatypeName += "32";
+         } else if (size == 64ull && datatypeName == "int"){
+            datatypeName += "64";
+         }
+      }
+      datatypeName += "[]";
+      typeModifiers.push_back(dimensions);
+   }
    runtime::ColumnType columnType;
    columnType.base = datatypeName;
    columnType.nullable = isNull;
@@ -1445,7 +1756,7 @@ std::pair<std::string, std::shared_ptr<runtime::ColumnMetaData>> frontend::sql::
    }
    std::string datatypeName = reinterpret_cast<value*>(typeName->names_->tail->data.ptr_value)->val_.str_;
    auto columnMetaData = std::make_shared<runtime::ColumnMetaData>();
-   columnMetaData->setColumnType(createColumnType(datatypeName, !isNotNull, typeModifiers));
+   columnMetaData->setColumnType(createColumnType(datatypeName, !isNotNull, typeModifiers, typeName->array_bounds_));
    return {name, columnMetaData};
 }
 std::vector<std::variant<size_t, std::string>> frontend::sql::Parser::getTypeModList(List* typeMods) {
@@ -1475,6 +1786,69 @@ std::vector<std::variant<size_t, std::string>> frontend::sql::Parser::getTypeMod
    }
    return typeModifiers;
 }
+void frontend::sql::Parser::translateUpdateStmt(mlir::OpBuilder& builder, UpdateStmt* stmt) {
+   TranslationContext context;
+   
+   // Get table name and table
+   RangeVar* relation = stmt->relation_;
+   std::string tableName = relation->relname_ != nullptr ? relation->relname_ : "";
+   auto rel = catalog.findRelation(tableName);
+   // Proof if table exist
+   if (!rel) {
+     throw std::runtime_error("Sorry, but the given table does not exist");
+   }
+
+   // Get all column names which should be updated
+   std::vector<std::string> columnsToUpdate;
+   // Get all new values
+   std::vector<mlir::Value> updates;
+   if (stmt->target_list_) {
+      for (auto* cell = stmt->target_list_->head; cell != nullptr; cell = cell->next) {
+         auto* target = reinterpret_cast<ResTarget*>(cell->data.ptr_value);
+         columnsToUpdate.emplace_back(target->name_);
+         mlir::Value update = translateExpression(builder, target->val_, context);
+         updates.emplace_back(update);
+      }
+   } else {
+      throw std::runtime_error("Please enter a column name(s) with its updated value (SET statement missing)");
+   }
+
+   std::vector<mlir::Value> valuesToCast;
+   std::unordered_map<std::string, mlir::Value> columnNameToUpdate;
+
+   // Prepare an empty list of operations (which needs to be filled) which at the end should execute the given query (including the generated code)
+   mlir::Block* block = new mlir::Block;
+   mlir::OpBuilder mapBuilder(builder.getContext());
+   block->addArgument(mlir::tuples::TupleType::get(builder.getContext()), builder.getUnknownLoc());
+   auto tupleScope = context.createTupleScope();
+   mlir::Value tuple = block->getArgument(0);
+   context.setCurrentTuple(tuple);
+
+   mapBuilder.setInsertionPointToStart(block);
+
+   auto tableMetaData = rel->getMetaData();
+   std::vector<mlir::Attribute> colMemberNames;
+   std::vector<mlir::Attribute> orderedColNamesAttrs;
+   std::vector<mlir::Attribute> orderedColAttrs;
+   std::vector<mlir::Attribute> colTypes;
+   auto& memberManager = builder.getContext()->getLoadedDialect<mlir::subop::SubOperatorDialect>()->getMemberManager();
+
+   for (auto tableColumnName : tableMetaData->getOrderedColumns()) {
+      for (auto setColumnName : columnsToUpdate) {
+         if (tableColumnName == setColumnName) {
+            colMemberNames.push_back(builder.getStringAttr(memberManager.getUniqueMember(tableColumnName)));
+            orderedColNamesAttrs.push_back(builder.getStringAttr(setColumnName));
+           //orderedColAttrs.push_back(insertedCols.at(x));
+            //colTypes.push_back(mlir::TypeAttr::get(insertedCols.at(x).cast<mlir::tuples::ColumnRefAttr>().getColumn().type));
+         }
+      }
+   
+   }
+
+   // auto colRef = attrManager.createRef(&colDef.getColumn());
+
+}
+
 void frontend::sql::Parser::translateInsertStmt(mlir::OpBuilder& builder, InsertStmt* stmt) {
    assert(stmt->with_clause_ == nullptr);
    assert(stmt->on_conflict_clause_ == nullptr);
@@ -2521,6 +2895,10 @@ mlir::Type frontend::sql::Parser::createBaseTypeFromColumnType(mlir::MLIRContext
    if (colType.base == "decimal") return mlir::db::DecimalType::get(context, asInt(colType.modifiers.at(0)), asInt(colType.modifiers.at(1)));
    if (colType.base == "interval") return mlir::db::IntervalType::get(context, std::get<std::string>(colType.modifiers.at(0)) == "daytime" ? mlir::db::IntervalUnitAttr::daytime : mlir::db::IntervalUnitAttr::months);
    if (colType.base == "timestamp") return mlir::db::TimestampType::get(context, mlir::db::TimeUnitAttr::second);
+   if (colType.base.find("[]") != std::string::npos){
+      auto dimensions = asInt(colType.modifiers.at(colType.modifiers.size() - 1));
+      return mlir::db::ArrayType::get(context, dimensions, colType.base);
+   }
    assert(false);
    return mlir::Type();
 }

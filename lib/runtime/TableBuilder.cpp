@@ -45,7 +45,7 @@ class TableBuilder {
          }
       } else if (name == "tfloat") {
          return arrow::float16();
-      } else if (name == "string") {
+      } else if (name == "string" || name == "array") {
          return arrow::utf8();
       } else if (name == "fixed_sized") {
          return arrow::fixed_size_binary(p1);
