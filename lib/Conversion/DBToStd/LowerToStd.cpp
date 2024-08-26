@@ -345,6 +345,10 @@ class ArrayCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
          } else {
             result = rt::ArrayRuntime::doubleToArray(rewriter, loc)({valueToCast, arrayData.dimension})[0];
          } 
+      } else if (scalarSourceType.isa<NoneType>()) {
+         auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
+         result = rt::ArrayRuntime::nullToArray(rewriter, loc)({arrayData.dimension})[0];
+      }
       if (result) {
          rewriter.replaceOp(castOp, result);
          return success();

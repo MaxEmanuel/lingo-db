@@ -393,3 +393,11 @@ runtime::VarLen32 runtime::ArrayRuntime::floatToArray(float value, uint64_t dim)
 runtime::VarLen32 runtime::ArrayRuntime::doubleToArray(double value, uint64_t dim) {
     return runtime::TypeCasts::numericToArrayVarLen(value, dim);
 }
+
+runtime::VarLen32 runtime::ArrayRuntime::nullToArray(uint64_t dim) {
+    std::string result = "null";
+    result = std::string(dim, '{') + result + std::string(dim, '}');
+    char* array = new char[result.length()];           
+    memcpy(array, result.data(), result.length());     
+    return runtime::VarLen32((uint8_t*) array, result.length());
+}
