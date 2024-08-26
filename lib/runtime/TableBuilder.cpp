@@ -43,6 +43,8 @@ class TableBuilder {
             case 32: return arrow::float32();
             case 64: return arrow::float64();
          }
+      } else if (name == "tfloat") {
+         return arrow::float16();
       } else if (name == "string" || name == "array") {
          return arrow::utf8();
       } else if (name == "fixed_sized") {
@@ -113,7 +115,7 @@ class TableBuilder {
       return lowered;
    }
    TableBuilder(std::shared_ptr<arrow::Schema> schema) : schema(schema) {
-      batchBuilder=arrow::RecordBatchBuilder::Make(lowerSchema(schema), arrow::default_memory_pool()).ValueOrDie();
+      batchBuilder = arrow::RecordBatchBuilder::Make(lowerSchema(schema), arrow::default_memory_pool()).ValueOrDie();
    }
    std::shared_ptr<arrow::RecordBatch> convertBatch(std::shared_ptr<arrow::RecordBatch> recordBatch) {
       std::vector<std::shared_ptr<arrow::ArrayData>> columnData;
@@ -125,7 +127,7 @@ class TableBuilder {
    void flushBatch() {
       if (currentBatchSize > 0) {
          std::shared_ptr<arrow::RecordBatch> recordBatch;
-         recordBatch=batchBuilder->Flush(true).ValueOrDie(); //NOLINT (clang-diagnostic-unused-result)
+         recordBatch = batchBuilder->Flush(true).ValueOrDie(); //NOLINT (clang-diagnostic-unused-result)
          currentBatchSize = 0;
          batches.push_back(convertBatch(recordBatch));
       }
@@ -151,6 +153,7 @@ class TableBuilder {
    void addInt16(bool isValid, int16_t);
    void addInt32(bool isValid, int32_t);
    void addInt64(bool isValid, int64_t);
+   void addTFloat(bool isValid, __bfloat16);
    void addFloat32(bool isValid, float);
    void addFloat64(bool isValid, double);
    void addDecimal(bool isValid, __int128);
@@ -185,6 +188,16 @@ void TableBuilder::addBool(bool isValid, bool value) {
       handleStatus(typedBuilder->AppendNull());
    } else {
       handleStatus(typedBuilder->Append(value));
+   }
+}
+
+void TableBuilder::addTFloat(bool isValid, __bfloat16 value) {
+   auto* typedBuilder = getBuilder<arrow::NumericBuilder<arrow::HalfFloatType>>();
+   if (!isValid) {
+      handleStatus(typedBuilder->AppendNull());
+   } else {
+      uint16_t* savedValue = std::bit_cast<uint16_t*>(&value);
+      handleStatus(typedBuilder->Append(*savedValue));
    }
 }
 
@@ -240,16 +253,19 @@ void TableBuilder::nextRow() {
    currentBatchSize++;
 }
 
+// This function enables the insertion of an element to a table with the corresponding datatype
 #define RESULT_TABLE_FORWARD(name, type)                     \
    void runtime::ResultTable::name(bool isValid, type val) { \
       builder->name(isValid, val);                           \
    }
 
+// These statements generates for each datatype the above function
 RESULT_TABLE_FORWARD(addBool, bool);
 RESULT_TABLE_FORWARD(addInt8, int8_t);
 RESULT_TABLE_FORWARD(addInt16, int16_t);
 RESULT_TABLE_FORWARD(addInt32, int32_t);
 RESULT_TABLE_FORWARD(addInt64, int64_t);
+RESULT_TABLE_FORWARD(addTFloat, __bfloat16);
 RESULT_TABLE_FORWARD(addFloat32, float);
 RESULT_TABLE_FORWARD(addFloat64, double);
 RESULT_TABLE_FORWARD(addDecimal, __int128);

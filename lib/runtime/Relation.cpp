@@ -13,6 +13,7 @@
 #include <fstream>
 #include <random>
 #include <ranges>
+#include <iostream>
 namespace {
 /*
  * Create sample from arrow table
@@ -115,6 +116,7 @@ size_t asInt(std::variant<size_t, std::string> intOrStr) {
    }
 }
 
+// This function maps the entered datatype to an arrow-datatype
 std::shared_ptr<arrow::DataType> createDataType(const runtime::ColumnType& columnType) {
    if (columnType.base == "bool") return arrow::boolean();
    if (columnType.base == "int") {
@@ -134,6 +136,9 @@ std::shared_ptr<arrow::DataType> createDataType(const runtime::ColumnType& colum
          case 32: return arrow::float32();
          case 64: return arrow::float64();
       }
+   }
+   if (columnType.base == "tfloat") {
+      return arrow::float16();
    }
    if (columnType.base == "date") {
       return std::get<std::string>(columnType.modifiers.at(0)) == "day" ?

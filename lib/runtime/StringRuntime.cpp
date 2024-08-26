@@ -148,7 +148,7 @@ __int128 runtime::StringRuntime::toDecimal(runtime::VarLen32 string, int32_t req
       arrow::internal::StringFormatter<ARROW_TYPE> formatter;                                                                      \
       uint8_t* data = nullptr;                                                                                                     \
       size_t len = 0;                                                                                                              \
-      arrow::Status status = formatter(value, [&](std::string_view v) {                                                    \
+      arrow::Status status = formatter(value, [&](std::string_view v) {                                                            \
          len = v.length();                                                                                                         \
          data = new uint8_t[len];                                                                                                  \
          memcpy(data, v.data(), len);                                                                                              \
@@ -156,6 +156,15 @@ __int128 runtime::StringRuntime::toDecimal(runtime::VarLen32 string, int32_t req
       });                                                                                                                          \
       return runtime::VarLen32(data, len);                                                                                         \
    }
+
+runtime::VarLen32 runtime::StringRuntime::fromTFloat(__bfloat16 value) { /* NOLINT (clang-diagnostic-return-type-c-linkage)*/
+   std::string str = std::to_string((float) value);
+   size_t len = str.length();
+   uint8_t* data = new uint8_t[len];
+   memcpy(data, str.data(), len);
+
+   return runtime::VarLen32(data, len);
+}
 
 CAST_NUMERIC_TO_STRING(int64_t, arrow::Int64Type, Int)
 CAST_NUMERIC_TO_STRING(float, arrow::FloatType, Float32)

@@ -25,6 +25,17 @@ using value = struct Value {
       char* str_; /**< string */
    } val_; /**< value */
 };
+
+/*
+ * A_ArrayExpr - an ARRAY[] construct
+ */
+typedef struct A_ArrayExpr
+{
+	NodeTag		type;
+	List	      *elements;		/* array element expressions */
+	int			location;		/* token location, or -1 if unknown */
+} A_ArrayExpr;
+
 using SetOperation = enum SetOperation { SETOP_NONE = 0,
                                          SETOP_UNION,
                                          SETOP_INTERSECT,
