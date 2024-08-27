@@ -123,6 +123,7 @@ namespace runtime
          * @param castFunction          The function which is necessary to cast the value into its correct representation
          * @param stringCast            The function which is necessary to cast the value into a string
          * @note                        If the ```dimensions``` array has more than 1 dimension it will throw an ```std::runtime_error```
+         * @note                        If an element is a ```null```values an ```std::runtime_error``` will be thrown.
          */
         void fill(Array<int64_t> dimensions, std::string value, TypeCast castFunction, StringCast stringCast) {
             this->array.fill(dimensions.getArray(), value, castFunction, stringCast);

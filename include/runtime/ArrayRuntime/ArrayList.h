@@ -280,6 +280,7 @@ namespace runtime
          * @param castFunction          The function which is necessary to cast the value into its correct representation
          * @param stringCast            The function which is necessary to cast the value into a string
          * @note                        If the ```dimensions``` array has more than 1 dimension it will throw an ```std::runtime_error```
+         * @note                        If an element is a ```null```values an ```std::runtime_error``` will be thrown.
          */
         void fill(ArrayList<int64_t> dimensions, std::string value, TypeCast castFunction, StringCast stringCast) {
             if (dimensions.getDimension() != 1) {
@@ -290,6 +291,9 @@ namespace runtime
             // Iterate to each created child and construct sub-elements as specified
             if (this->dimension > 1) {
                 ArrayElem<int64_t> size = dimensions.popFirstElem();
+                if (size.getIsNull()) {
+                    throw std::runtime_error("Null values cannot be proccesed in this function");
+                }
                 for (size_t range = 0; range < (size_t) size.getValue(); range++) {
                     ArrayList<R> element;
                     element.fill(dimensions, value, castFunction, stringCast);
@@ -299,6 +303,9 @@ namespace runtime
             // Create lowest level of the array
             } else {
                 ArrayElem<int64_t> size = dimensions.popFirstElem();
+                if (size.getIsNull()) {
+                    throw std::runtime_error("Null values cannot be proccesed in this function");
+                }
                 for (size_t range = 0; range < (size_t) size.getValue(); range++) {
                     ArrayElem<R> element(value, castFunction, stringCast);
                     this->size++;
