@@ -474,6 +474,35 @@ module {
         %doubleCast_64 = db.cast %doubleValue_2 : f64 -> !db.array<2,"double[]">
         db.runtime_call "DumpValue" (%doubleCast_64) : (!db.array<2,"double[]">) -> ()
 
+        // FILL
+
+        // fill(1.1, {1,2}) -> {{1,1, 1.1}}
+
+        //CHECK: array("{{[{]}}{1.1, 1.1}}")
+        %const_1 = db.constant ("1.1") : !db.string
+        %structure_1 = db.constant ("{1,2}") : !db.array<1,"int64[]">
+        %float = db.constant ("float") : !db.string
+        %fill_65 = db.runtime_call "ArrayFill" (%structure_1, %dim1, %const_1, %float) : (!db.array<1,"int64[]">, i64, !db.string, !db.string) -> !db.array<2,"float[]">
+        db.runtime_call "DumpValue" (%fill_65) : (!db.array<2,"float[]">) -> ()
+
+        // fill(5, {4}) -> {5,5,5,5}
+
+        //CHECK: array("{5, 5, 5, 5}")
+        %const_2 = db.constant ("5") : !db.string
+        %structure_2 = db.constant ("{4}") : !db.array<1,"int64[]">
+        %int = db.constant ("int32") : !db.string
+        %fill_66 = db.runtime_call "ArrayFill" (%structure_2, %dim1, %const_2, %int) : (!db.array<1,"int64[]">, i64, !db.string, !db.string) -> !db.array<1,"int32[]">
+        db.runtime_call "DumpValue" (%fill_66) : (!db.array<1,"int32[]">) -> ()
+
+        // fill('Hello', {3}) -> {"Hello", "Hello", "Hello"}
+
+        //CHECK: array("{"Hello", "Hello", "Hello"}")
+        %const_3 = db.constant ("Hello") : !db.string
+        %structure_3 = db.constant ("{3}") : !db.array<1,"int64[]">
+        %string = db.constant ("string") : !db.string
+        %fill_67 = db.runtime_call "ArrayFill" (%structure_3, %dim1, %const_3, %string) : (!db.array<1,"int64[]">, i64, !db.string, !db.string) -> !db.array<1,"string[]">
+        db.runtime_call "DumpValue" (%fill_67) : (!db.array<1,"string[]">) -> ()
+
         return
     }
 }
