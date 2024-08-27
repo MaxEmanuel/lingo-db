@@ -400,6 +400,34 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(arrayData).array, std::get<1>(arrayData).array);
       return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ConcatenateArray", mlir::ValueRange({std::get<0>(arrayData).array, std::get<0>(arrayData).dimension, std::get<0>(arrayData).type, std::get<1>(arrayData).array, std::get<1>(arrayData).dimension, std::get<1>(arrayData).type})).getRes();
    }
+   if (funcName == "array_fill") {
+      auto left = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
+      auto right = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->tail->data.ptr_value), context);
+      auto arrayData = TypeFunctions::extractArrayDataDB(builder, right);
+      mlir::Value type;
+      // Find type of the entered value
+      if (auto integer = getBaseType(left.getType()).dyn_cast_or_null<mlir::IntegerType>()) {
+         if (integer.getWidth() < 64) {
+            type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("int32"));
+         } else {
+            type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("int64"));
+         }
+      } else if (auto floatType = getBaseType(left.getType()).dyn_cast_or_null<mlir::FloatType>()) {
+         if (floatType.getWidth() < 64) {
+            type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("float"));
+         } else {
+            type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("double"));
+         }
+      } else if (getBaseType(left.getType()).isa<mlir::db::DecimalType>()) {
+         type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("double"));
+      } else if (getBaseType(left.getType()).isa<mlir::db::StringType>() || getBaseType(left.getType()).isa<mlir::db::CharType>()) {
+         type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("string"));
+      } else {
+         throw std::runtime_error("Type of entered value is not supported for this function");
+      }
+      left = SQLTypeInference::castValueToType(builder, left, mlir::db::StringType::get(builder.getContext()));
+      return builder.create<mlir::db::RuntimeCall>(loc, right.getType(), "ArrayFill", mlir::ValueRange({arrayData.array, arrayData.dimension, left, type})).getRes();
+   }
 
   throw std::runtime_error("could not translate func call");
    return mlir::Value();

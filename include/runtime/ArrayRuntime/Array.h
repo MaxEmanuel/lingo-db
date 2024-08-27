@@ -117,6 +117,18 @@ namespace runtime
         }
 
         /**
+         * This method allows to fill an array with a given dummy value in consideration of the defined dimension structure.
+         * @param dimensions            An one-dimensional array with the definition of the dimension structure (e.g. [1,2,3] -> 1x2x3)
+         * @param value                 The dummy value which should be used as single element
+         * @param castFunction          The function which is necessary to cast the value into its correct representation
+         * @param stringCast            The function which is necessary to cast the value into a string
+         * @note                        If the ```dimensions``` array has more than 1 dimension it will throw an ```std::runtime_error```
+         */
+        void fill(Array<int64_t> dimensions, std::string value, TypeCast castFunction, StringCast stringCast) {
+            this->array.fill(dimensions.getArray(), value, castFunction, stringCast);
+        }
+
+        /**
          * This method implements the element-wise addition for an array.
          * @param toAdd         A reference to the ```Array``` object which elements should be used for addition
          * @note                If the dimension values are not equal of both arrays, it will throw an ```std::runtime_error```

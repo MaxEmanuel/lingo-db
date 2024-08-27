@@ -273,6 +273,40 @@ namespace runtime
             }
         }
 
+        /**
+         * This method allows to fill an array with a given dummy value in consideration of the defined dimension structure.
+         * @param dimensions            An one-dimensional array with the definition of the dimension structure (e.g. [1,2,3] -> 1x2x3)
+         * @param value                 The dummy value which should be used as single element
+         * @param castFunction          The function which is necessary to cast the value into its correct representation
+         * @param stringCast            The function which is necessary to cast the value into a string
+         * @note                        If the ```dimensions``` array has more than 1 dimension it will throw an ```std::runtime_error```
+         */
+        void fill(ArrayList<int64_t> dimensions, std::string value, TypeCast castFunction, StringCast stringCast) {
+            if (dimensions.getDimension() != 1) {
+                throw std::runtime_error("Only one dimensional arrays are allowed to specify the dimension structure of the final array");
+            }
+            this->dimension = dimensions.getSize();
+            this->isNull = false;
+            // Iterate to each created child and construct sub-elements as specified
+            if (this->dimension > 1) {
+                ArrayElem<int64_t> size = dimensions.popFirstElem();
+                for (size_t range = 0; range < (size_t) size.getValue(); range++) {
+                    ArrayList<R> element;
+                    element.fill(dimensions, value, castFunction, stringCast);
+                    this->size++;
+                    this->container.push_back(element);
+                }
+            // Create lowest level of the array
+            } else {
+                ArrayElem<int64_t> size = dimensions.popFirstElem();
+                for (size_t range = 0; range < (size_t) size.getValue(); range++) {
+                    ArrayElem<R> element(value, castFunction, stringCast);
+                    this->size++;
+                    this->elements.push_back(element);
+                }
+            }
+        }
+
         /*################################################################################################################################################
                                                                         MATH FUNCTIONS (ML)
         #################################################################################################################################################*/
@@ -568,6 +602,19 @@ namespace runtime
             }
             this->container.push_back(container);
             this->size++;
+        }
+
+        ArrayElem<R> popFirstElem() {
+            if (this->dimension != 1) {
+                throw std::runtime_error("The container should only have a single dimension to be able of extracting an element");
+            }
+            if (this->size == 0) {
+                throw std::runtime_error("The container does not contain any elements");
+            }
+            ArrayElem<R> result = this->elements[0];
+            this->elements.erase(this->elements.begin());
+            this->size--;
+            return result;
         }
 
         /*################################################################################################################################################

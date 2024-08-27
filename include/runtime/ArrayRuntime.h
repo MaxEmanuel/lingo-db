@@ -68,6 +68,19 @@ namespace runtime
         static uint64_t getCardinality(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type);
 
         /**
+         * This function returns an array filled with a given dummy value following the defined dimension structure.
+         * @param str       The array defining the resulting dimension structure
+         * @param dim       The amount of dimension of the given array
+         * @param value     The value which should be used to fill the resulting array
+         * @param valueType The type of the value
+         * @returns         A new constructed array with the defined structure
+         * @note            If the given and resulting array could not be created according to the given parameters, it will throw an
+         *                  ```std::runtime_error```.
+         * @note            If the specified valueType is not supported. 
+         */
+        static runtime::VarLen32 fill(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 value, runtime::VarLen32 valueType);
+
+        /**
          * This funtion allows the addition of two arrays.
          * @param str1       The array which should be modified
          * @param dim1       The dimension value of the first array

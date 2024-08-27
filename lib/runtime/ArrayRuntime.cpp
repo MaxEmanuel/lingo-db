@@ -131,6 +131,33 @@ uint64_t runtime::ArrayRuntime::getCardinality(runtime::VarLen32 str, uint64_t d
     return 0;
 }
 
+runtime::VarLen32 runtime::ArrayRuntime::fill(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 value, runtime::VarLen32 valueType) {
+    runtime::Array<int64_t> arrayData(str, dim, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+    if (valueType.str() == "int32") {
+        runtime::Array<int32_t> result("{}", 1, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
+        result.fill(arrayData, value.str(), &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
+        return result.toString();
+    } else if (valueType.str() == "int64") {
+        runtime::Array<int64_t> result("{}", 1, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+        result.fill(arrayData, value.str(), &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+        return result.toString();
+    } else if (valueType.str() == "float") {
+        runtime::Array<float> result("{}", 1, &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
+        result.fill(arrayData, value.str(), &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
+        return result.toString();
+    } else if (valueType.str() == "double") {
+        runtime::Array<double> result("{}", 1, &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
+        result.fill(arrayData, value.str(), &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
+        return result.toString();
+    } else if (valueType.str() == "string") {
+        runtime::Array<std::string> result("{}", 1, &runtime::TypeCasts::stringToString, &runtime::TypeCasts::stringToString);
+        result.fill(arrayData, value.str(), &runtime::TypeCasts::stringToString, &runtime::TypeCasts::stringToString);
+        return result.toString();
+    } else {
+        throw std::runtime_error("The entered value is not supported to be used for array_fill");
+    }
+}
+
 runtime::VarLen32 runtime::ArrayRuntime::add(runtime::VarLen32 str1, uint64_t dim1, runtime::VarLen32 type1, runtime::VarLen32 str2, uint64_t dim2, runtime::VarLen32 type2) {
     if (type1.str() != type2.str()) {
         throw std::runtime_error("Both arrays should have the same type - Type-1: " + type1.str() + "; Type-2: " + type2.str());
