@@ -538,20 +538,26 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
             auto result = builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayMatrixMul", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
             return result;
          // Scalar-Multiplication if right value is a primitve numeric type
-         } else if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && (getBaseType(right.getType()).isa<mlir::IntegerType>() || getBaseType(right.getType()).isa<mlir::Float32Type>() || getBaseType(right.getType()).isa<mlir::Float64Type>())) {
+         } else if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && !getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
             auto array = TypeFunctions::extractArrayDataDB(builder, left);
             if (getBaseType(right.getType()).isa<mlir::IntegerType>()) {
                return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultInt", mlir::ValueRange({left, array.dimension, array.type, right})).getRes();
-            } else {
+            } else if (getBaseType(right.getType()).isa<mlir::FloatType>()) {
                return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultFloat", mlir::ValueRange({left, array.dimension, array.type, right})).getRes();
+            } else if (getBaseType(right.getType()).isa<mlir::db::DecimalType>()) {
+               mlir::Value cast = builder.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(builder.getContext()), right);
+               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultFloat", mlir::ValueRange({left, array.dimension, array.type, cast})).getRes();
             }
          // Scalar-Multiplication if left value is a primitve numeric type
-         } else if ((getBaseType(left.getType()).isa<mlir::IntegerType>() || getBaseType(left.getType()).isa<mlir::Float32Type>() || getBaseType(left.getType()).isa<mlir::Float64Type>()) && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+         } else if (!getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
             auto array = TypeFunctions::extractArrayDataDB(builder, right);
             if (getBaseType(left.getType()).isa<mlir::IntegerType>()) {
                return builder.create<mlir::db::RuntimeCall>(loc, right.getType(), "ArrayScalarMultInt", mlir::ValueRange({right, array.dimension, array.type, left})).getRes();
-            } else {
+            } else if (getBaseType(left.getType()).isa<mlir::FloatType>()) {
                return builder.create<mlir::db::RuntimeCall>(loc, right.getType(), "ArrayScalarMultFloat", mlir::ValueRange({right, array.dimension, array.type, left})).getRes();
+            } else if (getBaseType(left.getType()).isa<mlir::db::DecimalType>()) {
+               mlir::Value cast = builder.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(builder.getContext()), left);
+               return builder.create<mlir::db::RuntimeCall>(loc, right.getType(), "ArrayScalarMultFloat", mlir::ValueRange({right, array.dimension, array.type, cast})).getRes();
             }
          }
          return builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonNumber(builder, {left, right}));
