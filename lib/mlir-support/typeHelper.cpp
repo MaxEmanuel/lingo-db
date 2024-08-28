@@ -67,90 +67,84 @@ mlir::Type TypeFunctions::getReturnType(const mlir::OpBuilder& builder, const ml
     return rightValue.getType();
 }
 
-mlir::Value TypeFunctions::addCastOp(mlir::OpBuilder& builder, const mlir::Value& toCast, mlir::Type type) {
-    // Extract type from inside nullable, if original type is nullable
-    if (type.isa<mlir::db::NullableType>()) {
-        mlir::db::NullableType nullable = type.dyn_cast<mlir::db::NullableType>();
-        type = nullable.getType();
+mlir::Value TypeFunctions::addCastOp(mlir::OpBuilder& builder, const mlir::Value& toCast, mlir::Type type, bool isNullable) {
+    if (isNullable && !type.isa<mlir::db::NullableType>()) {
+        auto nullable = toCast.getType().dyn_cast<mlir::db::NullableType>();
+        if (!nullable.getType().isa<mlir::NoneType>()){
+            type = mlir::db::NullableType::get(builder.getContext(), type);
+        }
     }
-
-    if (type.isa<mlir::db::ArrayType>()){
-        return builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), type, toCast);
+    bool onlyTargetIsNullable = !isNullable && type.isa<mlir::db::NullableType>();
+    if (toCast.getType() == type) { return toCast; }
+    if (toCast.getType() == getBaseType(type)) {
+      return builder.create<mlir::db::AsNullableOp>(builder.getUnknownLoc(), type, toCast);
     }
-    return toCast;
+    if (onlyTargetIsNullable) {
+       mlir::Value casted = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), getBaseType(type), toCast);
+       return builder.create<mlir::db::AsNullableOp>(builder.getUnknownLoc(), type, casted);
+    } else {
+       return builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), type, toCast);
+    }
 }
 
 std::tuple<TypeFunctions::ArrayData, TypeFunctions::ArrayData> TypeFunctions::castToArrayIfNecessary(mlir::OpBuilder& builder, const mlir::Value& left, const mlir::Value& right) {
     TypeFunctions::ArrayData array1, array2;
-    mlir::db::ArrayType leftType = left.getType().dyn_cast_or_null<mlir::db::ArrayType>();
-    // Get type inside nullable, if left is nullable
-    if (left.getType().isa<mlir::db::NullableType>()){
-        mlir::db::NullableType nullable = left.getType().dyn_cast<mlir::db::NullableType>();
-        leftType = nullable.getType().dyn_cast_or_null<mlir::db::ArrayType>();
-    }
-    mlir::db::ArrayType rightType = right.getType().dyn_cast_or_null<mlir::db::ArrayType>();
-    // Get type inside nullable, if right is nullable
-    if (right.getType().isa<mlir::db::NullableType>()){
-        mlir::db::NullableType nullable = right.getType().dyn_cast<mlir::db::NullableType>();
-        rightType = nullable.getType().dyn_cast_or_null<mlir::db::ArrayType>();
-    }
-    if (!leftType && !rightType) {
+    mlir::Type leftType = getBaseType(left.getType());
+    mlir::Type rightType = getBaseType(right.getType());
+    bool leftIsNullable = left.getType().isa<mlir::db::NullableType>();
+    bool rightIsNullable = right.getType().isa<mlir::db::NullableType>();
+    if (!leftType.isa<mlir::db::ArrayType>() && !rightType.isa<mlir::db::ArrayType>()) {
         throw std::runtime_error("Both given arrays are not of type array");
     }
     // If left value is not an array, cast it to an array with metadata of right array.
-    if (!getBaseType(left.getType()).isa<mlir::db::ArrayType>()) {
+    if (!leftType.isa<mlir::db::ArrayType>()) {
        array1 = TypeFunctions::extractArrayDataDB(builder, right);
-       array1.array = TypeFunctions::addCastOp(builder, left, rightType);
+       array1.array = TypeFunctions::addCastOp(builder, left, rightType, leftIsNullable);
     } else {
        array1 = TypeFunctions::extractArrayDataDB(builder, left);
     }
     // If right value is not an array, cast it to an array with metadata of left array.
-    if (!getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+    if (!rightType.isa<mlir::db::ArrayType>()) {
        array2 = TypeFunctions::extractArrayDataDB(builder, left);
-       array2.array = TypeFunctions::addCastOp(builder, right, leftType); 
+       array2.array = TypeFunctions::addCastOp(builder, right, leftType, rightIsNullable); 
     } else {
        array2 = TypeFunctions::extractArrayDataDB(builder, right);
     }
     return std::make_tuple(array1, array2);
 }
 
-TypeFunctions::ArrayData TypeFunctions::castToArrayIfNecessary(mlir::OpBuilder& builder, const mlir::Value& value) {
-    // Extract if necessary the type from a nullableType 
-    mlir::Type type = value.getType();
-    if (type.isa<mlir::db::NullableType>()) {
-        auto nullable = value.getType().dyn_cast<mlir::db::NullableType>();
-        type = nullable.getType();
-    }
-    if (type.isa<mlir::db::ArrayType>()){
+TypeFunctions::ArrayData TypeFunctions::castToArrayIfNecessary(mlir::OpBuilder& builder, const mlir::Value& value, const mlir::Type& type) {
+    if (getBaseType(value.getType()).isa<mlir::db::ArrayType>()) {
         return TypeFunctions::extractArrayDataDB(builder, value);
     }
-
+    bool isNullable = value.getType().isa<mlir::db::NullableType>();
     TypeFunctions::ArrayData result;
     // Make assumption of the dimension
     auto dimension = 1;
     std::string arrayType = "";
 
+    mlir::Type baseType = getBaseType(type);
     // Check which type the value has
-    if (type.isa<mlir::IntegerType>()){
-        auto integer = type.dyn_cast<mlir::IntegerType>();
+    if (auto integer = baseType.dyn_cast<mlir::IntegerType>()){
         if (integer.getWidth() < 64) {
             arrayType = "int32[]";
         } else {
             arrayType = "int64[]";
         }
-    } else if (type.isa<mlir::FloatType>()) {
-        auto floatType = type.dyn_cast<mlir::FloatType>();
+    } else if (auto floatType = baseType.dyn_cast<mlir::FloatType>()) {
         if (floatType.getWidth() < 64) {
             arrayType = "float[]";
         } else {
             arrayType = "double[]";
         }
-    } else if (type.isa<mlir::db::CharType>() || type.isa<mlir::db::StringType>()){
+    } else if (baseType.isa<mlir::db::DecimalType>()) {
+        arrayType = "double[]";
+    } else if (baseType.isa<mlir::db::CharType>() || baseType.isa<mlir::db::StringType>() || baseType.isa<mlir::NoneType>()){
         arrayType = "string[]";
     } else {
-        throw std::runtime_error("The entered type cannot be casted to an array");
+        throw std::runtime_error("The entered type cannot be used to create an array");
     }
-    result.array = TypeFunctions::addCastOp(builder, value, mlir::db::ArrayType::get(builder.getContext(), dimension, arrayType));
+    result.array = TypeFunctions::addCastOp(builder, value, mlir::db::ArrayType::get(builder.getContext(), dimension, arrayType), isNullable);
     result.dimension = builder.create<mlir::arith::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getI64IntegerAttr(dimension));
     result.type = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(arrayType));
     return result;

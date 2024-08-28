@@ -359,7 +359,7 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
    }
    if (funcName == "array_dims") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
-      auto array = TypeFunctions::castToArrayIfNecessary(builder, val);
+      auto array = TypeFunctions::castToArrayIfNecessary(builder, val, mlir::db::StringType::get(builder.getContext()));
       auto result = builder.create<mlir::db::RuntimeCall>(loc, mlir::db::StringType::get(builder.getContext()), "ArrayDimensions", mlir::ValueRange({array.array, array.dimension, array.type})).getRes();
       if (val.getType().isa<mlir::db::NullableType>()) {
          result.setType(mlir::db::NullableType::get(mlir::db::StringType::get(builder.getContext())));
@@ -370,7 +370,7 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
    }
    if (funcName == "cardinality") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
-      auto array = TypeFunctions::castToArrayIfNecessary(builder, val);
+      auto array = TypeFunctions::castToArrayIfNecessary(builder, val, mlir::db::StringType::get(builder.getContext()));
       auto result = builder.create<mlir::db::RuntimeCall>(loc, mlir::IntegerType::get(builder.getContext(), 64), "ArrayCardinality", mlir::ValueRange({array.array, array.dimension, array.type})).getRes();
       if (val.getType().isa<mlir::db::NullableType>()) {
          result.setType(mlir::db::NullableType::get(mlir::IntegerType::get(builder.getContext(), 64)));
@@ -381,13 +381,13 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
    }
    if (funcName == "transpose") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
-      auto array = TypeFunctions::castToArrayIfNecessary(builder, val);
+      auto array = TypeFunctions::castToArrayIfNecessary(builder, val, mlir::db::StringType::get(builder.getContext()));
       return builder.create<mlir::db::RuntimeCall>(loc, array.array.getType(), "ArrayTranspose", mlir::ValueRange({array.array, array.dimension, array.type})).getRes();
    }
    if (funcName == "array_prepand") {
       auto left = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
       auto right = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->tail->data.ptr_value), context);
-      auto array = TypeFunctions::castToArrayIfNecessary(builder, right);
+      auto array = TypeFunctions::castToArrayIfNecessary(builder, right, left.getType());
       auto arrayData = TypeFunctions::castToArrayIfNecessary(builder, left, array.array);
       auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(arrayData).array, std::get<1>(arrayData).array, false);
       return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ConcatenateArray", mlir::ValueRange({std::get<0>(arrayData).array, std::get<0>(arrayData).dimension, std::get<0>(arrayData).type, std::get<1>(arrayData).array, std::get<1>(arrayData).dimension, std::get<1>(arrayData).type})).getRes();
@@ -395,7 +395,7 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
    if (funcName == "array_append") {
       auto left = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
       auto right = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->tail->data.ptr_value), context);
-      auto array = TypeFunctions::castToArrayIfNecessary(builder, left);
+      auto array = TypeFunctions::castToArrayIfNecessary(builder, left, right.getType());
       auto arrayData = TypeFunctions::castToArrayIfNecessary(builder, array.array, right);
       auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(arrayData).array, std::get<1>(arrayData).array);
       return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ConcatenateArray", mlir::ValueRange({std::get<0>(arrayData).array, std::get<0>(arrayData).dimension, std::get<0>(arrayData).type, std::get<1>(arrayData).array, std::get<1>(arrayData).dimension, std::get<1>(arrayData).type})).getRes();
