@@ -361,10 +361,11 @@ class ArrayCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
          } else {
             result = rt::ArrayRuntime::doubleToArray(rewriter, loc)({valueToCast, arrayData.dimension})[0];
          } 
-      // String -> ArrayType (StringCast ingores cast with nullable<string>)
-      /* } else if (auto stringType = scalarSourceType.dyn_cast_or_null<mlir::db::StringType>()) {
+      // Decimal -> ArrayType (StringCast ingores cast with nullable<string>)
+      /* } else if (auto decimalType = scalarSourceType.dyn_cast_or_null<mlir::db::DecimalType>()) {
+         auto multiplier = rewriter.create<arith::ConstantOp>(loc, convertedTargetType, FloatAttr::get(convertedTargetType, powf(10, decimalType.getS())));
          auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
-         result = rt::StringRuntime::toArray(rewriter, loc)({valueToCast, arrayData.dimension, arrayData.type})[0]; */
+         result = rt::ArrayRuntime::doubleToArray(rewriter, loc)({multiplier, arrayData.dimension})[0]; */
       } else if (scalarSourceType.isa<NoneType>()) {
          auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
          result = rt::ArrayRuntime::nullToArray(rewriter, loc)({arrayData.dimension})[0];

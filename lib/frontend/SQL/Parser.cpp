@@ -384,7 +384,7 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       auto array = TypeFunctions::castToArrayIfNecessary(builder, val, mlir::db::StringType::get(builder.getContext()));
       return builder.create<mlir::db::RuntimeCall>(loc, array.array.getType(), "ArrayTranspose", mlir::ValueRange({array.array, array.dimension, array.type})).getRes();
    }
-   if (funcName == "array_prepand") {
+   if (funcName == "array_prepend") {
       auto left = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
       auto right = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->tail->data.ptr_value), context);
       auto array = TypeFunctions::castToArrayIfNecessary(builder, right, left.getType());
@@ -403,7 +403,8 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
    if (funcName == "array_fill") {
       auto left = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
       auto right = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->tail->data.ptr_value), context);
-      auto arrayData = TypeFunctions::extractArrayDataDB(builder, right);
+      auto array = TypeFunctions::castToArrayIfNecessary(builder, right, mlir::IntegerType::get(builder.getContext(), 64));
+      auto arrayData = TypeFunctions::extractArrayDataDB(builder, array.array);
       mlir::Value type;
       // Find type of the entered value
       if (auto integer = getBaseType(left.getType()).dyn_cast_or_null<mlir::IntegerType>()) {
@@ -426,7 +427,7 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
          throw std::runtime_error("Type of entered value is not supported for this function");
       }
       left = SQLTypeInference::castValueToType(builder, left, mlir::db::StringType::get(builder.getContext()));
-      return builder.create<mlir::db::RuntimeCall>(loc, right.getType(), "ArrayFill", mlir::ValueRange({arrayData.array, arrayData.dimension, left, type})).getRes();
+      return builder.create<mlir::db::RuntimeCall>(loc, array.array.getType(), "ArrayFill", mlir::ValueRange({arrayData.array, arrayData.dimension, left, type})).getRes();
    }
 
   throw std::runtime_error("could not translate func call");
