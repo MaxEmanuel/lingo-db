@@ -378,9 +378,9 @@ struct Parser {
     * @note                If the type of the given ```Node*``` is not ```T_A_Const```, ```T_A_ArrayExpr``` or ```T_ColumnRef``` an 
     *                      ```std::runtime_error``` will be thrown.
     */
-   mlir::Value translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, Node* data);
+   std::tuple<mlir::Value, int> translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, Node* data);
 
-   void translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, std::vector<mlir::Attribute>& list, Node* data);
+   std::tuple<std::string, int> translateConstArray(mlir::OpBuilder& builder, std::vector<mlir::Attribute>& list, Node* data);
 
    //translate list of constant values into relalg::ConstRelationOp
    std::pair<mlir::Value, TargetInfo> translateConstRelation(List* valuesLists, mlir::OpBuilder& builder);

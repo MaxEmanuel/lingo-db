@@ -51,9 +51,6 @@ mlir::ResultRange mlir::util::FunctionHelper::call(OpBuilder& builder, mlir::Loc
    for (size_t i = 0; i < funcOp.getFunctionType().getNumInputs(); i++) {
       mlir::Value converted = convertValue(builder, values[i], funcOp.getFunctionType().getInput(i), loc);
       convertedValues.push_back(converted);
-      if (converted.getType() != funcOp.getFunctionType().getInput(i)) {
-         int test = 9;
-      }
       assert(converted.getType() == funcOp.getFunctionType().getInput(i));
    }
    auto funcCall = builder.create<func::CallOp>(loc, funcOp, convertedValues);

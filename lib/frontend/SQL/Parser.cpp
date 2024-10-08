@@ -494,11 +494,13 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
             }
             case T_A_ArrayExpr: {
                auto* arrayExpr = reinterpret_cast<Node*>(expr);
-               //mlir::Value array = translateArrayToString(builder, builder.getContext(), arrayExpr);
-               //array.getValue();
-               //auto test = array.getType().dyn_cast<mlir::db::StringType>();
-               types.push_back(mlir::db::StringType::get(builder.getContext()));
-               //values.push_back(builder.getStringAttr(array));
+               std::vector<mlir::Attribute> array;
+               auto data = translateConstArray(builder, array, arrayExpr);
+               if (std::get<0>(data) == "") {
+                  std::get<0>(data) = "string[]";
+               }
+               types.push_back(mlir::db::ArrayType::get(builder.getContext(), std::get<1>(data), std::get<0>(data)));
+               values.push_back(builder.getArrayAttr(array));
                break;
             }
             default: {
@@ -1288,10 +1290,9 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
          return translateIndirection(builder, context, indirections, data);
       }
       case T_A_ArrayExpr: {
-         std::vector<mlir::Attribute> data;
-         translateArrayToString(builder, context, data, node);
-         //auto test = builder.getArrayAttr(data);
-         return builder.create<mlir::db::ConstantOp>(loc, mlir::db::ArrayType::get(builder.getContext(), 1, "int32[]"), builder.getArrayAttr(data));
+         auto result = translateArrayToString(builder, context, node);
+         //mlir::Value constant = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("{'Hello World'}"));
+         return std::get<0>(result); 
       }
       default: {
         throw std::runtime_error("unsupported expression type");
@@ -1382,93 +1383,165 @@ mlir::Value frontend::sql::Parser::translateIndirection(mlir::OpBuilder& builder
   return result;
 }
 
-mlir::Value frontend::sql::Parser::translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, Node* data) {
+std::tuple<mlir::Value, int> frontend::sql::Parser::translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, Node* data) {
+   auto location = builder.getUnknownLoc();
+   auto mlirContext = builder.getContext();
    // Proof is element is single value
    if (data->type == T_A_Const) {
-       auto constVal = reinterpret_cast<A_Const*>(data)->val_;
-         switch (constVal.type_) {
-            case T_Integer: return builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(std::to_string(constVal.val_.ival_)));
-            case T_Float:
-            case T_String: return builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(constVal.val_.str_));
-            case T_Null: return builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("null"));
-            default:throw std::runtime_error("unsupported value type for array construction");
+      auto element = reinterpret_cast<A_Const*>(data)->val_;
+      switch (element.type_) {
+         case T_Integer: {
+            mlir::Type resultType = mlir::db::ArrayType::get(mlirContext, 1, "int32[]");
+            mlir::StringAttr value = builder.getStringAttr(std::to_string(element.val_.ival_));
+            return std::make_tuple(builder.create<mlir::db::ConstantOp>(location, resultType, value), 0);
+         } 
+         case T_Float: {
+            mlir::Type resultType = mlir::db::ArrayType::get(mlirContext, 1, "float[]");
+            mlir::StringAttr value = builder.getStringAttr(element.val_.str_);
+            return std::make_tuple(builder.create<mlir::db::ConstantOp>(location, resultType, value), 0);
          }
+         case T_String: {
+            mlir::Type resultType = mlir::db::ArrayType::get(mlirContext, 1, "string[]");
+            mlir::StringAttr value = builder.getStringAttr(element.val_.str_);
+            return std::make_tuple(builder.create<mlir::db::ConstantOp>(location, resultType, value), 0);
+         }
+         case T_Null: {
+            mlir::Type resultType = mlir::db::ArrayType::get(mlirContext, 1, "int32[]");
+            mlir::StringAttr value = builder.getStringAttr("null");
+            return std::make_tuple(builder.create<mlir::db::ConstantOp>(location, resultType, value), 0);
+         }
+         default: throw std::runtime_error("unsupported value type for array construction");
+      }
    } else if (data->type == T_ColumnRef) {
-      const auto* attr = resolveColRef(data, context);
-      mlir::Value result = builder.create<mlir::tuples::GetColumnOp>(builder.getUnknownLoc(), attr->type, attrManager.createRef(attr), context.getCurrentTuple());
-      return SQLTypeInference::castValueToType(builder, result, mlir::db::StringType::get(builder.getContext()));
+      const auto* column = resolveColRef(data, context);
+      mlir::Value values = builder.create<mlir::tuples::GetColumnOp>(location, column->type, attrManager.createRef(column), context.getCurrentTuple());
+      if (auto type = column->type.dyn_cast_or_null<mlir::IntegerType>()) {
+         if (type.getWidth() < 64) {
+            return std::make_tuple(SQLTypeInference::castValueToType(builder, values, mlir::db::ArrayType::get(mlirContext, 1, "int32[]")), 0);
+         } else {
+            return std::make_tuple(SQLTypeInference::castValueToType(builder, values, mlir::db::ArrayType::get(mlirContext, 1, "int64[]")), 0);
+         }
+      } else if (auto type = column->type.dyn_cast_or_null<mlir::FloatType>()) {
+         if (type.getWidth() < 64) {
+            return std::make_tuple(SQLTypeInference::castValueToType(builder, values, mlir::db::ArrayType::get(mlirContext, 1, "float[]")), 0);
+         } else {
+            return std::make_tuple(SQLTypeInference::castValueToType(builder, values, mlir::db::ArrayType::get(mlirContext, 1, "double[]")), 0);
+         }
+      } else if (column->type.isa<mlir::db::StringType>()){
+         return std::make_tuple(SQLTypeInference::castValueToType(builder, values, mlir::db::ArrayType::get(mlirContext, 1, "string[]")), 0);
+      } 
+      throw std::runtime_error("unsupported value type for array construction");
    // Proof if element is a list of elements
    } else if (data->type == T_A_ArrayExpr) {
       auto* array = reinterpret_cast<A_ArrayExpr*>(data);
       // Return null if list is empty
       if (!array->elements) {
-         return builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("null"));
+         mlir::Type resultType = mlir::db::ArrayType::get(mlirContext, 1, "int32[]");
+         mlir::StringAttr value = builder.getStringAttr("null");
+         return std::make_tuple(builder.create<mlir::db::ConstantOp>(location, resultType, value), 0);
       }
       // Iterate over each element in list and extract its value
-      mlir::Value result = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("{"));
       auto* cell = array->elements->head;
+      mlir::Value result;
+      int dimension = 0;
       while (cell) {
          auto* element = reinterpret_cast<Node*>(cell->data.ptr_value);
-         mlir::Value subResult = translateArrayToString(builder, context, element);
-         result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), result.getType(), "Concatenate", mlir::ValueRange({result, subResult})).getRes();
-         if (cell->next != nullptr) {
-            mlir::Value comma = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr(","));
-            result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), result.getType(), "Concatenate", mlir::ValueRange({result, comma})).getRes();
+         auto elementData = translateArrayToString(builder, context, element);
+         auto subArray = std::get<0>(elementData);
+         dimension = std::get<1>(elementData) + 1;
+         if (!result) {
+            result = subArray;
+         } else {
+            auto arrayData1 = TypeFunctions::extractArrayRawData(builder, subArray);
+            auto arrayData2 = TypeFunctions::extractArrayRawData(builder, result);
+            auto type1 = std::get<1>(arrayData1);
+            auto type2 = std::get<1>(arrayData2);
+            if (type1 != type2) {
+               if (type1 == "string[]") {
+                  result = SQLTypeInference::castValueToType(builder, result, mlir::db::ArrayType::get(mlirContext, dimension, "string[]"));
+               } else if (type2 == "string[]") {
+                  subArray = SQLTypeInference::castValueToType(builder, subArray, mlir::db::ArrayType::get(mlirContext, dimension, "string[]"));
+               } else if (type1 == "float[]") {
+                  result = SQLTypeInference::castValueToType(builder, result, mlir::db::ArrayType::get(mlirContext, dimension, "float[]"));
+               } else if (type2 == "float[]") {
+                  subArray = SQLTypeInference::castValueToType(builder, subArray, mlir::db::ArrayType::get(mlirContext, dimension, "float[]"));
+               } else if (type1 == "double[]") {
+                  result = SQLTypeInference::castValueToType(builder, result, mlir::db::ArrayType::get(mlirContext, dimension, "double[]"));
+               } else if (type2 == "double[]") {
+                  subArray = SQLTypeInference::castValueToType(builder, subArray, mlir::db::ArrayType::get(mlirContext, dimension, "double[]"));
+               } else {
+                  result = SQLTypeInference::castValueToType(builder, result, mlir::db::ArrayType::get(mlirContext, dimension, "int64[]"));
+                  subArray = SQLTypeInference::castValueToType(builder, subArray, mlir::db::ArrayType::get(mlirContext, dimension, "int64[]"));
+               }
+            }
+            auto mlirValues1 = TypeFunctions::extractArrayDataDB(builder, subArray);
+            auto mlirValues2 = TypeFunctions::extractArrayDataDB(builder, result);
+            auto parameter = mlir::ValueRange({result, mlirValues1.dimension, mlirValues1.type, subArray, mlirValues2.dimension, mlirValues2.type});
+            result = builder.create<mlir::db::RuntimeCall>(location, result.getType(), "ConcatenateArray", parameter).getRes();
          }
          cell = cell->next;
       }
-      mlir::Value close = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("}"));
-      result = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), result.getType(), "Concatenate", mlir::ValueRange({result, close})).getRes();
-      return result;
+      return std::make_tuple(result, dimension);
    }
    throw std::runtime_error("unsupported expression type for array construction");
 }
 
-void frontend::sql::Parser::translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, std::vector<mlir::Attribute>& list, Node* data) {
+std::tuple<std::string, int> frontend::sql::Parser::translateConstArray(mlir::OpBuilder& builder, std::vector<mlir::Attribute>& list, Node* data) {
    // Proof is element is single value
    if (data->type == T_A_Const) {
        auto constVal = reinterpret_cast<A_Const*>(data)->val_;
          switch (constVal.type_) {
             case T_Integer: {
                list.push_back(builder.getStringAttr(std::to_string(constVal.val_.ival_)));
-               return;
+               return std::make_tuple("int32[]", 1);
             }
-            case T_Float:
+            case T_Float: {
+               list.push_back(builder.getStringAttr(constVal.val_.str_));
+               return std::make_tuple("float[]", 1);
+            }
             case T_String: {
                list.push_back(builder.getStringAttr(constVal.val_.str_));
-               return;
+               return std::make_tuple("string[]", 1);
             }
             case T_Null: {
                list.push_back(builder.getStringAttr("null"));
-               return;
+               return std::make_tuple("", 1);
             }
             default:throw std::runtime_error("unsupported value type for array construction");
          }
-   } else if (data->type == T_ColumnRef) {
-      const auto* attr = resolveColRef(data, context);
-      list.push_back(attrManager.createRef(attr));
-      return;
    // Proof if element is a list of elements
    } else if (data->type == T_A_ArrayExpr) {
       auto* array = reinterpret_cast<A_ArrayExpr*>(data);
       // Return null if list is empty
       if (!array->elements) {
          list.push_back(builder.getStringAttr("null"));
-         return;
+         return std::make_tuple("", 1);
       }
       // Iterate over each element in list and extract its value
       list.push_back(builder.getStringAttr("{"));
       auto* cell = array->elements->head;
+      std::tuple<std::string, int> data("", 1);
       while (cell) {
+         // Get cell entry
          auto* element = reinterpret_cast<Node*>(cell->data.ptr_value);
-         translateArrayToString(builder, context, list, element);
+         // Process cell entry
+         auto result = translateConstArray(builder, list, element);
+         if (std::get<0>(data) != "" && std::get<0>(result) != "" && std::get<0>(data) != std::get<0>(result)) {
+            throw std::runtime_error("The elements of the array have unequal types");
+         }
+         // Do not set a ',' after the last element
          if (cell->next != nullptr) {
             list.push_back(builder.getStringAttr(","));
          }
+         // Update array metadata
+         std::get<0>(data) = std::get<0>(result);
+         // TODO
+         if (std::get<1>(data) < std::get<1>(result)) {}
+         std::get<1>(data) += std::get<1>(result);
          cell = cell->next;
       }
       list.push_back(builder.getStringAttr("}"));
-      return;
+      return data;
    }
    throw std::runtime_error("unsupported expression type for array construction");
 }
