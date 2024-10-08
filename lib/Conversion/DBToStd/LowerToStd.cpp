@@ -361,11 +361,14 @@ class ArrayCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
          } else {
             result = rt::ArrayRuntime::doubleToArray(rewriter, loc)({valueToCast, arrayData.dimension})[0];
          } 
-      // Decimal -> ArrayType (StringCast ingores cast with nullable<string>)
-      /* } else if (auto decimalType = scalarSourceType.dyn_cast_or_null<mlir::db::DecimalType>()) {
-         auto multiplier = rewriter.create<arith::ConstantOp>(loc, convertedTargetType, FloatAttr::get(convertedTargetType, powf(10, decimalType.getS())));
+      // Decimal -> ArrayType (StringCast ignores cast with nullable<string>)
+       } else if (auto decimalType = scalarSourceType.dyn_cast_or_null<mlir::db::DecimalType>()) {
+         // First three steps is to convert decimal to float
+         auto multiplier = rewriter.create<arith::ConstantOp>(loc, rewriter.getF64Type(), FloatAttr::get(rewriter.getF64Type(), powf(10, decimalType.getS())));
+         mlir::Value value = rewriter.create<arith::SIToFPOp>(loc, rewriter.getF64Type(), valueToCast);
+         value = rewriter.create<arith::DivFOp>(loc, rewriter.getF64Type(), value, multiplier);
          auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
-         result = rt::ArrayRuntime::doubleToArray(rewriter, loc)({multiplier, arrayData.dimension})[0]; */
+         result = rt::ArrayRuntime::doubleToArray(rewriter, loc)({value, arrayData.dimension})[0];
       } else if (scalarSourceType.isa<NoneType>()) {
          auto arrayData = TypeFunctions::extractArrayDataUtil(rewriter, castOp);
          result = rt::ArrayRuntime::nullToArray(rewriter, loc)({arrayData.dimension})[0];
