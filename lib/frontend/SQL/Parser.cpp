@@ -1550,9 +1550,9 @@ std::tuple<std::string, int> frontend::sql::Parser::translateConstArray(mlir::Op
          }
          // Update array metadata
          std::get<0>(data) = std::get<0>(result);
-         // TODO
-         if (std::get<1>(data) < std::get<1>(result)) {}
-         std::get<1>(data) += std::get<1>(result);
+         if (std::get<1>(data) <= std::get<1>(result)) {
+            std::get<1>(data) += std::get<1>(result);
+         }
          cell = cell->next;
       }
       list.push_back(builder.getStringAttr("}"));
