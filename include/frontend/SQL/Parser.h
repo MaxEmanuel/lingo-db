@@ -370,9 +370,9 @@ struct Parser {
     * This function translates an array expression (```T_A_ArrayExpr``` -> ```mlir::Value```) into a sequence of mlir operations. Therefore it will
     * extract every element stored in the given data node.
     * @param builder       Object which is used to be able of creating mlir operations
-    * @param context       ???
+    * @param context       Context to get access to database elements
     * @param data          The node containing array elements
-    * @returns             The array as a mlir::Value (e.g. '{1,2,4}') 
+    * @returns             A tuple containing the following information: The array as a chain of mlir-Values, the current dimension (beginning with 0).
     * @note                Only the following ```T_A_Const``` types are supported: ```T_Integer```, ```T_Float```, ```T_String``` and ```T_Null``` .
     *                      Otherwise an ```std::runtime_error``` will be thrown.
     * @note                If the type of the given ```Node*``` is not ```T_A_Const```, ```T_A_ArrayExpr``` or ```T_ColumnRef``` an 

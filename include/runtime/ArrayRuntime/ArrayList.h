@@ -314,6 +314,30 @@ namespace runtime
             }
         }
 
+        /**
+         * This method increases the dimension of the current array by 1. Therefore all current elements will be readjusted.
+         */
+        void incrementDimension() {
+            if (this->dimension == 1) {
+                this->dimension++;
+                this->size = 1;
+                ArrayList<R> newContainer;
+                for (ArrayElem<R>& element : this->elements) {
+                    newContainer.addElement(element);
+                }
+                this->container.push_back(newContainer);
+            } else {
+                ArrayList<R> newContainer;
+                for (ArrayList<R> element : this->container) {
+                    newContainer.addContainer(element, this->dimension);
+                }
+                this->dimension++;
+                this->size = 1;
+                this->container.clear();
+                this->container.push_back(newContainer);
+            }
+        }
+
         /*################################################################################################################################################
                                                                         MATH FUNCTIONS (ML)
         #################################################################################################################################################*/

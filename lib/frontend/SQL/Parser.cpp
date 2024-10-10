@@ -1386,9 +1386,10 @@ mlir::Value frontend::sql::Parser::translateIndirection(mlir::OpBuilder& builder
 std::tuple<mlir::Value, int> frontend::sql::Parser::translateArrayToString(mlir::OpBuilder& builder, TranslationContext& context, Node* data) {
    auto location = builder.getUnknownLoc();
    auto mlirContext = builder.getContext();
-   // Proof is element is single value
+   // If the element is a single value
    if (data->type == T_A_Const) {
       auto element = reinterpret_cast<A_Const*>(data)->val_;
+      // Check which type and generate a one dimensional array with a single value
       switch (element.type_) {
          case T_Integer: {
             mlir::Type resultType = mlir::db::ArrayType::get(mlirContext, 1, "int32[]");
@@ -1412,7 +1413,9 @@ std::tuple<mlir::Value, int> frontend::sql::Parser::translateArrayToString(mlir:
          }
          default: throw std::runtime_error("unsupported value type for array construction");
       }
+   // If the element is a reference to a column of a table
    } else if (data->type == T_ColumnRef) {
+      // Get values from table and cast them to a one dimensional array
       const auto* column = resolveColRef(data, context);
       mlir::Value values = builder.create<mlir::tuples::GetColumnOp>(location, column->type, attrManager.createRef(column), context.getCurrentTuple());
       if (auto type = column->type.dyn_cast_or_null<mlir::IntegerType>()) {
@@ -1431,31 +1434,42 @@ std::tuple<mlir::Value, int> frontend::sql::Parser::translateArrayToString(mlir:
          return std::make_tuple(SQLTypeInference::castValueToType(builder, values, mlir::db::ArrayType::get(mlirContext, 1, "string[]")), 0);
       } 
       throw std::runtime_error("unsupported value type for array construction");
-   // Proof if element is a list of elements
+   // If the element is a sub-array (another list of elements)
    } else if (data->type == T_A_ArrayExpr) {
       auto* array = reinterpret_cast<A_ArrayExpr*>(data);
-      // Return null if list is empty
+      // Return null if list is empty in a one dimensional array
       if (!array->elements) {
          mlir::Type resultType = mlir::db::ArrayType::get(mlirContext, 1, "int32[]");
          mlir::StringAttr value = builder.getStringAttr("null");
          return std::make_tuple(builder.create<mlir::db::ConstantOp>(location, resultType, value), 0);
       }
-      // Iterate over each element in list and extract its value
       auto* cell = array->elements->head;
       mlir::Value result;
       int dimension = 0;
+      // Iterate over each element in sub-array and extract its value
       while (cell) {
          auto* element = reinterpret_cast<Node*>(cell->data.ptr_value);
          auto elementData = translateArrayToString(builder, context, element);
          auto subArray = std::get<0>(elementData);
          dimension = std::get<1>(elementData) + 1;
+         auto arrayData1 = TypeFunctions::extractArrayRawData(builder, subArray);
+         // If the 'parent' array does not exist yet
          if (!result) {
             result = subArray;
+            // If the dimension of the child element is larger then 1, the parent array needs a higher dimension (increased by 1)
+            if (dimension - 1 != 0) {
+               // Call the increment dimension function
+               auto mlirValues = TypeFunctions::extractArrayDataDB(builder, subArray);
+               auto resultType = mlir::db::ArrayType::get(mlirContext, dimension, std::get<1>(arrayData1));
+               auto parameter = mlir::ValueRange({result, mlirValues.dimension, mlirValues.type});
+               result = builder.create<mlir::db::RuntimeCall>(location, resultType, "ArrayIncDimension", parameter).getRes();
+            }
+         // If the 'parent' array exist already
          } else {
-            auto arrayData1 = TypeFunctions::extractArrayRawData(builder, subArray);
             auto arrayData2 = TypeFunctions::extractArrayRawData(builder, result);
             auto type1 = std::get<1>(arrayData1);
             auto type2 = std::get<1>(arrayData2);
+            // Cast current 'parent' and 'child' to a common array type (especially needed for NULL values)
             if (type1 != type2) {
                if (type1 == "string[]") {
                   result = SQLTypeInference::castValueToType(builder, result, mlir::db::ArrayType::get(mlirContext, dimension, "string[]"));
@@ -1474,8 +1488,9 @@ std::tuple<mlir::Value, int> frontend::sql::Parser::translateArrayToString(mlir:
                   subArray = SQLTypeInference::castValueToType(builder, subArray, mlir::db::ArrayType::get(mlirContext, dimension, "int64[]"));
                }
             }
-            auto mlirValues1 = TypeFunctions::extractArrayDataDB(builder, subArray);
-            auto mlirValues2 = TypeFunctions::extractArrayDataDB(builder, result);
+            // Call the array concatenate function to merge the 'parent' with the 'child'
+            auto mlirValues1 = TypeFunctions::extractArrayDataDB(builder, result);
+            auto mlirValues2 = TypeFunctions::extractArrayDataDB(builder, subArray);
             auto parameter = mlir::ValueRange({result, mlirValues1.dimension, mlirValues1.type, subArray, mlirValues2.dimension, mlirValues2.type});
             result = builder.create<mlir::db::RuntimeCall>(location, result.getType(), "ConcatenateArray", parameter).getRes();
          }

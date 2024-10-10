@@ -130,6 +130,13 @@ namespace runtime
         }
 
         /**
+         * This method increases the dimension of the current array by 1. Therefore all current elements will be readjusted.
+         */
+        void incrementDimension() {
+            this->array.incrementDimension();
+        }
+
+        /**
          * This method implements the element-wise addition for an array.
          * @param toAdd         A reference to the ```Array``` object which elements should be used for addition
          * @note                If the dimension values are not equal of both arrays, it will throw an ```std::runtime_error```

@@ -81,6 +81,15 @@ namespace runtime
         static runtime::VarLen32 fill(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 value, runtime::VarLen32 valueType);
 
         /**
+         * This function returns an array increased with a higher dimension (increased by 1).
+         * @param str       The array which dimension should be increased
+         * @param dim       The current amount of dimension of the given array
+         * @param type      The type of the array values
+         * @returns         A new constructed array with a higher dimension.
+         */
+        static runtime::VarLen32 incDim(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type);
+
+        /**
          * This funtion allows the addition of two arrays.
          * @param str1       The array which should be modified
          * @param dim1       The dimension value of the first array
