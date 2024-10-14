@@ -1413,6 +1413,25 @@ std::tuple<mlir::Value, int> frontend::sql::Parser::translateArrayToString(mlir:
          }
          default: throw std::runtime_error("unsupported value type for array construction");
       }
+   // If the element is a function call
+   } else if (data->type == T_FuncCall) {
+      auto functionCall = translateFuncCallExpression(data, builder, location, context);
+      if (auto type = functionCall.getType().dyn_cast_or_null<mlir::IntegerType>()) {
+         if (type.getWidth() < 64) {
+            return std::make_tuple(SQLTypeInference::castValueToType(builder, functionCall, mlir::db::ArrayType::get(mlirContext, 1, "int32[]")), 0);
+         } else {
+            return std::make_tuple(SQLTypeInference::castValueToType(builder, functionCall, mlir::db::ArrayType::get(mlirContext, 1, "int64[]")), 0);
+         }
+      } else if (auto type = functionCall.getType().dyn_cast_or_null<mlir::FloatType>()) {
+         if (type.getWidth() < 64) {
+            return std::make_tuple(SQLTypeInference::castValueToType(builder, functionCall, mlir::db::ArrayType::get(mlirContext, 1, "float[]")), 0);
+         } else {
+            return std::make_tuple(SQLTypeInference::castValueToType(builder, functionCall, mlir::db::ArrayType::get(mlirContext, 1, "double[]")), 0);
+         }
+      } else if (functionCall.getType().isa<mlir::db::StringType>()){
+         return std::make_tuple(SQLTypeInference::castValueToType(builder, functionCall, mlir::db::ArrayType::get(mlirContext, 1, "string[]")), 0);
+      }
+      return std::make_tuple(functionCall, 0);
    // If the element is a reference to a column of a table
    } else if (data->type == T_ColumnRef) {
       // Get values from table and cast them to a one dimensional array
