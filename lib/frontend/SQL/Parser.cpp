@@ -437,6 +437,10 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       }
    }
 
+   if (funcName == "derivate") {
+      auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
+      return builder.create<mlir::db::RuntimeCall>(loc, builder.getI64Type(), "AutoDiff", val).getRes();
+   }
 
   throw std::runtime_error("could not translate func call");
    return mlir::Value();
