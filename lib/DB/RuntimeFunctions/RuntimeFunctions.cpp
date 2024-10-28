@@ -8,6 +8,7 @@
 #include "runtime-defs/IntegerRuntime.h"
 #include "runtime-defs/StringRuntime.h"
 #include "runtime-defs/ArrayRuntime.h"
+#include "runtime-defs/AutoDiff.h"
 #include "runtime-defs/Timing.h"
 #include "runtime/DateRuntime.h"
 
@@ -321,6 +322,7 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    });
 
    builtinRegistry->add("Random").implementedAs(rt::FloatRuntime::random).matchesTypes({}, resTypeIsF64);
+   builtinRegistry->add("AutoDiff").matchesTypes({RuntimeFunction::intLike}, resTypeIsI64).implementedAs(rt::AutoDiff::derivate);
 
    return builtinRegistry;
 }

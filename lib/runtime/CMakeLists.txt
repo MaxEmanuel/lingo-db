@@ -15,6 +15,7 @@ add_library(runtime OBJECT
         HashMultiMap.cpp
         StringRuntime.cpp
         ArrayRuntime.cpp
+        AutoDiff.cpp
         FloatRuntime.cpp
         DecimalRuntime.cpp
         IntegerRuntime.cpp
