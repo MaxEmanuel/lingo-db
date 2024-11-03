@@ -189,6 +189,22 @@ using CaseExpr = struct CaseExpr {
    int location_; /* token location, or -1 if unknown */
 };
 
+typedef enum CoercionForm
+{
+	COERCE_EXPLICIT_CALL,		/* display as a function call */
+	COERCE_EXPLICIT_CAST,		/* display as an explicit cast */
+	COERCE_IMPLICIT_CAST		/* implicit cast, so hide it */
+} CoercionForm;
+
+using RowExpr = struct RowExpr {
+   Expr xpr_;
+   List* args_;
+   Oid row_typeid_;
+   CoercionForm row_format_;
+   List* colnames_;
+   int location_; /* token location, or -1 if unknown */
+};
+
 using CaseWhen = struct CaseWhen {
    Expr xpr_;
    Expr* expr_; /* condition expression */

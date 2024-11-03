@@ -3531,3 +3531,33 @@ std::vector<std::string> frontend::sql::Parser::listToStringVec(List* l) {
 bool frontend::sql::Parser::isParallelismAllowed() const {
    return parallelismAllowed;
 }
+
+std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::translateRowExpression(mlir::OpBuilder& builder, Node* node, TranslationContext& context) {
+   auto* rowExpr = reinterpret_cast<RowExpr*>(node);
+   
+   std::vector<std::pair<std::string, mlir::Value>> variables;
+   
+   for (auto* arg = rowExpr->args_->head; arg != nullptr; arg = arg->next) {
+      auto* arg_Expr = reinterpret_cast<A_Expr*>(arg->data.ptr_value);
+      auto* left = reinterpret_cast<Node*>(arg_Expr->lexpr_);
+      auto* right = reinterpret_cast<Node*>(arg_Expr->rexpr_);
+      Node* columnRef_node;
+      Node* aconst_node;
+      if (left->type == T_ColumnRef && right->type == T_A_Const) {
+         columnRef_node = left;
+         aconst_node = right;
+      } else if (right->type == T_ColumnRef && left->type == T_A_Const) {
+         columnRef_node = right;
+         aconst_node = left;
+      }
+      auto* columnRef = reinterpret_cast<ColumnRef*>(columnRef_node);
+      std::string colName = fieldsToString(columnRef->fields_);
+      mlir::Value data = translateExpression(builder, aconst_node, context, true);
+      
+      std::pair<std::string, mlir::Value> variable;
+      variable.first = colName;
+      variable.second = data;
+      variables.push_back(variable);
+   }
+   return variables;
+}
