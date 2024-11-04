@@ -399,7 +399,7 @@ struct Parser {
    ~Parser();
 
    // translateRowExpression creates a vector of tuples. It "represents" a Row of a table, the first element is the column name, the second is the value stored
-   std::vector<std::pair<std::string, mlir::Value>> translateRowExpression(mlir::OpBuilder& builder, Node* node, TranslationContext& context);
+   mlir::Value translateRowExpression(mlir::OpBuilder& builder, TranslationContext& context, Node* node);
 };
 } // end namespace frontend::sql
 #endif // FRONTEND_SQL_PARSER_H

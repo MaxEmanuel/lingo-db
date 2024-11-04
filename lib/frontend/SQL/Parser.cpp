@@ -430,8 +430,10 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       return builder.create<mlir::db::RuntimeCall>(loc, array.array.getType(), "ArrayFill", mlir::ValueRange({arrayData.array, arrayData.dimension, left, type})).getRes();
    }
    if (funcName == "derivate") {
-      auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
-      return builder.create<mlir::db::RuntimeCall>(loc, builder.getI64Type(), "AutoDiff", val).getRes();
+      Node* variables = reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value);
+      auto variables_val = translateExpression(builder, variables, context);
+
+      return builder.create<mlir::db::RuntimeCall>(loc, builder.getI64Type(), "AutoDiff", variables_val).getRes();
    }
 
   throw std::runtime_error("could not translate func call");
@@ -1297,6 +1299,10 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
          auto result = translateArrayToString(builder, context, node);
          //mlir::Value constant = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("{'Hello World'}"));
          return std::get<0>(result); 
+      }
+      case T_RowExpr: {
+         mlir::Value rowRel = translateRowExpression(builder, context, node);
+         return rowRel;
       }
       default: {
         throw std::runtime_error("unsupported expression type");
@@ -3059,10 +3065,14 @@ bool frontend::sql::Parser::isParallelismAllowed() const {
    return parallelismAllowed;
 }
 
-std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::translateRowExpression(mlir::OpBuilder& builder, Node* node, TranslationContext& context) {
+mlir::Value frontend::sql::Parser::translateRowExpression(mlir::OpBuilder& builder, TranslationContext& context, Node* node) {
    auto* rowExpr = reinterpret_cast<RowExpr*>(node);
+   static size_t RowRelId = 0;
    
-   std::vector<std::pair<std::string, mlir::Value>> variables;
+   std::vector<mlir::Attribute> row;
+   std::vector<mlir::Attribute> values;
+   std::vector<mlir::Attribute> attributes;
+   std::string symName = "rowrel" + std::to_string(RowRelId++);
    
    for (auto* arg = rowExpr->args_->head; arg != nullptr; arg = arg->next) {
       auto* arg_Expr = reinterpret_cast<A_Expr*>(arg->data.ptr_value);
@@ -3077,14 +3087,38 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::translat
          columnRef_node = right;
          aconst_node = left;
       }
+
       auto* columnRef = reinterpret_cast<ColumnRef*>(columnRef_node);
+      auto* aconst = reinterpret_cast<A_Const*>(aconst_node);
+      auto aconstVal = aconst->val_;
       std::string colName = fieldsToString(columnRef->fields_);
-      mlir::Value data = translateExpression(builder, aconst_node, context, true);
-      
-      std::pair<std::string, mlir::Value> variable;
-      variable.first = colName;
-      variable.second = data;
-      variables.push_back(variable);
+      mlir::Attribute value;
+      mlir::Type value_type;
+
+      if (aconstVal.type_ == T_Integer) {
+         value_type = builder.getI32Type();
+         value = builder.getI32IntegerAttr(aconstVal.val_.ival_);
+      } else if (aconstVal.type_ == T_Float) {
+         std::string stringValue(aconstVal.val_.str_);
+         auto decimalPos = stringValue.find('.');
+         if (decimalPos == std::string::npos) {
+            value_type = builder.getI64Type();
+            value = builder.getI64IntegerAttr(std::stoll(aconstVal.val_.str_));
+         } else {
+            auto s = stringValue.size() - decimalPos - 1;
+            auto p = stringValue.size() - 1;
+            value_type = mlir::db::DecimalType::get(builder.getContext(), p, s);
+            value = builder.getStringAttr(aconstVal.val_.str_);
+         }
+      }
+
+      values.push_back(value);
+      auto attrDef = attrManager.createDef(symName, colName);
+      attrDef.getColumn().type = value_type;
+      attributes.push_back(attrDef);
+
    }
-   return variables;
+   row.push_back(builder.getArrayAttr(values));
+   mlir::Value RowRel = builder.create<mlir::relalg::ConstRelationOp>(builder.getUnknownLoc(), builder.getArrayAttr(attributes), builder.getArrayAttr(row));
+   return RowRel;
 }
