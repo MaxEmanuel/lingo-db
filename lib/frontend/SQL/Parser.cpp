@@ -3609,3 +3609,51 @@ mlir::Value frontend::sql::Parser::translateRowExpression(mlir::OpBuilder& build
    mlir::Value RowRel = builder.create<mlir::relalg::ConstRelationOp>(builder.getUnknownLoc(), builder.getArrayAttr(attributes), builder.getArrayAttr(row));
    return RowRel;
 }
+
+
+std::vector<std::vector<mlir::Value>> frontend::sql::Parser::extractConstRelOpData(mlir::OpBuilder& builder, mlir::Value constRelOp) {
+   std::vector<std::vector<mlir::Value>> resultRel;
+   llvm::raw_ostream &os = llvm::outs();
+
+   if (auto constOp = constRelOp.getDefiningOp<mlir::relalg::ConstRelationOp>()) {
+      for (const auto &colDef : constOp.getColumns()) {
+         if (auto columnDefAttr = colDef.dyn_cast<mlir::tuples::ColumnDefAttr>()) {
+            std::vector<mlir::Value> column;
+            std::string columnName = columnDefAttr.getName().getLeafReference().getValue().str();
+            mlir::Type stringType = mlir::db::StringType::get(builder.getContext());
+            if (columnName.size() <= 8 && columnName.size() > 0) {
+               stringType = mlir::db::CharType::get(builder.getContext(), columnName.size());
+            }
+            mlir::Value strVal = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), stringType, builder.getStringAttr(columnName));
+            column.push_back(strVal);
+            resultRel.push_back(column);
+            
+         } else {
+            throw std::runtime_error("Column definition is not of type ColumnDefAttr");
+         }
+      }
+      for (auto const &v : constOp.getValues()) {
+         if (auto arrayAttr = v.dyn_cast<mlir::ArrayAttr>()) {
+            size_t i = 0;
+            for (mlir::Attribute element : arrayAttr.getValue()) {
+               if (auto intAttr = element.dyn_cast<mlir::IntegerAttr>()) {
+                  auto intType = builder.getI64Type();
+                  mlir::Value intVal = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), intType, intAttr);
+                  resultRel[i].push_back(intVal);
+                  i++;
+               }
+               if (auto StringAttr = element.dyn_cast<mlir::StringAttr>()) {
+                  std::string val_str = StringAttr.getValue().str();
+                  double val_d = std::stod(val_str);
+                  auto floatType = builder.getF64Type();
+                  auto floatAttr = builder.getFloatAttr(floatType, val_d);
+                  mlir::Value floatVal = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), floatType, floatAttr);
+                  resultRel[i].push_back(floatVal);
+                  i++;
+               }
+            }   
+         }
+      }
+   }
+   return resultRel;
+}
