@@ -1596,6 +1596,20 @@ mlir::Value frontend::sql::Parser::translateFromClausePart(mlir::OpBuilder& buil
         throw std::runtime_error("unsupported join type");
          break;
       }
+      case T_RangeFunction: {
+         RangeFunction* Rangefun = reinterpret_cast<RangeFunction*>(node);
+         for (auto* outer_list = Rangefun->functions_->head; outer_list != nullptr; outer_list = outer_list->next) {
+            auto* inner_list = reinterpret_cast<List*>(outer_list->data.ptr_value);
+            for (auto* inner_cell = inner_list->head; inner_cell != nullptr; inner_cell = inner_cell->next) {
+               if (inner_cell->data.ptr_value == nullptr) {  
+                  break;
+               }
+               auto* funcNode = reinterpret_cast<Node*>(inner_cell->data.ptr_value);
+               mlir::Value value = translateFuncCallExpression(funcNode, builder, builder.getUnknownLoc(), context);
+               return value;
+            }
+         }
+      }
       default: {
         throw std::runtime_error("unknown type in from clause");
       }
