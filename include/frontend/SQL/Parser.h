@@ -398,8 +398,10 @@ struct Parser {
    std::tuple<mlir::Value, std::unordered_map<std::string, mlir::tuples::Column*>> performAggregation(mlir::OpBuilder& builder, std::vector<mlir::Attribute> groupByAttrs, const ReplaceState& replaceState, TranslationContext& context, mlir::Value tree);
    ~Parser();
 
-   // translateRowExpression creates a vector of tuples. It "represents" a Row of a table, the first element is the column name, the second is the value stored
+   // translateRowExpression creates a mlir::relalg::ConstRelationOp object
    mlir::Value translateRowExpression(mlir::OpBuilder& builder, TranslationContext& context, Node* node);
+
+   std::vector<std::vector<mlir::Value>> extractConstRelOpData(mlir::OpBuilder& builder, mlir::Value constRelOp);
 };
 } // end namespace frontend::sql
 #endif // FRONTEND_SQL_PARSER_H
