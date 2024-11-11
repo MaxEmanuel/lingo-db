@@ -438,10 +438,23 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
    }
 
    if (funcName == "derivate") {
+      mlir::Value result_diff;
       Node* variables = reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value);
-      auto variables_val = translateExpression(builder, variables, context);
+      auto input = translateExpression(builder, variables, context);
 
-      return builder.create<mlir::db::RuntimeCall>(loc, builder.getI64Type(), "AutoDiff", variables_val).getRes();
+      std::vector<mlir::Value> results;
+      if(getBaseType(input.getType()).isa<mlir::tuples::TupleStreamType>()) {
+         std::vector<std::vector<mlir::Value>> variables = extractConstRelOpData(builder, input);
+         for (const auto &variable : variables) {
+            mlir::Value varName = variable[0];
+            mlir::Value varVal = variable[1];
+
+            result_diff = builder.create<mlir::db::RuntimeCall>(loc, varVal.getType(), "AutoDiff", varVal).getRes();
+         }
+      } else {
+         result_diff = builder.create<mlir::db::RuntimeCall>(loc, input.getType(), "AutoDiff", input).getRes();
+      }
+      return result_diff;
    }
 
   throw std::runtime_error("could not translate func call");
@@ -3613,7 +3626,6 @@ mlir::Value frontend::sql::Parser::translateRowExpression(mlir::OpBuilder& build
 
 std::vector<std::vector<mlir::Value>> frontend::sql::Parser::extractConstRelOpData(mlir::OpBuilder& builder, mlir::Value constRelOp) {
    std::vector<std::vector<mlir::Value>> resultRel;
-   llvm::raw_ostream &os = llvm::outs();
 
    if (auto constOp = constRelOp.getDefiningOp<mlir::relalg::ConstRelationOp>()) {
       for (const auto &colDef : constOp.getColumns()) {
