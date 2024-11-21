@@ -436,6 +436,36 @@ class ConstRelationLowering : public OpConversionPattern<mlir::relalg::ConstRela
       return success();
    }
 };
+class RunTimeRelationLowering : public OpConversionPattern<mlir::relalg::RunTimeRelationOp> {
+   public:
+   using OpConversionPattern<mlir::relalg::RunTimeRelationOp>::OpConversionPattern;
+   LogicalResult matchAndRewrite(mlir::relalg::RunTimeRelationOp runtimeRelationOp, OpAdaptor adaptor, ConversionPatternRewriter& rewriter) const override {
+      auto loc = runtimeRelationOp->getLoc();
+      auto generateOp = rewriter.replaceOpWithNewOp<mlir::subop::GenerateOp>(runtimeRelationOp, mlir::tuples::TupleStreamType::get(rewriter.getContext()), runtimeRelationOp.getColumns());
+      {
+         auto* generateBlock = new Block;
+         mlir::OpBuilder::InsertionGuard guard2(rewriter);
+         rewriter.setInsertionPointToStart(generateBlock);
+         generateOp.getRegion().push_back(generateBlock);
+         std::vector<Value> values;
+         for (mlir::Value rowValue : runtimeRelationOp.getValues()) {
+            auto type = rowValue.getType();
+            if (type.isa<mlir::db::NullableType>()) {
+               auto entryVal = rewriter.create<mlir::db::NullOp>(runtimeRelationOp->getLoc(), type);
+               values.push_back(entryVal);
+            } else {
+               auto *op = rowValue.getDefiningOp();
+               auto entryVal = rewriter.clone(*op);
+               values.push_back(entryVal->getResult(0));
+               rewriter.eraseOp(op);
+            }
+         }
+         rewriter.create<mlir::subop::GenerateEmitOp>(runtimeRelationOp->getLoc(), values);
+         rewriter.create<mlir::tuples::ReturnOp>(loc);
+      }
+      return success();
+   }
+};
 
 static mlir::Value mapBool(mlir::Value stream, mlir::OpBuilder& rewriter, mlir::Location loc, bool value, const mlir::tuples::Column* column) {
    Block* mapBlock = new Block;
@@ -2696,6 +2726,8 @@ void RelalgToSubOpLoweringPass::runOnOperation() {
 
    TypeConverter typeConverter;
    typeConverter.addConversion([](mlir::tuples::TupleStreamType t) { return t; });
+   typeConverter.addConversion([](mlir::IntegerType t) { return t; });
+   typeConverter.addConversion([](mlir::FloatType t) { return t; });
    auto* ctxt = &getContext();
 
    RewritePatternSet patterns(&getContext());
@@ -2710,6 +2742,7 @@ void RelalgToSubOpLoweringPass::runOnOperation() {
    patterns.insert<ProjectionDistinctLowering>(typeConverter, ctxt);
    patterns.insert<TmpLowering>(typeConverter, ctxt);
    patterns.insert<ConstRelationLowering>(typeConverter, ctxt);
+   patterns.insert<RunTimeRelationLowering>(typeConverter, ctxt);
    patterns.insert<MarkJoinLowering>(typeConverter, ctxt);
    patterns.insert<CrossProductLowering>(typeConverter, ctxt);
    patterns.insert<InnerJoinNLLowering>(typeConverter, ctxt);

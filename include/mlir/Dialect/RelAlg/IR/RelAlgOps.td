@@ -129,6 +129,15 @@ def BaseTableOp : RelAlg_Op<"basetable",[Pure,Operator]> {
     }];
 }
 
+
+def RunTimeRelationOp : RelAlg_Op<"runtime_relation", [Pure,Operator]> {
+    let summary = "runtime relation";
+
+    let arguments = (ins ArrayAttr:$columns, Variadic<I32>:$values);
+    let results = (outs TupleStream:$result);
+    let assemblyFormat = [{ `columns` `:` custom<CustDefArr>($columns) `values` `:` $values attr-dict }];
+}
+
 //===----------------------------------------------------------------------===//
 // Operators
 //===----------------------------------------------------------------------===//
