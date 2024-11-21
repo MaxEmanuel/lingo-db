@@ -3572,7 +3572,7 @@ mlir::Value frontend::sql::Parser::translateRowExpression(mlir::OpBuilder& build
    std::vector<mlir::Attribute> row;
    std::vector<mlir::Attribute> values;
    std::vector<mlir::Attribute> attributes;
-   std::string symName = "rowrel" + std::to_string(RowRelId++);
+   std::string symName = "rowrel_" + std::to_string(RowRelId++);
    
    for (auto* arg = rowExpr->args_->head; arg != nullptr; arg = arg->next) {
       auto* arg_Expr = reinterpret_cast<A_Expr*>(arg->data.ptr_value);
@@ -3633,9 +3633,6 @@ std::vector<std::vector<mlir::Value>> frontend::sql::Parser::extractConstRelOpDa
             std::vector<mlir::Value> column;
             std::string columnName = columnDefAttr.getName().getLeafReference().getValue().str();
             mlir::Type stringType = mlir::db::StringType::get(builder.getContext());
-            if (columnName.size() <= 8 && columnName.size() > 0) {
-               stringType = mlir::db::CharType::get(builder.getContext(), columnName.size());
-            }
             mlir::Value strVal = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), stringType, builder.getStringAttr(columnName));
             column.push_back(strVal);
             resultRel.push_back(column);
@@ -3649,7 +3646,7 @@ std::vector<std::vector<mlir::Value>> frontend::sql::Parser::extractConstRelOpDa
             size_t i = 0;
             for (mlir::Attribute element : arrayAttr.getValue()) {
                if (auto intAttr = element.dyn_cast<mlir::IntegerAttr>()) {
-                  auto intType = builder.getI64Type();
+                  auto intType = builder.getI32Type();
                   mlir::Value intVal = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), intType, intAttr);
                   resultRel[i].push_back(intVal);
                   i++;
@@ -3657,7 +3654,7 @@ std::vector<std::vector<mlir::Value>> frontend::sql::Parser::extractConstRelOpDa
                if (auto StringAttr = element.dyn_cast<mlir::StringAttr>()) {
                   std::string val_str = StringAttr.getValue().str();
                   double val_d = std::stod(val_str);
-                  auto floatType = builder.getF64Type();
+                  auto floatType = builder.getF32Type();
                   auto floatAttr = builder.getFloatAttr(floatType, val_d);
                   mlir::Value floatVal = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), floatType, floatAttr);
                   resultRel[i].push_back(floatVal);
