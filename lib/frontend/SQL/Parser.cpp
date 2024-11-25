@@ -438,23 +438,45 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
    }
 
    if (funcName == "derivate") {
+      static size_t derivateID = 0;
+      std::string symName = "derivate_" + std::to_string(derivateID++);
+
       mlir::Value result_diff;
       Node* variables = reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value);
       auto input = translateExpression(builder, variables, context);
+      mlir::Value diff;
 
-      std::vector<mlir::Value> results;
       if(getBaseType(input.getType()).isa<mlir::tuples::TupleStreamType>()) {
+         std::vector<mlir::Value> diff_list;
+         std::vector<mlir::Attribute> column_attributes;
+
          std::vector<std::vector<mlir::Value>> variables = extractConstRelOpData(builder, input);
          for (const auto &variable : variables) {
             mlir::Value varName = variable[0];
             mlir::Value varVal = variable[1];
 
-            result_diff = builder.create<mlir::db::RuntimeCall>(loc, varVal.getType(), "AutoDiff", varVal).getRes();
+            auto diff_runtimecall = builder.create<mlir::db::RuntimeCall>(loc, varVal.getType(), "AutoDiff", mlir::ValueRange({varVal, varName}));
+            mlir::Value diff = diff_runtimecall.getRes();
+
+            diff_list.push_back(diff);
+
+            auto colNameOp = varName.getDefiningOp();
+            auto colNameAttr = colNameOp->getAttr("value");
+            auto colNameStrAttr = colNameAttr.dyn_cast<mlir::StringAttr>();
+            std::string columnName = "d_" + colNameStrAttr.getValue().str();
+
+            auto attrDef = attrManager.createDef(symName, columnName);
+            attrDef.getColumn().type = diff.getType();
+            column_attributes.push_back(attrDef);
+
+            auto resolverScope = context.createResolverScope();
+            context.mapAttribute(resolverScope, columnName, &attrDef.getColumn());
          }
+         mlir::Value test_relation = builder.create<mlir::relalg::RunTimeRelationOp>(loc, builder.getArrayAttr(column_attributes), mlir::ValueRange(diff_list));
+         return test_relation;
       } else {
-         result_diff = builder.create<mlir::db::RuntimeCall>(loc, input.getType(), "AutoDiff", input).getRes();
+         return builder.create<mlir::db::RuntimeCall>(loc, input.getType(), "AutoDiffI" + std::to_string(getBaseType(input.getType()).getIntOrFloatBitWidth()), input).getRes();
       }
-      return result_diff;
    }
 
   throw std::runtime_error("could not translate func call");
