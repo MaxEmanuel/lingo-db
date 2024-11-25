@@ -460,9 +460,6 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
             auto attrDef = attrManager.createDef(symName, columnName);
             attrDef.getColumn().type = diff.getType();
             column_attributes.push_back(attrDef);
-
-            auto resolverScope = context.createResolverScope();
-            context.mapAttribute(resolverScope, columnName, &attrDef.getColumn());
          }
          mlir::Value test_relation = builder.create<mlir::relalg::RunTimeRelationOp>(loc, builder.getArrayAttr(column_attributes), mlir::ValueRange(diff_list));
          return test_relation;
@@ -1067,6 +1064,17 @@ mlir::Value frontend::sql::Parser::translateFromClausePart(mlir::OpBuilder& buil
                }
                auto* funcNode = reinterpret_cast<Node*>(inner_cell->data.ptr_value);
                mlir::Value value = translateFuncCallExpression(funcNode, builder, builder.getUnknownLoc(), context);
+               if(auto valueOp = value.getDefiningOp<mlir::relalg::RunTimeRelationOp>()) {
+                  for(auto col : valueOp.getColumns()) {
+                     auto colDef = col.dyn_cast<mlir::tuples::ColumnDefAttr>();
+                     if(colDef) {
+                        std::string columnName = colDef.getName().getLeafReference().getValue().str();
+                        context.mapAttribute(scope, columnName, &colDef.getColumn());
+                     } else {
+                        throw std::runtime_error("Function did not create a valid column");
+                     }
+                  }
+               }
                return value;
             }
          }
