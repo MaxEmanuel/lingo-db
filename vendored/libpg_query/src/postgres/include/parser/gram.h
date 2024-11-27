@@ -474,7 +474,8 @@
      NULLS_LA = 690,
      WITH_LA = 691,
      POSTFIXOP = 692,
-     UMINUS = 693
+     UMINUS = 693,
+     LAMBDA = 694
    };
 #endif
 /* Tokens.  */
@@ -915,6 +916,7 @@
 #define WITH_LA 692
 #define POSTFIXOP 693
 #define UMINUS 694
+#define LAMBDA 695
 
 
 
