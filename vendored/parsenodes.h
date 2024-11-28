@@ -64,6 +64,7 @@ using Expr = struct Expr {
  *	MULTIEXPR_SUBLINK	(SELECT with multiple targetlist items ...)
  *	ARRAY_SUBLINK		ARRAY(SELECT with single targetlist item ...)
  *	CTE_SUBLINK			WITH query (never actually part of an expression)
+ *  TABLE_SUBLINK		TABLE(SELECT ...)
  * For ALL, ANY, and ROWCOMPARE, the lefthand is a list of expressions of the
  * same length as the subselect's targetlist.  ROWCOMPARE will *always* have
  * a list with more than one entry; if the subselect has just one target
@@ -76,6 +77,7 @@ using Expr = struct Expr {
  * semantics respectively.
  * ARRAY requires just one target column, and creates an array of the target
  * column's type using any number of rows resulting from the subselect.
+ * * TABLE takes a SELECT statement and converts the result to a table variable.
  *
  * SubLink is classed as an Expr node, but it is not actually executable;
  * it must be replaced in the expression tree by a SubPlan node during
@@ -109,7 +111,8 @@ using SubLinkType = enum SubLinkType {
    EXPR_SUBLINK,
    MULTIEXPR_SUBLINK,
    ARRAY_SUBLINK,
-   CTE_SUBLINK /* for SubPlans only */
+   CTE_SUBLINK, /* for SubPlans only */
+   TABLE_SUBLINK
 };
 
 using SubLink = struct SubLink {

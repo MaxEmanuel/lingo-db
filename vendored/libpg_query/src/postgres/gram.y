@@ -10584,6 +10584,31 @@ table_ref:	relation_expr opt_alias_clause
 					$2->alias = $4;
 					$$ = (Node *) $2;
 				}
+			| TABLE select_with_parens opt_alias_clause
+				{
+					RangeSubselect *n = makeNode(RangeSubselect);
+					n->lateral = false;
+					n->subquery = $2;
+					n->alias = $3;
+					/* same comment as in LATERAL_P and above */
+					if ($2 == NULL)
+					{
+						if (IsA($1, SelectStmt) &&
+							((SelectStmt *) $1)->valuesLists)
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("VALUES in FROM must have an alias"),
+									 errhint("For example, FROM (VALUES ...) [AS] foo."),
+									 parser_errposition(@1)));
+						else
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("subquery in FROM must have an alias"),
+									 errhint("For example, FROM (SELECT ...) [AS] foo."),
+									 parser_errposition(@1)));
+					}
+					$$ = (Node *) n;
+				}
 		;
 
 
@@ -12113,6 +12138,21 @@ c_expr:		columnref								{ $$ = $1; }
 				  g->location = @1;
 				  $$ = (Node *)g;
 			  }
+			| TABLE select_with_parens
+			  {
+				  SubLink *n = makeNode(SubLink);
+				  n->subLinkType = TABLE_SUBLINK;
+				  n->subLinkId = 0;
+				  n->testexpr = NULL;
+				  n->operName = NIL;
+				  n->subselect = $2;
+				  n->location = @1;
+				  $$ = (Node *)n;
+			  }
+			| TABLE '(' ColId ')'
+				{
+					$$ = makeRangeVar(NULL, $3, @1);
+				}
 		;
 
 func_application: func_name '(' ')'
