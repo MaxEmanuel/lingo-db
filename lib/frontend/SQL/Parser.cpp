@@ -1905,6 +1905,10 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
                mlir::Value exists = builder.create<mlir::relalg::ExistsOp>(loc, builder.getI1Type(), subQueryTree);
                return builder.create<mlir::db::NotOp>(loc, exists);
             }
+            case TABLE_SUBLINK: {
+               assert(!targetInfo.namedResults.empty());
+               return subQueryTree;
+            }
             default:
               throw std::runtime_error("unsupported sublink type");
          }
@@ -1937,6 +1941,10 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
       case T_RowExpr: {
          mlir::Value rowRel = translateRowExpression(builder, context, node);
          return rowRel;
+      }
+      case T_RangeVar: {
+         auto scope = context.createResolverScope();
+         return translateRangeVar(builder, reinterpret_cast<RangeVar*>(node), context, scope);
       }
       default: {
         throw std::runtime_error("unsupported expression type");
