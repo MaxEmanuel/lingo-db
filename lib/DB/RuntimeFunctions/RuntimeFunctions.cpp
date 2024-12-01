@@ -360,7 +360,7 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    builtinRegistry->add("ArrayNullCheck").implementedAs(rt::ArrayRuntime::isNull).matchesTypes({RuntimeFunction::arrayLike}, resTypeIsBool);
 
    builtinRegistry->add("ArrayAgg").implementedAs(rt::ArrayRuntime::agg).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
-   builtinRegistry->add("AutoDiff").matchesTypes({RuntimeFunction::intLike}, resTypeIsI64).implementedAs(rt::AutoDiff::derivate);
+   builtinRegistry->add("AutoDiff").matchesTypes({RuntimeFunction::intLike}, RuntimeFunction::matchesArgument()).implementedAs(rt::AutoDiff::derivate);
 
    return builtinRegistry;
 }

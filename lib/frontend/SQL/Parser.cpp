@@ -448,28 +448,26 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
          std::vector<mlir::Value> diff_list;
          std::vector<mlir::Attribute> column_attributes;
 
-         // for (const auto &variable : variables) {
-         //    mlir::Value varName = variable[0];
-         //    mlir::Value varVal = variable[1];
-// 
-         //    auto diff_runtimecall = builder.create<mlir::db::RuntimeCall>(loc, varVal.getType(), "AutoDiff", mlir::ValueRange({varVal, varName}));
-         //    mlir::Value diff = diff_runtimecall.getRes();
-// 
-         //    diff_list.push_back(diff);
-// 
-         //    auto colNameOp = varName.getDefiningOp();
-         //    auto colNameAttr = colNameOp->getAttr("value");
-         //    auto colNameStrAttr = colNameAttr.dyn_cast<mlir::StringAttr>();
-         //    std::string columnName = "d_" + colNameStrAttr.getValue().str();
-// 
-         //    auto attrDef = attrManager.createDef(symName, columnName);
-         //    attrDef.getColumn().type = diff.getType();
-         //    column_attributes.push_back(attrDef);
-         // }
-         // mlir::Value test_relation = builder.create<mlir::relalg::RunTimeRelationOp>(loc, builder.getArrayAttr(column_attributes), mlir::ValueRange(diff_list));
-         return input;
-      } else {
-         return builder.create<mlir::db::RuntimeCall>(loc, input.getType(), "AutoDiffI" + std::to_string(getBaseType(input.getType()).getIntOrFloatBitWidth()), input).getRes();
+         auto cols = context.getAllDefinedColumns();
+         for(auto col : cols) {
+            auto cRef = attrManager.createRef(col.second);
+            auto cType = col.second->type;
+            // get the values
+            auto val = builder.create<mlir::subop::GetSingleValOp>(loc, cType, input, cRef);
+            // make the runtime call
+            auto diff_runtimecall = builder.create<mlir::db::RuntimeCall>(loc, val.getResult().getType(), "AutoDiff", mlir::ValueRange({val.getRes()}));
+            mlir::Value diff = diff_runtimecall.getRes();
+            // save the result of the runtime call
+            diff_list.push_back(diff);
+            // save the column name, i.e the variable name
+            std::string columnName = "d_" + col.first;
+            auto attrDef = attrManager.createDef(symName, columnName);
+            attrDef.getColumn().type = diff.getType();
+            column_attributes.push_back(attrDef);
+         }
+         // pack the results into a RunTimeRelationOP
+         mlir::Value test_relation = builder.create<mlir::relalg::RunTimeRelationOp>(loc, builder.getArrayAttr(column_attributes), mlir::ValueRange(diff_list));
+         return test_relation;
       }
    }
 
@@ -1646,8 +1644,8 @@ mlir::Value frontend::sql::Parser::translateFromClausePart(mlir::OpBuilder& buil
                            throw std::runtime_error("Function did not create a valid column.");
                         }
                      }
-                     return value;
                   }
+                  return value;
                } else {
                   throw std::runtime_error("Function needs to return a object of tuple stream type.");
                }
@@ -1907,6 +1905,11 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
             }
             case TABLE_SUBLINK: {
                assert(!targetInfo.namedResults.empty());
+               auto scope = context.createResolverScope();
+               for(auto results : targetInfo.namedResults) {
+                  auto attrDef = builder.getStringAttr(results.first);
+                  context.mapAttribute(scope, results.first, results.second);
+               }
                return subQueryTree;
             }
             default:
