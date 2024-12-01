@@ -11,7 +11,7 @@ namespace runtime
          * @param x a table/dictionary with values for given variables
          * @returns the result of the derived function with  
          */
-        static int64_t derivate(int64_t varVal);
+        static int32_t derivate(int32_t varVal);
     };
 
 }

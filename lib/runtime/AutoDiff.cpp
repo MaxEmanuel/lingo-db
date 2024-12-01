@@ -3,6 +3,6 @@
 #include <iostream>
 #include <string>
 
-int64_t runtime::AutoDiff::derivate(int64_t varVal) {
+int32_t runtime::AutoDiff::derivate(int32_t varVal) {
     return varVal;
 }

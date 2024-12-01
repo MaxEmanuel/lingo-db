@@ -322,7 +322,7 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    });
 
    builtinRegistry->add("Random").implementedAs(rt::FloatRuntime::random).matchesTypes({}, resTypeIsF64);
-   builtinRegistry->add("AutoDiff").matchesTypes({RuntimeFunction::intLike}, resTypeIsI64).implementedAs(rt::AutoDiff::derivate);
+   builtinRegistry->add("AutoDiff").matchesTypes({RuntimeFunction::intLike}, RuntimeFunction::matchesArgument()).implementedAs(rt::AutoDiff::derivate);
 
    return builtinRegistry;
 }
