@@ -469,6 +469,9 @@ case T_A_Indirection:
 case T_A_ArrayExpr:
   _outA_ArrayExpr(str, obj);
   break;
+case T_LambdaExpr:
+  _outLambdaExpr(str, obj);
+  break;
 case T_ResTarget:
   _outResTarget(str, obj);
   break;

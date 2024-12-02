@@ -361,5 +361,6 @@
   "WindowObjectData",
   "TIDBitmap",
   "InlineCodeBlock",
-  "FdwRoutine"
+  "FdwRoutine",
+  "LambdaExpr"
 ]

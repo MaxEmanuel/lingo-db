@@ -993,3 +993,15 @@ struct RangeFunction
 	List	   *coldeflist;		/* list of ColumnDef nodes to describe result
 								 * of function returning RECORD */
 };
+
+/*
+ * LambdaExpr - an Lambda[]() construct
+ * 	Represents a arithmetic function
+ */
+typedef struct LambdaExpr
+{
+   NodeTag     type_;
+   List        *param_;        	/* Parameter (e.g., x) */
+   Node	      *body_;        	/* Body of the function (e.g., x + 2)*/
+	int			location_;		/* token location, or -1 if unknown */
+} LambdaExpr;

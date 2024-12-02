@@ -1836,6 +1836,16 @@ _outA_ArrayExpr(StringInfo str, const A_ArrayExpr *node)
 }
 
 static void
+_outLambdaExpr(StringInfo str, const LambdaExpr *node)
+{
+  WRITE_NODE_TYPE("LambdaExpr");
+
+  WRITE_NODE_PTR_FIELD(param);
+  WRITE_NODE_PTR_FIELD(body);
+  WRITE_INT_FIELD(location);
+}
+
+static void
 _outResTarget(StringInfo str, const ResTarget *node)
 {
   WRITE_NODE_TYPE("ResTarget");

@@ -436,6 +436,9 @@ exprLocation(const Node *expr)
 			/* the location points at ARRAY or [, which must be leftmost */
 			loc = ((const A_ArrayExpr *) expr)->location;
 			break;
+		case T_LambdaExpr:
+			loc = ((const LambdaExpr *) expr)->location;
+			break;
 		case T_ResTarget:
 			/* we need not examine the contained expression (if any) */
 			loc = ((const ResTarget *) expr)->location;
@@ -1066,6 +1069,15 @@ raw_expression_tree_walker(Node *node,
 			break;
 		case T_A_ArrayExpr:
 			return walker(((A_ArrayExpr *) node)->elements, context);
+		case T_LambdaExpr:
+			{
+				LambdaExpr *lambda = (LambdaExpr *) node;
+
+				if (walker(lambda->param, context))
+					return true;
+				if (walker(lambda->body, context))
+					return true;
+			}
 		case T_ResTarget:
 			{
 				ResTarget  *rt = (ResTarget *) node;

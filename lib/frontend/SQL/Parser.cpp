@@ -1949,6 +1949,9 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
          auto scope = context.createResolverScope();
          return translateRangeVar(builder, reinterpret_cast<RangeVar*>(node), context, scope);
       }
+      case T_LambdaExpr: {
+         auto* lambda = reinterpret_cast<LambdaExpr*>(node);
+      }
       default: {
         throw std::runtime_error("unsupported expression type");
       }

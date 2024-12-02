@@ -2371,6 +2371,16 @@ _equalA_ArrayExpr(const A_ArrayExpr *a, const A_ArrayExpr *b)
 }
 
 static bool
+_equalLambdaExpr(const LambdaExpr *a, const LambdaExpr *b)
+{
+	COMPARE_NODE_FIELD(param);
+	COMPARE_NODE_FIELD(body);
+	COMPARE_LOCATION_FIELD(location);
+
+	return true;
+}
+
+static bool
 _equalResTarget(const ResTarget *a, const ResTarget *b)
 {
 	COMPARE_STRING_FIELD(name);
@@ -3408,6 +3418,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_A_ArrayExpr:
 			retval = _equalA_ArrayExpr(a, b);
+			break;
+		case T_LambdaExpr:
+			retval = _equalLambdaExpr(a, b);
 			break;
 		case T_ResTarget:
 			retval = _equalResTarget(a, b);

@@ -5147,6 +5147,25 @@ _fingerprintA_ArrayExpr(FingerprintContext *ctx, const A_ArrayExpr *node, const 
 }
 
 static void
+_fingerprintLambdaExpr(FingerprintContext *ctx, const LambdaExpr *node, const void *parent, const char *field_name, unsigned int depth) {
+  _fingerprintString(ctx, "LambdaExpr");
+
+  if (node->body != NULL) {
+    FingerprintContext subCtx;
+    _fingerprintInitForTokens(&subCtx);
+    _fingerprintNode(&subCtx, node->body, node, "body", depth + 1);
+    _fingerprintCopyTokens(&subCtx, ctx, "body");
+  }
+
+  if (node->param != NULL && node->param->length > 0) {
+    FingerprintContext subCtx;
+    _fingerprintInitForTokens(&subCtx);
+    _fingerprintNode(&subCtx, node->param, node, "param", depth + 1);
+    _fingerprintCopyTokens(&subCtx, ctx, "param");
+  }
+}
+
+static void
 _fingerprintResTarget(FingerprintContext *ctx, const ResTarget *node, const void *parent, const char *field_name, unsigned int depth)
 {
   _fingerprintString(ctx, "ResTarget");

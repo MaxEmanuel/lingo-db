@@ -179,6 +179,7 @@ static void processCASbits(int cas_bits, int location, const char *constrType,
 			   bool *deferrable, bool *initdeferred, bool *not_valid,
 			   bool *no_inherit, core_yyscan_t yyscanner);
 static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
+static Node *makeLambdaExpr(List *param, Node *body, int location);
 
 %}
 
@@ -604,7 +605,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	KEY
 
-	LABEL LANGUAGE LARGE_P LAST_P LATERAL_P
+	LABEL LAMBDA LANGUAGE LARGE_P LAST_P LATERAL_P
 	LEADING LEAKPROOF LEAST LEFT LEVEL LIKE LIMIT LISTEN LOAD LOCAL
 	LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED
 
@@ -673,6 +674,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %left		OR
 %left		AND
 %right		NOT
+%left		LAMBDA
 %nonassoc	IS ISNULL NOTNULL	/* IS sets precedence for IS NULL, etc */
 %nonassoc	'<' '>' '=' LESS_EQUALS GREATER_EQUALS NOT_EQUALS
 %nonassoc	BETWEEN IN_P LIKE ILIKE SIMILAR NOT_LA
@@ -11981,7 +11983,7 @@ b_expr:		c_expr
  */
 c_expr:		columnref								{ $$ = $1; }
 			| AexprConst							{ $$ = $1; }
-      | '?' opt_indirection
+      		| '?' opt_indirection
 				{
 					if ($2)
 					{
@@ -12152,6 +12154,10 @@ c_expr:		columnref								{ $$ = $1; }
 			| TABLE '(' ColId ')'
 				{
 					$$ = makeRangeVar(NULL, $3, @1);
+				}
+			| LAMBDA '{' expr_list '}' '(' a_expr ')'
+				{
+					$$ = makeLambdaExpr($3, $6, @1);
 				}
 		;
 
@@ -13827,6 +13833,7 @@ unreserved_keyword:
 			| ITERATIVE
 			| KEY
 			| LABEL
+			| LAMBDA
 			| LANGUAGE
 			| LARGE_P
 			| LAST_P
@@ -14733,6 +14740,16 @@ makeAArrayExpr(List *elements, int location)
 	A_ArrayExpr *n = makeNode(A_ArrayExpr);
 
 	n->elements = elements;
+	n->location = location;
+	return (Node *) n;
+}
+
+static Node *
+makeLambdaExpr(List *param, Node *body, int location)
+{
+	LambdaExpr *n = makeNode(LambdaExpr);
+	n->param = param;
+	n->body = body;
 	n->location = location;
 	return (Node *) n;
 }

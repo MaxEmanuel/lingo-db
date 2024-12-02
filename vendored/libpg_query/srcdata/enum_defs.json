@@ -3133,6 +3133,10 @@
         {
           "name": "T_TsmRoutine",
           "comment": "/* in access/tsmapi.h */"
+        },
+        {
+          "name": "LambdaExpr",
+          "comment": "*/ Expression that represents an erithmetic function */"
         }
       ],
       "comment": "/*\n * The first field of every node is NodeTag. Each node created (with makeNode)\n * will have one of the following tags as the value of its first field.\n *\n * Note that the numbers of the node tags are not contiguous. We left holes\n * here so that we can add more tags without changing the existing enum's.\n * (Since node tag numbers never exist outside backend memory, there's no\n * real harm in renumbering, it just costs a full rebuild ...)\n */\n"
