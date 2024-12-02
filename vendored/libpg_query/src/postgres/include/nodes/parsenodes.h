@@ -3054,4 +3054,16 @@ typedef struct AlterTSConfigurationStmt
 	bool		missing_ok;		/* for DROP - skip error if missing? */
 } AlterTSConfigurationStmt;
 
+/*
+ * LambdaExpr - an Lambda[]() construct
+ * 	Represents a arithmetic function
+ */
+typedef struct LambdaExpr
+{
+   NodeTag     type;
+   List       *param;        	/* Parameter (e.g., x) */
+   Node	   *body;        	/* Body of the function (e.g., x + 2)*/
+	int			location;		/* token location, or -1 if unknown */
+} LambdaExpr;
+
 #endif   /* PARSENODES_H */

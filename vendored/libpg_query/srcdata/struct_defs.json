@@ -6962,7 +6962,31 @@
         }
       ],
       "comment": "/*----------\n * OnConflictExpr - represents an ON CONFLICT DO ... expression\n *\n * The optimizer requires a list of inference elements, and optionally a WHERE\n * clause to infer a unique index.  The unique index (or, occasionally,\n * indexes) inferred are used to arbitrate whether or not the alternative ON\n * CONFLICT path is taken.\n *----------\n */\n"
-    }
+    },
+    "LambdaExpr": {
+      "fields": [
+        {
+          "name": "type",
+          "c_type": "NodeTag",
+          "comment": null
+        },
+        {
+          "name": "param",
+          "c_type": "List*",
+          "comment": "/* lambda function parameters */"
+        },
+        {
+          "name": "body",
+          "c_type": "Node*",
+          "comment": "/* lambda function body */"
+        },
+        {
+          "name": "location",
+          "c_type": "int",
+          "comment": "/* token location, or -1 if unknown */"
+        }
+      ],
+      "comment": "/*\n * A_ArrayExpr - an ARRAY[] construct\n */\n"
   },
   "nodes/lockoptions": {
   },

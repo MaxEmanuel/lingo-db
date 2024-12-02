@@ -469,6 +469,9 @@ case T_A_Indirection:
 case T_A_ArrayExpr:
   _fingerprintA_ArrayExpr(ctx, obj, parent, field_name, depth);
   break;
+case T_LambdaExpr:
+  _fingerprintLambdaExpr(ctx, obj, parent, field_name, depth);
+  break;
 case T_ResTarget:
   _fingerprintResTarget(ctx, obj, parent, field_name, depth);
   break;

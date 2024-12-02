@@ -2654,6 +2654,19 @@ _copyA_ArrayExpr(const A_ArrayExpr *from)
 	return newnode;
 }
 
+static LambdaExpr *
+_copyLambdaExpr(const LambdaExpr *from)
+{
+
+	LambdaExpr *newnode = makeNode(LambdaExpr);
+
+	COPY_NODE_FIELD(param);
+	COPY_NODE_FIELD(body);
+	COPY_LOCATION_FIELD(location);
+
+	return newnode;
+}
+
 static ResTarget *
 _copyResTarget(const ResTarget *from)
 {
@@ -5090,6 +5103,9 @@ copyObject(const void *from)
 			break;
 		case T_A_ArrayExpr:
 			retval = _copyA_ArrayExpr(from);
+			break;
+		case T_LambdaExpr:
+			retval = _copyLambdaExpr(from);
 			break;
 		case T_ResTarget:
 			retval = _copyResTarget(from);
