@@ -360,7 +360,7 @@ static Node *makeLambdaExpr(List *param, Node *body, int location);
 				sort_clause opt_sort_clause sortby_list index_params
 				name_list role_list from_clause from_list opt_array_bounds
 				qualified_name_list any_name any_name_list type_name_list
-				any_operator expr_list attrs
+				any_operator expr_list ColId_list attrs
 				target_list opt_target_list insert_column_list set_target_list
 				set_clause_list set_clause multiple_set_clause
 				ctext_expr_list ctext_row def_list indirection opt_indirection
@@ -674,7 +674,6 @@ static Node *makeLambdaExpr(List *param, Node *body, int location);
 %left		OR
 %left		AND
 %right		NOT
-%left		LAMBDA
 %nonassoc	IS ISNULL NOTNULL	/* IS sets precedence for IS NULL, etc */
 %nonassoc	'<' '>' '=' LESS_EQUALS GREATER_EQUALS NOT_EQUALS
 %nonassoc	BETWEEN IN_P LIKE ILIKE SIMILAR NOT_LA
@@ -12155,7 +12154,7 @@ c_expr:		columnref								{ $$ = $1; }
 				{
 					$$ = makeRangeVar(NULL, $3, @1);
 				}
-			| LAMBDA '{' expr_list '}' '(' a_expr ')'
+			| LAMBDA '{' ColId_list '}' '(' a_expr ')'
 				{
 					$$ = makeLambdaExpr($3, $6, @1);
 				}
@@ -12982,6 +12981,16 @@ expr_list:	a_expr
 			| expr_list ',' a_expr
 				{
 					$$ = lappend($1, $3);
+				}
+		;
+
+ColId_list:	ColId
+				{
+					$$ = list_make1(makeRangeVar(NULL, $1, @$));
+				}
+			| ColId_list ',' ColId
+				{
+					$$ = lappend($1, makeRangeVar(NULL, $3, @$));
 				}
 		;
 
