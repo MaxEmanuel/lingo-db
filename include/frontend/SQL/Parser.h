@@ -401,7 +401,7 @@ struct Parser {
    // translateRowExpression creates a mlir::relalg::ConstRelationOp object
    mlir::Value translateRowExpression(mlir::OpBuilder& builder, TranslationContext& context, Node* node);
 
-   std::vector<std::vector<mlir::Value>> extractConstRelOpData(mlir::OpBuilder& builder, mlir::Value constRelOp);
+   std::string castTypetoString(mlir::Type type);
 };
 } // end namespace frontend::sql
 #endif // FRONTEND_SQL_PARSER_H

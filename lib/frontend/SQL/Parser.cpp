@@ -429,39 +429,6 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       left = SQLTypeInference::castValueToType(builder, left, mlir::db::StringType::get(builder.getContext()));
       return builder.create<mlir::db::RuntimeCall>(loc, array.array.getType(), "ArrayFill", mlir::ValueRange({arrayData.array, arrayData.dimension, left, type})).getRes();
    }
-   if (funcName == "derivate") {
-      static size_t derivateID = 0;
-      std::string symName = "derivate_" + std::to_string(derivateID++);
-
-      Node* variables = reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value);
-      mlir::Value input = translateExpression(builder, variables, context);
-
-      if(getBaseType(input.getType()).isa<mlir::tuples::TupleStreamType>()) {
-         std::vector<mlir::Value> diff_list;
-         std::vector<mlir::Attribute> column_attributes;
-
-         auto cols = context.getAllDefinedColumns();
-         for(auto col : cols) {
-            auto cRef = attrManager.createRef(col.second);
-            auto cType = col.second->type;
-            // get the values
-            auto val = builder.create<mlir::subop::GetSingleValOp>(loc, cType, input, cRef);
-            // make the runtime call
-            auto diff_runtimecall = builder.create<mlir::db::RuntimeCall>(loc, val.getResult().getType(), "AutoDiff", mlir::ValueRange({val.getRes()}));
-            mlir::Value diff = diff_runtimecall.getRes();
-            // save the result of the runtime call
-            diff_list.push_back(diff);
-            // save the column name, i.e the variable name
-            std::string columnName = "d_" + col.first;
-            auto attrDef = attrManager.createDef(symName, columnName);
-            attrDef.getColumn().type = diff.getType();
-            column_attributes.push_back(attrDef);
-         }
-         // pack the results into a RunTimeRelationOP
-         mlir::Value test_relation = builder.create<mlir::relalg::RunTimeRelationOp>(loc, builder.getArrayAttr(column_attributes), mlir::ValueRange(diff_list));
-         return test_relation;
-      }
-   }
 
   throw std::runtime_error("could not translate func call");
    return mlir::Value();
@@ -1058,19 +1025,8 @@ mlir::Value frontend::sql::Parser::translateFromClausePart(mlir::OpBuilder& buil
                   break;
                }
                auto* funcNode = reinterpret_cast<Node*>(inner_cell->data.ptr_value);
-               mlir::Value value = translateFuncCallExpression(funcNode, builder, builder.getUnknownLoc(), context);
+               mlir::Value value = translateTableFunction(funcNode, builder, builder.getUnknownLoc(), context, scope);
                if(getBaseType(value.getType()).isa<mlir::tuples::TupleStreamType>()) {
-                  if(auto valueOp = value.getDefiningOp<mlir::relalg::RunTimeRelationOp>()) {
-                     for(auto col : valueOp.getColumns()) {
-                        auto colDef = col.dyn_cast<mlir::tuples::ColumnDefAttr>();
-                        if(colDef) {
-                           std::string columnName = colDef.getName().getLeafReference().getValue().str();
-                           context.mapAttribute(scope, columnName, &colDef.getColumn());
-                        } else {
-                           throw std::runtime_error("Function did not create a valid column.");
-                        }
-                     }
-                  }
                   return value;
                } else {
                   throw std::runtime_error("Function needs to return a object of tuple stream type.");
@@ -1327,10 +1283,33 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
             }
             case TABLE_SUBLINK: {
                assert(!targetInfo.namedResults.empty());
+               // default table name
+               static std::string tableName = "x";
+               auto tableNameValue = createStringValue(builder, tableName);
+               auto tableMetaData = std::make_shared<runtime::TableMetaData>();
+
                auto scope = context.createResolverScope();
+               // construct TableMetaData
                for(auto results : targetInfo.namedResults) {
+                  auto colName = results.first;
+                  auto col = results.second;
+
+                  mlir::Type colType = col->type;
+                  auto columnMetaData = std::make_shared<runtime::ColumnMetaData>();
+                  columnMetaData->setColumnType(createColumnType(castTypetoString(colType), false, std::vector<std::variant<size_t, std::string>>(), nullptr));
+                  tableMetaData->addColumn(results.first, columnMetaData);
+
+                  // map columns
                   auto attrDef = builder.getStringAttr(results.first);
                   context.mapAttribute(scope, results.first, results.second);
+               }
+               // add TableMetaData to catalog
+               catalog.addTable(tableName, tableMetaData);
+
+               // temporary Table name stays in a-z range
+               tableName[0]++;
+               if(tableName == "z") {
+                  tableName = "a";
                }
                return subQueryTree;
             }
@@ -1364,10 +1343,6 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
          auto result = translateArrayToString(builder, context, node);
          //mlir::Value constant = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), mlir::db::StringType::get(builder.getContext()), builder.getStringAttr("{'Hello World'}"));
          return std::get<0>(result); 
-      }
-      case T_RowExpr: {
-         mlir::Value rowRel = translateRowExpression(builder, context, node);
-         return rowRel;
       }
       case T_RangeVar: {
          auto scope = context.createResolverScope();
@@ -3118,6 +3093,57 @@ mlir::Type frontend::sql::Parser::createBaseTypeFromColumnType(mlir::MLIRContext
    assert(false);
    return mlir::Type();
 }
+
+std::string frontend::sql::Parser::castTypetoString(mlir::Type type) {
+   if(auto intType = type.dyn_cast<mlir::IntegerType>()) {
+      unsigned bitWidth = intType.getWidth();
+      if (bitWidth == 32) {
+         return "int4";
+      } else if (bitWidth == 64) {
+         return "int8";
+      } else {
+         throw std::runtime_error("Integer Width not supported");
+      }
+   }
+   if(auto floatType = type.dyn_cast<mlir::FloatType>()) {
+      unsigned bitWidth = floatType.getWidth();
+      if (bitWidth == 16) {
+         return "float2";
+      } else if (bitWidth == 32) {
+         return "float4";
+      } else if (bitWidth == 64) {
+         return "float8";
+      } else if (bitWidth == 128) {
+         return "float16";
+      } else {
+         throw std::runtime_error("Float Width not supported");
+      }
+   }
+   if(type.isa<mlir::IndexType>()) {
+      return "index";
+   }
+   if(type.isa<mlir::db::DecimalType>()) {
+      return "decimal";
+   }
+   if(type.isa<mlir::db::CharType>()) {
+      return "char";
+   }
+   if(type.isa<mlir::db::StringType>()) {
+      return "string";
+   }
+   if(type.isa<mlir::db::TimestampType>()) {
+      return "timestamp";
+   }
+   if(type.isa<mlir::db::DateType>()) {
+      return "date";
+   }
+   if(type.isa<mlir::db::IntervalType>()) {
+      return "interval";
+   }
+   assert(false);
+   return std::string();
+}
+
 mlir::Type frontend::sql::Parser::createTypeFromColumnType(mlir::MLIRContext* context, const runtime::ColumnType& colType) {
    mlir::Type baseType = createBaseTypeFromColumnType(context, colType);
    return colType.nullable ? mlir::db::NullableType::get(context, baseType) : baseType;
