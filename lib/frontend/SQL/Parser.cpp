@@ -1175,7 +1175,15 @@ mlir::Value frontend::sql::Parser::translateRangeVar(mlir::OpBuilder& builder, R
       auto attrDef = attrManager.createDef(scopeName, c);
       attrDef.getColumn().type = createTypeFromColumnType(builder.getContext(), tableMetaData->getColumnMetaData(c)->getColumnType());
       columns.push_back(builder.getNamedAttr(c, attrDef));
-      context.mapAttribute(scope, c, &attrDef.getColumn()); //todo check for existing and overwrite...
+      // If the columns are already mapped, remove them and replace them by the new columns
+      auto definedColumns = context.getAllDefinedColumns();
+      for(auto col : definedColumns) {
+         if(col.first == c || col.first == alias + "." + c) {
+            context.removeFromDefinedColumns(col.second);
+            continue;
+         }
+      }
+      context.mapAttribute(scope, c, &attrDef.getColumn());
       context.mapAttribute(scope, alias + "." + c, &attrDef.getColumn());
    }
    return builder.create<mlir::relalg::BaseTableOp>(builder.getUnknownLoc(), mlir::tuples::TupleStreamType::get(builder.getContext()), relation, mlir::relalg::TableMetaDataAttr::get(builder.getContext(), std::make_shared<runtime::TableMetaData>()), builder.getDictionaryAttr(columns));
@@ -1875,9 +1883,6 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
                   auto columnMetaData = std::make_shared<runtime::ColumnMetaData>();
                   columnMetaData->setColumnType(createColumnType(castTypetoString(colType), false, std::vector<std::variant<size_t, std::string>>(), nullptr));
                   tableMetaData->addColumn(results.first, columnMetaData);
-
-                  // map columns
-                  context.mapAttribute(scope, results.first, results.second);
                }
                // add TableMetaData to catalog
                catalog.addTable(tableName, tableMetaData);
