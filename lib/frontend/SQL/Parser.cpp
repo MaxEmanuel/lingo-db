@@ -1877,7 +1877,6 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
                   tableMetaData->addColumn(results.first, columnMetaData);
 
                   // map columns
-                  auto attrDef = builder.getStringAttr(results.first);
                   context.mapAttribute(scope, results.first, results.second);
                }
                // add TableMetaData to catalog
