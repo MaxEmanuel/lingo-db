@@ -398,10 +398,13 @@ struct Parser {
    std::tuple<mlir::Value, std::unordered_map<std::string, mlir::tuples::Column*>> performAggregation(mlir::OpBuilder& builder, std::vector<mlir::Attribute> groupByAttrs, const ReplaceState& replaceState, TranslationContext& context, mlir::Value tree);
    ~Parser();
 
-   // translateRowExpression creates a mlir::relalg::ConstRelationOp object
-   mlir::Value translateRowExpression(mlir::OpBuilder& builder, TranslationContext& context, Node* node);
+   mlir::Value translateTableFunction(Node* node, mlir::OpBuilder& builder, mlir::Location loc, TranslationContext& context, ResolverScope& scope);
 
    std::string castTypetoString(mlir::Type type);
+
+   std::pair<mlir::Value, mlir::tuples::ColumnRefAttr> mapLambdaToAttribute(mlir::Value tree, TranslationContext& context, mlir::OpBuilder& builder, ResolverScope& scope, LambdaExpr* stmt);
+
+   mlir::Value evaluateLambdaExpression(mlir::OpBuilder& builder, LambdaExpr* stmt, TranslationContext& context, ResolverScope& scope, bool ignoreNull);
 };
 } // end namespace frontend::sql
 #endif // FRONTEND_SQL_PARSER_H

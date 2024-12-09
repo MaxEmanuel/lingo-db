@@ -1353,7 +1353,8 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
          return translateRangeVar(builder, reinterpret_cast<RangeVar*>(node), context, scope);
       }
       case T_LambdaExpr: {
-         auto* lambda = reinterpret_cast<LambdaExpr*>(node);
+         auto scope = context.createResolverScope();
+         return evaluateLambdaExpression(builder, reinterpret_cast<LambdaExpr*>(node), context, scope, ignoreNull);
       }
       default: {
         throw std::runtime_error("unsupported expression type");
@@ -3167,104 +3168,76 @@ bool frontend::sql::Parser::isParallelismAllowed() const {
    return parallelismAllowed;
 }
 
-mlir::Value frontend::sql::Parser::translateRowExpression(mlir::OpBuilder& builder, TranslationContext& context, Node* node) {
-   auto* rowExpr = reinterpret_cast<RowExpr*>(node);
-   static size_t RowRelId = 0;
-   
-   std::vector<mlir::Attribute> row;
-   std::vector<mlir::Attribute> values;
-   std::vector<mlir::Attribute> attributes;
-   std::string symName = "rowrel_" + std::to_string(RowRelId++);
-   
-   for (auto* arg = rowExpr->args_->head; arg != nullptr; arg = arg->next) {
-      auto* arg_Expr = reinterpret_cast<A_Expr*>(arg->data.ptr_value);
-      auto* left = reinterpret_cast<Node*>(arg_Expr->lexpr_);
-      auto* right = reinterpret_cast<Node*>(arg_Expr->rexpr_);
-      Node* columnRef_node;
-      Node* aconst_node;
-      if (left->type == T_ColumnRef && right->type == T_A_Const) {
-         columnRef_node = left;
-         aconst_node = right;
-      } else if (right->type == T_ColumnRef && left->type == T_A_Const) {
-         columnRef_node = right;
-         aconst_node = left;
+mlir::Value frontend::sql::Parser::translateTableFunction(Node* node, mlir::OpBuilder& builder, mlir::Location loc, TranslationContext& context, TranslationContext::ResolverScope& scope) {
+   auto* funcCall = reinterpret_cast<FuncCall*>(node);
+   std::string funcName = reinterpret_cast<value*>(funcCall->funcname_->head->data.ptr_value)->val_.str_;
+   if (funcName == "derivate") {
+      // load arguments
+      Node* variableNode = reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value);
+      Node* lambdaNode = reinterpret_cast<Node*>(funcCall->args_->head->next->data.ptr_value);
+      if(lambdaNode->type != T_LambdaExpr) {
+         throw std::runtime_error("second argument of derivate has to be a lambda expression.");
       }
+      LambdaExpr* lambdaExpr = reinterpret_cast<LambdaExpr*>(lambdaNode);
+      mlir::Value variables = translateExpression(builder, variableNode, context);
+      // evaluate LambdaExpression
+      auto t = mapLambdaToAttribute(variables, context, builder, scope, lambdaExpr);
+      // add result of LambdaExpression to table
+      auto resColRefAttr = t.second;
+      auto* newCol = &resColRefAttr.getColumn();
+      context.mapAttribute(scope, "LambdaResult", newCol);
 
-      auto* columnRef = reinterpret_cast<ColumnRef*>(columnRef_node);
-      auto* aconst = reinterpret_cast<A_Const*>(aconst_node);
-      auto aconstVal = aconst->val_;
-      std::string colName = fieldsToString(columnRef->fields_);
-      mlir::Attribute value;
-      mlir::Type value_type;
-
-      if (aconstVal.type_ == T_Integer) {
-         value_type = builder.getI32Type();
-         value = builder.getI32IntegerAttr(aconstVal.val_.ival_);
-      } else if (aconstVal.type_ == T_Float) {
-         std::string stringValue(aconstVal.val_.str_);
-         auto decimalPos = stringValue.find('.');
-         if (decimalPos == std::string::npos) {
-            value_type = builder.getI64Type();
-            value = builder.getI64IntegerAttr(std::stoll(aconstVal.val_.str_));
-         } else {
-            auto s = stringValue.size() - decimalPos - 1;
-            auto p = stringValue.size() - 1;
-            value_type = mlir::db::DecimalType::get(builder.getContext(), p, s);
-            value = builder.getStringAttr(aconstVal.val_.str_);
-         }
-      }
-
-      values.push_back(value);
-      auto attrDef = attrManager.createDef(symName, colName);
-      attrDef.getColumn().type = value_type;
-      attributes.push_back(attrDef);
-
+      // mlir::Value result = input;
+      // if(getBaseType(input.getType()).isa<mlir::tuples::TupleStreamType>()) {
+      //    auto cols = context.getAllDefinedColumns();
+      //    for(auto col : cols) {
+      //       auto cName = col.first;
+      //       auto t = mapLambdaToAttribute(result, context, builder, scope, lambdaExpr);
+      //       result = t.first;
+      //       auto resColRefAttr = t.second;
+      //       auto* newCol = &resColRefAttr.getColumn();
+      //       llvm::outs() << "d_" + cName << "\n";
+      //       context.mapAttribute(scope, "d_" + cName, newCol);
+      //    }
+      // }
+      return t.first;
    }
-   row.push_back(builder.getArrayAttr(values));
-   mlir::Value RowRel = builder.create<mlir::relalg::ConstRelationOp>(builder.getUnknownLoc(), builder.getArrayAttr(attributes), builder.getArrayAttr(row));
-   return RowRel;
+  throw std::runtime_error("could not translate func call");
+   return mlir::Value();
 }
 
-
-std::vector<std::vector<mlir::Value>> frontend::sql::Parser::extractConstRelOpData(mlir::OpBuilder& builder, mlir::Value constRelOp) {
-   std::vector<std::vector<mlir::Value>> resultRel;
-
-   if (auto constOp = constRelOp.getDefiningOp<mlir::relalg::ConstRelationOp>()) {
-      for (const auto &colDef : constOp.getColumns()) {
-         if (auto columnDefAttr = colDef.dyn_cast<mlir::tuples::ColumnDefAttr>()) {
-            std::vector<mlir::Value> column;
-            std::string columnName = columnDefAttr.getName().getLeafReference().getValue().str();
-            mlir::Type stringType = mlir::db::StringType::get(builder.getContext());
-            mlir::Value strVal = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), stringType, builder.getStringAttr(columnName));
-            column.push_back(strVal);
-            resultRel.push_back(column);
-            
-         } else {
-            throw std::runtime_error("Column definition is not of type ColumnDefAttr");
-         }
-      }
-      for (auto const &v : constOp.getValues()) {
-         if (auto arrayAttr = v.dyn_cast<mlir::ArrayAttr>()) {
-            size_t i = 0;
-            for (mlir::Attribute element : arrayAttr.getValue()) {
-               if (auto intAttr = element.dyn_cast<mlir::IntegerAttr>()) {
-                  auto intType = builder.getI32Type();
-                  mlir::Value intVal = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), intType, intAttr);
-                  resultRel[i].push_back(intVal);
-                  i++;
-               }
-               if (auto StringAttr = element.dyn_cast<mlir::StringAttr>()) {
-                  std::string val_str = StringAttr.getValue().str();
-                  double val_d = std::stod(val_str);
-                  auto floatType = builder.getF32Type();
-                  auto floatAttr = builder.getFloatAttr(floatType, val_d);
-                  mlir::Value floatVal = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), floatType, floatAttr);
-                  resultRel[i].push_back(floatVal);
-                  i++;
-               }
-            }   
-         }
-      }
+mlir::Value frontend::sql::Parser::evaluateLambdaExpression(mlir::OpBuilder& builder, LambdaExpr* stmt, TranslationContext& context, TranslationContext::ResolverScope& scope, bool ignoreNull = false) {
+   auto nodeType = stmt->type_;
+   if(nodeType != T_LambdaExpr) {
+      throw std::runtime_error("Wrong type of Node given to translateLambdaExpression.");
    }
-   return resultRel;
+   auto paramsNode = reinterpret_cast<Node*>(stmt->param_->head->data.ptr_value);
+   auto bodyNode = reinterpret_cast<Node*>(stmt->body_);
+
+   mlir::Value params = translateRangeVar(builder, reinterpret_cast<RangeVar*>(paramsNode), context, scope);
+   mlir::Value bodyVal = translateExpression(builder, bodyNode, context, ignoreNull);
+   return bodyVal;
+}
+
+std::pair<mlir::Value, mlir::tuples::ColumnRefAttr> frontend::sql::Parser::mapLambdaToAttribute(mlir::Value tree, TranslationContext& context, mlir::OpBuilder& builder, TranslationContext::ResolverScope& scope, LambdaExpr* stmt) {
+   auto* block = new mlir::Block;
+   static size_t mapId = 0;
+   std::string mapName = "map" + std::to_string(mapId++);
+
+   mlir::OpBuilder mapBuilder(builder.getContext());
+   block->addArgument(mlir::tuples::TupleType::get(builder.getContext()), builder.getUnknownLoc());
+   auto tupleScope = context.createTupleScope();
+   mlir::Value tuple = block->getArgument(0);
+   context.setCurrentTuple(tuple);
+
+   mapBuilder.setInsertionPointToStart(block);
+   auto attrDef = attrManager.createDef(mapName, "tmp");
+   mlir::Value createdValue = evaluateLambdaExpression(mapBuilder, stmt, context, scope);
+   attrDef.getColumn().type = createdValue.getType();
+
+   mlir::Attribute createdCol = attrDef;
+   auto mapOp = builder.create<mlir::relalg::MapOp>(builder.getUnknownLoc(), mlir::tuples::TupleStreamType::get(builder.getContext()), tree, builder.getArrayAttr({createdCol}));
+   mapOp.getPredicate().push_back(block);
+   mapBuilder.create<mlir::tuples::ReturnOp>(builder.getUnknownLoc(), createdValue);
+   return {mapOp.getResult(), attrManager.createRef(&attrDef.getColumn())};
 }
