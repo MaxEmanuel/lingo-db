@@ -1293,23 +1293,8 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
                assert(!targetInfo.namedResults.empty());
                // default table name
                static std::string tableName = "x";
-               auto tableNameValue = createStringValue(builder, tableName);
-               auto tableMetaData = std::make_shared<runtime::TableMetaData>();
-
-               auto scope = context.createResolverScope();
-               // construct TableMetaData
-               for(auto results : targetInfo.namedResults) {
-                  auto colName = results.first;
-                  auto col = results.second;
-
-                  mlir::Type colType = col->type;
-                  auto columnMetaData = std::make_shared<runtime::ColumnMetaData>();
-                  columnMetaData->setColumnType(createColumnType(castTypetoString(colType), false, std::vector<std::variant<size_t, std::string>>(), nullptr));
-                  tableMetaData->addColumn(results.first, columnMetaData);
-               }
-               // add TableMetaData to catalog
-               catalog.addTable(tableName, tableMetaData);
-
+               // add table to ctes
+               ctes.insert({tableName, {subQueryTree, targetInfo}});
                // temporary Table name stays in a-z range
                tableName[0]++;
                if(tableName == "z") {
