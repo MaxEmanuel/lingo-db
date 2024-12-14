@@ -1912,10 +1912,12 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
          auto scope = context.createResolverScope();
          return translateRangeVar(builder, reinterpret_cast<RangeVar*>(node), context, scope);
       }
-      case T_LambdaExpr: {
-         auto scope = context.createResolverScope();
-         return evaluateLambdaExpression(builder, reinterpret_cast<LambdaExpr*>(node), context, scope, ignoreNull);
-      }
+      // case T_LambdaExpr: {
+      //    auto scope = context.createResolverScope();
+      //    auto* lambdaNode = reinterpret_cast<LambdaExpr*>(node);
+      //    auto lambda = evaluateLambdaExpression(builder, lambdaNode, context, scope, ignoreNull);
+      //    return lambda;
+      // }
       default: {
         throw std::runtime_error("unsupported expression type");
       }
@@ -3636,51 +3638,44 @@ mlir::Value frontend::sql::Parser::translateTableFunction(Node* node, mlir::OpBu
          throw std::runtime_error("second argument of derivate has to be a lambda expression.");
       }
       LambdaExpr* lambdaExpr = reinterpret_cast<LambdaExpr*>(lambdaNode);
-      mlir::Value variables = translateExpression(builder, variableNode, context);
+      auto tmp = translateExpression(builder, variableNode, context);
+
+      // get and concatenate all input tables of the lambda expression
+      mlir::Value inputTable = concatenateRangeVars(builder, context, scope, reinterpret_cast<List*>(lambdaExpr->param_));
       // evaluate LambdaExpression
-      auto t = mapLambdaToAttribute(variables, context, builder, scope, lambdaExpr);
+      auto t = mapLambdaResult(context, builder, scope, lambdaExpr, inputTable);
       // add result of LambdaExpression to table
       auto resColRefAttr = t.second;
-      auto* newCol = &resColRefAttr.getColumn();
-      context.mapAttribute(scope, "LambdaResult", newCol);
 
-      // mlir::Value result = input;
-      // if(getBaseType(input.getType()).isa<mlir::tuples::TupleStreamType>()) {
-      //    auto cols = context.getAllDefinedColumns();
-      //    for(auto col : cols) {
-      //       auto cName = col.first;
-      //       auto t = mapLambdaToAttribute(result, context, builder, scope, lambdaExpr);
-      //       result = t.first;
-      //       auto resColRefAttr = t.second;
-      //       auto* newCol = &resColRefAttr.getColumn();
-      //       llvm::outs() << "d_" + cName << "\n";
-      //       context.mapAttribute(scope, "d_" + cName, newCol);
-      //    }
-      // }
+      auto* newCol = &resColRefAttr.getColumn();
+      context.mapAttribute(scope, "Lambda", newCol);
+
       return t.first;
    }
   throw std::runtime_error("could not translate func call");
    return mlir::Value();
 }
 
-mlir::Value frontend::sql::Parser::evaluateLambdaExpression(mlir::OpBuilder& builder, LambdaExpr* stmt, TranslationContext& context, TranslationContext::ResolverScope& scope, bool ignoreNull = false) {
-   auto nodeType = stmt->type_;
-   if(nodeType != T_LambdaExpr) {
-      throw std::runtime_error("Wrong type of Node given to translateLambdaExpression.");
+mlir::Value frontend::sql::Parser::concatenateRangeVars(mlir::OpBuilder& builder, TranslationContext& context, TranslationContext::ResolverScope& scope, List* list) {
+   if (!list) { return mlir::Value(); };
+   mlir::Value concat;
+   for (auto* cell = list->head; cell != nullptr; cell = cell->next) {
+      auto* node = reinterpret_cast<Node*>(cell->data.ptr_value);
+      if(node->type == T_RangeVar) {
+         auto* rangeVar = reinterpret_cast<RangeVar*>(node);
+         mlir::Value table = translateRangeVar(builder, rangeVar, context, scope);
+         if (concat) {
+            concat = builder.create<mlir::relalg::CrossProductOp>(builder.getUnknownLoc(), mlir::tuples::TupleStreamType::get(builder.getContext()), concat, table);
+         } else {
+            concat = table;
+         }
+      }
    }
-   auto paramsNode = reinterpret_cast<Node*>(stmt->param_->head->data.ptr_value);
-   auto bodyNode = reinterpret_cast<Node*>(stmt->body_);
-
-   mlir::Value params = translateRangeVar(builder, reinterpret_cast<RangeVar*>(paramsNode), context, scope);
-   mlir::Value bodyVal = translateExpression(builder, bodyNode, context, ignoreNull);
-   return bodyVal;
+   return concat;
 }
 
-std::pair<mlir::Value, mlir::tuples::ColumnRefAttr> frontend::sql::Parser::mapLambdaToAttribute(mlir::Value tree, TranslationContext& context, mlir::OpBuilder& builder, TranslationContext::ResolverScope& scope, LambdaExpr* stmt) {
+std::pair<mlir::Value, mlir::tuples::ColumnRefAttr> frontend::sql::Parser::mapLambdaResult(TranslationContext& context, mlir::OpBuilder& builder, TranslationContext::ResolverScope& scope, LambdaExpr* stmt, mlir::Value inputTable) {
    auto* block = new mlir::Block;
-   static size_t mapId = 0;
-   std::string mapName = "map" + std::to_string(mapId++);
-
    mlir::OpBuilder mapBuilder(builder.getContext());
    block->addArgument(mlir::tuples::TupleType::get(builder.getContext()), builder.getUnknownLoc());
    auto tupleScope = context.createTupleScope();
@@ -3688,13 +3683,21 @@ std::pair<mlir::Value, mlir::tuples::ColumnRefAttr> frontend::sql::Parser::mapLa
    context.setCurrentTuple(tuple);
 
    mapBuilder.setInsertionPointToStart(block);
-   auto attrDef = attrManager.createDef(mapName, "tmp");
-   mlir::Value createdValue = evaluateLambdaExpression(mapBuilder, stmt, context, scope);
-   attrDef.getColumn().type = createdValue.getType();
+   auto paramsNode = reinterpret_cast<Node*>(stmt->param_->head->data.ptr_value);
+   auto bodyNode = reinterpret_cast<Node*>(stmt->body_);
+   mlir::Value lambdaResult = translateExpression(mapBuilder, bodyNode, context);
 
-   mlir::Attribute createdCol = attrDef;
-   auto mapOp = builder.create<mlir::relalg::MapOp>(builder.getUnknownLoc(), mlir::tuples::TupleStreamType::get(builder.getContext()), tree, builder.getArrayAttr({createdCol}));
-   mapOp.getPredicate().push_back(block);
-   mapBuilder.create<mlir::tuples::ReturnOp>(builder.getUnknownLoc(), createdValue);
-   return {mapOp.getResult(), attrManager.createRef(&attrDef.getColumn())};
+   if(getBaseType(inputTable.getType()).isa<mlir::tuples::TupleStreamType>()) {
+      auto inputTableName = "x";
+      auto attrDef = attrManager.createDef(inputTableName, "Lambda");
+      attrDef.getColumn().type = lambdaResult.getType();
+
+      mlir::Attribute createdCol = attrDef;
+      auto mapOp = builder.create<mlir::relalg::MapOp>(builder.getUnknownLoc(), mlir::tuples::TupleStreamType::get(builder.getContext()), inputTable, builder.getArrayAttr({createdCol}));
+      mapOp.getPredicate().push_back(block);
+      mapBuilder.create<mlir::tuples::ReturnOp>(builder.getUnknownLoc(), lambdaResult);
+
+      return {mapOp.getResult(), attrManager.createRef(&attrDef.getColumn())};
+   }
+   throw std::runtime_error("Lambda Parameter has to be a reference to a table.");
 }
