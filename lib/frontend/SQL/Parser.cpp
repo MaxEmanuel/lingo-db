@@ -3160,16 +3160,23 @@ mlir::Value frontend::sql::Parser::translateTableFunction(Node* node, mlir::OpBu
    std::string funcName = reinterpret_cast<value*>(funcCall->funcname_->head->data.ptr_value)->val_.str_;
    if (funcName == "derivate") {
       // load arguments
-      Node* variableNode = reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value);
-      Node* lambdaNode = reinterpret_cast<Node*>(funcCall->args_->head->next->data.ptr_value);
+      for(auto cell = funcCall->args_->head; cell != funcCall->args_->tail; cell = cell->next) {
+         Node* variableNode = reinterpret_cast<Node*>(cell->data.ptr_value);
+         llvm::outs() << variableNode->type << "\n";
+         translateExpression(builder, variableNode, context);
+      }
+
+      Node* lambdaNode = reinterpret_cast<Node*>(funcCall->args_->tail->data.ptr_value);
       if(lambdaNode->type != T_LambdaExpr) {
-         throw std::runtime_error("second argument of derivate has to be a lambda expression.");
+         throw std::runtime_error("last argument of derivate has to be a lambda expression.");
       }
       LambdaExpr* lambdaExpr = reinterpret_cast<LambdaExpr*>(lambdaNode);
-      translateExpression(builder, variableNode, context);
+
+      auto param_list = reinterpret_cast<List*>(lambdaExpr->param_);
+      auto body = reinterpret_cast<Node*>(lambdaExpr->body_);
 
       // get and concatenate all input tables of the lambda expression
-      mlir::Value inputTable = concatenateRangeVars(builder, context, scope, reinterpret_cast<List*>(lambdaExpr->param_));
+      mlir::Value inputTable = concatenateRangeVars(builder, context, scope, param_list);
       // evaluate LambdaExpression
       auto t = mapLambdaResult(context, builder, scope, reinterpret_cast<Node*>(lambdaExpr->body_), inputTable);
       // add result of LambdaExpression to table
