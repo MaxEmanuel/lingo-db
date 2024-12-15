@@ -359,11 +359,11 @@ struct Parser {
 
    std::string castTypetoString(mlir::Type type);
 
-   std::pair<mlir::Value, mlir::tuples::ColumnRefAttr> mapLambdaResult(TranslationContext& context, mlir::OpBuilder& builder, ResolverScope& scope, LambdaExpr* stmt, mlir::Value inputTable);
-
-   std::pair<mlir::Value, mlir::tuples::ColumnRefAttr> mapLambdaDerivates(TranslationContext& context, mlir::OpBuilder& builder, ResolverScope& scope, LambdaExpr* stmt, mlir::Value inputTable);
+   std::pair<mlir::Value, mlir::tuples::ColumnRefAttr> mapLambdaResult(TranslationContext& context, mlir::OpBuilder& builder, ResolverScope& scope, Node* stmt, mlir::Value inputTable);
 
    mlir::Value concatenateRangeVars(mlir::OpBuilder& builder, TranslationContext& context, ResolverScope& scope, List* list);
+
+   mlir::Value calculateLambda(TranslationContext& context, mlir::OpBuilder& builder, ResolverScope& scope, LambdaExpr* stmt);
 };
 } // end namespace frontend::sql
 #endif // FRONTEND_SQL_PARSER_H
