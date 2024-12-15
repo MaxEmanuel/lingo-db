@@ -407,6 +407,16 @@ struct Parser {
    mlir::Value concatenateRangeVars(mlir::OpBuilder& builder, TranslationContext& context, ResolverScope& scope, List* list);
 
    mlir::Value calculateLambda(TranslationContext& context, mlir::OpBuilder& builder, ResolverScope& scope, LambdaExpr* stmt);
+
+   std::vector<std::pair<std::string, const mlir::tuples::Column *>> getColumnsOfRelations(List* relations, TranslationContext& context);
+
+   std::vector<std::pair<std::string, mlir::Value>> deriveLambda(mlir::OpBuilder& builder, TranslationContext& context, Node* node);
+
+   std::vector<std::pair<std::string, mlir::Value>> calculateLambdaParts(mlir::OpBuilder& builder, TranslationContext& context, Node* node, std::vector<std::pair<std::string, mlir::Value>> partList);
+
+   std::vector<std::pair<std::string, mlir::Value>> calculatePartialDerivates(mlir::OpBuilder& builder, TranslationContext& context, Node* node, std::vector<std::pair<std::string, mlir::Value>> partList, mlir::Value seed);
+
+   std::pair<mlir::Value, std::vector<std::pair<std::string, mlir::tuples::ColumnRefAttr>>> mapDerivatesToAttributes(TranslationContext& context, mlir::OpBuilder& builder, ResolverScope& scope, Node* node, mlir::Value inputTable);
 };
 } // end namespace frontend::sql
 #endif // FRONTEND_SQL_PARSER_H

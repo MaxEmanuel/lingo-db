@@ -3,6 +3,7 @@
 #include "mlir/Dialect/SubOperator/SubOperatorOps.h"
 #include "mlir-support/typeHelper.h"
 #include <regex>
+#include <algorithm>
 namespace {
 
 struct TranslationContext {
@@ -3162,7 +3163,6 @@ mlir::Value frontend::sql::Parser::translateTableFunction(Node* node, mlir::OpBu
       // load arguments
       for(auto cell = funcCall->args_->head; cell != funcCall->args_->tail; cell = cell->next) {
          Node* variableNode = reinterpret_cast<Node*>(cell->data.ptr_value);
-         llvm::outs() << variableNode->type << "\n";
          translateExpression(builder, variableNode, context);
       }
 
@@ -3178,14 +3178,13 @@ mlir::Value frontend::sql::Parser::translateTableFunction(Node* node, mlir::OpBu
       // get and concatenate all input tables of the lambda expression
       mlir::Value inputTable = concatenateRangeVars(builder, context, scope, param_list);
       // evaluate LambdaExpression
-      auto t = mapLambdaResult(context, builder, scope, reinterpret_cast<Node*>(lambdaExpr->body_), inputTable);
-      // add result of LambdaExpression to table
-      auto resColRefAttr = t.second;
-
-      auto* newCol = &resColRefAttr.getColumn();
-      context.mapAttribute(scope, "lambda", newCol);
-
-      return t.first;
+      auto results = mapDerivatesToAttributes(context, builder, scope, body, inputTable);
+      // add results to table
+      for(auto res : results.second) {
+         auto* newCol = &res.second.getColumn();
+         context.mapAttribute(scope, res.first, newCol);
+      }
+      return results.first;
    }
   throw std::runtime_error("could not translate func call");
    return mlir::Value();
@@ -3207,6 +3206,140 @@ mlir::Value frontend::sql::Parser::concatenateRangeVars(mlir::OpBuilder& builder
       }
    }
    return concat;
+}
+
+std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::deriveLambda(mlir::OpBuilder& builder, TranslationContext& context, Node* node) {
+   auto startseed = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF32Type(), builder.getF32FloatAttr(1.0));
+   std::vector<std::pair<std::string, mlir::Value>> calculatedParts;
+   // calculatedParts = calculateLambdaParts(builder, context, node, calculatedParts);
+
+   std::vector<std::pair<std::string, mlir::Value>> partialDerivates;
+   partialDerivates = calculatePartialDerivates(builder, context, node, partialDerivates, startseed);
+   return partialDerivates;
+}
+
+std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculatePartialDerivates(mlir::OpBuilder& builder, TranslationContext& context, Node* node, std::vector<std::pair<std::string, mlir::Value>> partList, mlir::Value seed) {
+   static size_t partId = 0;
+   switch (node->type) {
+   case T_A_Const: {
+      return partList;
+   }
+   case T_ColumnRef: {
+      auto* columnRef = reinterpret_cast<ColumnRef*>(node);
+      auto name = fieldsToString(columnRef->fields_);
+      auto it = std::find_if(partList.begin(), partList.end(), [name](const std::pair<std::string, mlir::Value>& p) {
+          return p.first == name;
+      });
+      if (it != partList.end()) {
+         llvm::outs() << "it" << "\n";
+         it->second = builder.create<mlir::db::AddOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, it->second}));
+      } else {
+         partList.push_back({name, seed});
+      }
+      return partList;
+   }
+   default:
+      throw std::runtime_error("Node type not supported in derivation, yet.");
+   }
+}
+
+std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculateLambdaParts(mlir::OpBuilder& builder, TranslationContext& context, Node* node, std::vector<std::pair<std::string, mlir::Value>> partList) {
+   static size_t partId = 0;
+   switch (node->type) {
+   case T_A_Const:
+   case T_ColumnRef: {
+      std::string partName = "c" + std::to_string(partId++);
+      auto tmp = translateExpression(builder, node, context);
+      partList.push_back({partName, tmp});
+      return partList;
+   }
+   case T_A_Expr: {
+      auto aexpr = reinterpret_cast<A_Expr*>(node);
+      auto left = reinterpret_cast<Node*>(aexpr->lexpr_);
+      if (left) {
+         partList = calculateLambdaParts(builder, context, left, partList);
+      }
+      auto right = reinterpret_cast<Node*>(aexpr->rexpr_);
+      if (right) {
+         partList = calculateLambdaParts(builder, context, right, partList);
+      }
+      auto partVal = translateExpression(builder, node, context);
+      if (partVal) {
+         std::string partName = "w" + std::to_string(partId++);
+         std::pair<std::string, mlir::Value> part = std::pair(partName, partVal);
+         partList.push_back(part);
+      }
+      return partList;
+   }
+   default:
+      throw std::runtime_error("Node type not supported in derivation, yet.");
+   }
+}
+
+
+
+std::pair<mlir::Value, std::vector<std::pair<std::string, mlir::tuples::ColumnRefAttr>>> frontend::sql::Parser::mapDerivatesToAttributes(TranslationContext& context, mlir::OpBuilder& builder, TranslationContext::ResolverScope& scope, Node* node, mlir::Value inputTable) {
+   if(!getBaseType(inputTable.getType()).isa<mlir::tuples::TupleStreamType>()) {
+      throw std::runtime_error("Input has to be a relation (tuplestream)");
+   }
+   auto* block = new mlir::Block;
+   mlir::OpBuilder mapBuilder(builder.getContext());
+   block->addArgument(mlir::tuples::TupleType::get(builder.getContext()), builder.getUnknownLoc());
+   auto tupleScope = context.createTupleScope();
+   mlir::Value tuple = block->getArgument(0);
+   context.setCurrentTuple(tuple);
+   mapBuilder.setInsertionPointToStart(block);
+
+   auto results = deriveLambda(mapBuilder, context, node);
+
+   std::vector<std::pair<std::string, mlir::tuples::ColumnRefAttr>> colRefs;
+   std::vector<mlir::Value> createdValues;
+   std::vector<mlir::Attribute> createdCols;
+   auto inputTableName = "x";
+   for(auto res : results) {
+      auto attrDef = attrManager.createDef(inputTableName, res.first);
+      attrDef.getColumn().type = res.second.getType();
+      mlir::Attribute createdCol = attrDef;
+
+      createdValues.push_back(res.second);
+      createdCols.push_back(createdCol);
+
+      context.useZeroInsteadNull.insert(&attrDef.getColumn());
+      colRefs.push_back(std::pair(res.first, attrManager.createRef(&attrDef.getColumn())));
+   }
+   auto mapOp = builder.create<mlir::relalg::MapOp>(builder.getUnknownLoc(), mlir::tuples::TupleStreamType::get(builder.getContext()), inputTable, builder.getArrayAttr({createdCols}));
+   mapOp.getPredicate().push_back(block);
+   mapBuilder.create<mlir::tuples::ReturnOp>(builder.getUnknownLoc(), createdValues);
+   return {mapOp.getResult(), colRefs};
+}
+
+std::vector<std::pair<std::string, const mlir::tuples::Column *>> frontend::sql::Parser::getColumnsOfRelations(List* relations, TranslationContext& context) {
+   std::vector<std::string> relNames;
+   for(auto cell = relations->head; cell != nullptr; cell = cell->next) {
+      auto node = reinterpret_cast<Node*>(cell->data.ptr_value);
+      if(node->type != T_RangeVar) {
+         continue;
+      }
+      auto rel = reinterpret_cast<RangeVar*>(node);
+      relNames.push_back(std::string(rel->relname_));
+   }
+
+   auto availableColumns = context.getAllDefinedColumns();
+   std::vector<std::pair<std::string, const mlir::tuples::Column *>> relationColumns;
+   for(std::string relation : relNames) {
+      for(auto column : availableColumns) {
+         std::string colName = column.first;
+         auto relPos = colName.find('.');
+         if (relPos == std::string::npos) {
+            continue;
+         }
+         std::string colRelName = colName.substr(0, relPos);
+         if(colRelName == relation) {
+            relationColumns.push_back(column);
+         }
+      }
+   }
+   return relationColumns;
 }
 
 std::pair<mlir::Value, mlir::tuples::ColumnRefAttr> frontend::sql::Parser::mapLambdaResult(TranslationContext& context, mlir::OpBuilder& builder, TranslationContext::ResolverScope& scope, Node* body, mlir::Value inputTable) {
@@ -3240,9 +3373,6 @@ std::pair<mlir::Value, mlir::tuples::ColumnRefAttr> frontend::sql::Parser::mapLa
 mlir::Value frontend::sql::Parser::calculateLambda(TranslationContext& context, mlir::OpBuilder& builder, TranslationContext::ResolverScope& scope, LambdaExpr* stmt) {
    auto param = reinterpret_cast<List*>(stmt->param_);
    auto body = reinterpret_cast<Node*>(stmt->body_);
-   if(body->type != T_A_Expr) {
-      throw std::runtime_error("Lambda body has to be a A_Expr");
-   }
 
    mlir::Value inputTable = concatenateRangeVars(builder, context, scope, param);
    auto tmpResult = mapLambdaResult(context, builder, scope, body, inputTable);
@@ -3261,14 +3391,3 @@ mlir::Value frontend::sql::Parser::calculateLambda(TranslationContext& context, 
    }
    return resultValue;
 }
-// 
-// mlir::Value frontend::sql::Parser::calculateLambdaRecursive(TranslationContext& context, mlir::OpBuilder& builder, TranslationContext::ResolverScope& scope, A_Expr* aexpr) {
-//    if(aexpr->kind_ != AEXPR_OP) {
-//       throw std::runtime_error("Only mathematical operations are allowed in Lambda body (no NOT, IN, BETWEEN, LIKE).");
-//    }
-//    auto* name = (reinterpret_cast<value*>(aexpr->name_->head->data.ptr_value))->val_.str_;
-//    frontend::sql::ExpressionType opType = stringToExpressionType(name);
-//    auto leftNode = reinterpret_cast<Node*>(aexpr->lexpr_);
-//    auto rightNode = reinterpret_cast<Node*>(aexpr->rexpr_);
-//    mlir::Value left, right;
-// }
