@@ -8,7 +8,6 @@
 #include "runtime-defs/IntegerRuntime.h"
 #include "runtime-defs/StringRuntime.h"
 #include "runtime-defs/ArrayRuntime.h"
-#include "runtime-defs/AutoDiff.h"
 #include "runtime-defs/Timing.h"
 #include "runtime/DateRuntime.h"
 
@@ -360,7 +359,5 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    builtinRegistry->add("ArrayNullCheck").implementedAs(rt::ArrayRuntime::isNull).matchesTypes({RuntimeFunction::arrayLike}, resTypeIsBool);
 
    builtinRegistry->add("ArrayAgg").implementedAs(rt::ArrayRuntime::agg).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
-   builtinRegistry->add("AutoDiff").matchesTypes({RuntimeFunction::intLike}, RuntimeFunction::matchesArgument()).implementedAs(rt::AutoDiff::derivate);
-
    return builtinRegistry;
 }
