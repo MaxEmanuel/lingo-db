@@ -365,11 +365,7 @@ struct Parser {
 
    mlir::Value calculateLambda(TranslationContext& context, mlir::OpBuilder& builder, ResolverScope& scope, LambdaExpr* stmt);
 
-   std::vector<std::pair<std::string, const mlir::tuples::Column *>> getColumnsOfRelations(List* relations, TranslationContext& context);
-
    std::vector<std::pair<std::string, mlir::Value>> deriveLambda(mlir::OpBuilder& builder, TranslationContext& context, Node* node);
-
-   std::vector<std::pair<std::string, mlir::Value>> calculateLambdaParts(mlir::OpBuilder& builder, TranslationContext& context, Node* node, std::vector<std::pair<std::string, mlir::Value>> partList);
 
    std::vector<std::pair<std::string, mlir::Value>> calculatePartialDerivates(mlir::OpBuilder& builder, TranslationContext& context, Node* node, std::vector<std::pair<std::string, mlir::Value>> partList, mlir::Value seed);
 

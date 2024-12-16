@@ -3681,21 +3681,34 @@ mlir::Value frontend::sql::Parser::concatenateRangeVars(mlir::OpBuilder& builder
 }
 
 std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::deriveLambda(mlir::OpBuilder& builder, TranslationContext& context, Node* node) {
+   // starting seed 1 for derivation
    auto startseed = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF32Type(), builder.getF32FloatAttr(1.0));
-   std::vector<std::pair<std::string, mlir::Value>> calculatedParts;
-   // calculatedParts = calculateLambdaParts(builder, context, node, calculatedParts);
 
+   // calculating the partial derivates
    std::vector<std::pair<std::string, mlir::Value>> partialDerivates;
    partialDerivates = calculatePartialDerivates(builder, context, node, partialDerivates, startseed);
+
+   // renaming the partial derivates
+   for(auto& partial : partialDerivates) {
+      std::string partialName = partial.first;
+      auto p = partialName.find('.');
+      if (p == std::string::npos) {
+         continue;
+      }
+      std::string newName = partialName.substr(p + 1, partialName.size() - p - 1);
+      partial.first = "d_" + newName;
+   }
+
    return partialDerivates;
 }
 
 std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculatePartialDerivates(mlir::OpBuilder& builder, TranslationContext& context, Node* node, std::vector<std::pair<std::string, mlir::Value>> partList, mlir::Value seed) {
-   static size_t partId = 0;
    switch (node->type) {
+   // constant values are not derivable, therefore, the partial derivates list is just returned, without any changes. The recursive loop will be broken
    case T_A_Const: {
       return partList;
    }
+   // ColumnRefs are the variables here. If the variable has already been processed, the seed will added to its partial derivate value.
    case T_ColumnRef: {
       auto* columnRef = reinterpret_cast<ColumnRef*>(node);
       auto name = fieldsToString(columnRef->fields_);
@@ -3703,43 +3716,80 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
           return p.first == name;
       });
       if (it != partList.end()) {
-         llvm::outs() << "it" << "\n";
          it->second = builder.create<mlir::db::AddOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, it->second}));
       } else {
          partList.push_back({name, seed});
       }
       return partList;
    }
-   default:
-      throw std::runtime_error("Node type not supported in derivation, yet.");
-   }
-}
-
-std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculateLambdaParts(mlir::OpBuilder& builder, TranslationContext& context, Node* node, std::vector<std::pair<std::string, mlir::Value>> partList) {
-   static size_t partId = 0;
-   switch (node->type) {
-   case T_A_Const:
-   case T_ColumnRef: {
-      std::string partName = "c" + std::to_string(partId++);
-      auto tmp = translateExpression(builder, node, context);
-      partList.push_back({partName, tmp});
-      return partList;
-   }
+   // processing exxpression types
    case T_A_Expr: {
       auto aexpr = reinterpret_cast<A_Expr*>(node);
+      auto* name = (reinterpret_cast<value*>(aexpr->name_->head->data.ptr_value))->val_.str_;
       auto left = reinterpret_cast<Node*>(aexpr->lexpr_);
-      if (left) {
-         partList = calculateLambdaParts(builder, context, left, partList);
-      }
       auto right = reinterpret_cast<Node*>(aexpr->rexpr_);
-      if (right) {
-         partList = calculateLambdaParts(builder, context, right, partList);
-      }
-      auto partVal = translateExpression(builder, node, context);
-      if (partVal) {
-         std::string partName = "w" + std::to_string(partId++);
-         std::pair<std::string, mlir::Value> part = std::pair(partName, partVal);
-         partList.push_back(part);
+      auto opType = stringToExpressionType(name);
+      switch (opType) {
+         // derivating + expressions, e.g. x + y => d_x = seed; d_y = seed
+         case ExpressionType::OPERATOR_PLUS: {
+            if (left) {
+               partList = calculatePartialDerivates(builder, context, left, partList, seed);
+            }
+            if (right) {
+               partList = calculatePartialDerivates(builder, context, right, partList, seed);
+            }
+            break;
+         }
+         // derivating - expressions, e.g. x - y => d_x = seed; d_y = seed * -1 
+         case ExpressionType::OPERATOR_MINUS: {
+            if (left) {
+               partList = calculatePartialDerivates(builder, context, left, partList, seed);
+            }
+            if (right) {
+               auto minusOne = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF32Type(), builder.getF32FloatAttr(-1.0));
+               auto tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, minusOne}));
+               partList = calculatePartialDerivates(builder, context, right, partList, tmpSeed);
+            }
+            break;
+         }
+         // derivating * expressions, e.g. x * y => d_x = seed * y; d_y = seed * x
+         case ExpressionType::OPERATOR_MULTIPLY: {
+            if (left) {
+               auto value = translateExpression(builder, right, context);
+               auto tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, value}));
+               partList = calculatePartialDerivates(builder, context, left, partList, tmpSeed);
+            }
+            if (right) {
+               auto value = translateExpression(builder, left, context);
+               auto tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, value}));
+               partList = calculatePartialDerivates(builder, context, right, partList, tmpSeed);
+            }
+            break;
+         }
+         // derivating / expressions, e.g. x / y => d_x = seed * (1 / y); d_y = seed * (-(x / y^2))
+         case ExpressionType::OPERATOR_DIVIDE: {
+            if (left) {
+               auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF32Type(), builder.getF32FloatAttr(1.0));
+               auto divisor  = translateExpression(builder, right, context);
+               auto div = builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {one, divisor}));
+               auto tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, div}));
+               partList = calculatePartialDerivates(builder, context, left, partList, tmpSeed);
+            }
+            if (right) {
+               auto dividend = translateExpression(builder, left, context);
+               auto divisor = translateExpression(builder, right, context);
+               auto divisorPowered = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {divisor, divisor}));
+               auto div = builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {dividend, divisorPowered}));
+               auto minusOne = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF32Type(), builder.getF32FloatAttr(-1.0));
+               auto divNeg = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {minusOne, div}));
+               auto tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, divNeg}));
+               partList = calculatePartialDerivates(builder, context, right, partList, tmpSeed);
+            }
+            break;
+         }
+         default: {
+            throw std::runtime_error("ExpressionType not supported in derivation, yet.");
+         }
       }
       return partList;
    }
@@ -3747,8 +3797,6 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
       throw std::runtime_error("Node type not supported in derivation, yet.");
    }
 }
-
-
 
 std::pair<mlir::Value, std::vector<std::pair<std::string, mlir::tuples::ColumnRefAttr>>> frontend::sql::Parser::mapDerivatesToAttributes(TranslationContext& context, mlir::OpBuilder& builder, TranslationContext::ResolverScope& scope, Node* node, mlir::Value inputTable) {
    if(!getBaseType(inputTable.getType()).isa<mlir::tuples::TupleStreamType>()) {
@@ -3783,35 +3831,6 @@ std::pair<mlir::Value, std::vector<std::pair<std::string, mlir::tuples::ColumnRe
    mapOp.getPredicate().push_back(block);
    mapBuilder.create<mlir::tuples::ReturnOp>(builder.getUnknownLoc(), createdValues);
    return {mapOp.getResult(), colRefs};
-}
-
-std::vector<std::pair<std::string, const mlir::tuples::Column *>> frontend::sql::Parser::getColumnsOfRelations(List* relations, TranslationContext& context) {
-   std::vector<std::string> relNames;
-   for(auto cell = relations->head; cell != nullptr; cell = cell->next) {
-      auto node = reinterpret_cast<Node*>(cell->data.ptr_value);
-      if(node->type != T_RangeVar) {
-         continue;
-      }
-      auto rel = reinterpret_cast<RangeVar*>(node);
-      relNames.push_back(std::string(rel->relname_));
-   }
-
-   auto availableColumns = context.getAllDefinedColumns();
-   std::vector<std::pair<std::string, const mlir::tuples::Column *>> relationColumns;
-   for(std::string relation : relNames) {
-      for(auto column : availableColumns) {
-         std::string colName = column.first;
-         auto relPos = colName.find('.');
-         if (relPos == std::string::npos) {
-            continue;
-         }
-         std::string colRelName = colName.substr(0, relPos);
-         if(colRelName == relation) {
-            relationColumns.push_back(column);
-         }
-      }
-   }
-   return relationColumns;
 }
 
 std::pair<mlir::Value, mlir::tuples::ColumnRefAttr> frontend::sql::Parser::mapLambdaResult(TranslationContext& context, mlir::OpBuilder& builder, TranslationContext::ResolverScope& scope, Node* body, mlir::Value inputTable) {
