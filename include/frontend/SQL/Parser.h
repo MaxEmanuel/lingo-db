@@ -59,7 +59,8 @@ enum class ExpressionType {
    OPERATOR_MINUS,
    OPERATOR_MULTIPLY,
    OPERATOR_DIVIDE,
-   OPERATOR_POW,
+   OPERATOR_POWER,
+   OPERATOR_SPECIAL_MULTIPLY,
    OPERATOR_CONCAT,
    OPERATOR_MOD,
    OPERATOR_CAST,
@@ -356,8 +357,6 @@ struct Parser {
    ~Parser();
 
    mlir::Value translateTableFunction(Node* node, mlir::OpBuilder& builder, mlir::Location loc, TranslationContext& context, ResolverScope& scope);
-
-   std::string castTypetoString(mlir::Type type);
 
    std::pair<mlir::Value, mlir::tuples::ColumnRefAttr> mapLambdaResult(TranslationContext& context, mlir::OpBuilder& builder, ResolverScope& scope, Node* stmt, mlir::Value inputTable);
 

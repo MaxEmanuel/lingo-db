@@ -359,5 +359,9 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    builtinRegistry->add("ArrayNullCheck").implementedAs(rt::ArrayRuntime::isNull).matchesTypes({RuntimeFunction::arrayLike}, resTypeIsBool);
 
    builtinRegistry->add("ArrayAgg").implementedAs(rt::ArrayRuntime::agg).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   
+   builtinRegistry->add("PowerFloat").implementedAs(rt::FloatRuntime::pow).matchesTypes({RuntimeFunction::float64, RuntimeFunction::float64}, resTypeIsF64);
+   builtinRegistry->add("PowerInt").implementedAs(rt::IntegerRuntime::pow).matchesTypes({RuntimeFunction::intLike, RuntimeFunction::intLike}, RuntimeFunction::matchesArgument());
+
    return builtinRegistry;
 }
