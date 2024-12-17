@@ -23,6 +23,24 @@ int64_t runtime::IntegerRuntime::sqrt(int64_t value) {
    return std::sqrt(value);
 }
 
+int32_t runtime::IntegerRuntime::pow(int32_t base, int32_t exp) {
+   if(base == 0) return 0;
+   if(exp == 0) return 1;
+   if(exp < 0) {
+      base = 1 / base;
+      exp = -exp;
+   }
+   int32_t result = 1;
+   while (exp > 0) {
+      if (exp % 2 == 1) {  // If exponent is odd, multiply the result by the base
+         result *= base;
+      }
+      base *= base;
+      exp /= 2;
+   }
+   return result;
+}
+
 int64_t runtime::IntegerRuntime::randomInRange(int64_t from, int64_t to) {
    static std::mt19937 gen(0);
    std::uniform_int_distribution<> distr(from, to - 1);

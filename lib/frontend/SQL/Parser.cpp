@@ -146,6 +146,7 @@ frontend::sql::ExpressionType frontend::sql::stringToExpressionType(const std::s
       .Case("OPERATOR_MINUS", ExpressionType::OPERATOR_MINUS)
       .Case("OPERATOR_MULTIPLY", ExpressionType::OPERATOR_MULTIPLY)
       .Case("OPERATOR_DIVIDE", ExpressionType::OPERATOR_DIVIDE)
+      .Case("OPERATOR_POWER", ExpressionType::OPERATOR_POWER)
       .Case("OPERATOR_CONCAT", ExpressionType::OPERATOR_CONCAT)
       .Case("OPERATOR_MOD", ExpressionType::OPERATOR_MOD)
       .Case("+", ExpressionType::OPERATOR_PLUS)
@@ -153,6 +154,7 @@ frontend::sql::ExpressionType frontend::sql::stringToExpressionType(const std::s
       .Case("*", ExpressionType::OPERATOR_MULTIPLY)
       .Case("**", ExpressionType::OPERATOR_SPECIAL_MULTIPLY)
       .Case("/", ExpressionType::OPERATOR_DIVIDE)
+      .Case("^", ExpressionType::OPERATOR_POWER)
       .Case("||", ExpressionType::OPERATOR_CONCAT)
       .Case("%", ExpressionType::OPERATOR_MOD)
       .Case("OPERATOR_NOT", ExpressionType::OPERATOR_NOT)
@@ -602,6 +604,24 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          return mlir::Value();
       case ExpressionType::OPERATOR_DIVIDE:
          return builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonNumber(builder, {left, right}));
+      case ExpressionType::OPERATOR_POWER: {
+         if (!getBaseType(left.getType()).isa<mlir::db::ArrayType>() && !getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            auto cast = SQLTypeInference::toCommonBaseTypes(builder, {left, right});
+            if(getBaseType(cast[0].getType()).isa<mlir::IntegerType>()) {
+               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "PowerInt", mlir::ValueRange({left, right})).getRes();
+            }
+            if(getBaseType(cast[0].getType()).isa<mlir::db::DecimalType>()) {
+               mlir::Value leftF = builder.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(builder.getContext()), cast[0]);
+               mlir::Value rightF = builder.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(builder.getContext()), cast[1]);
+               return builder.create<mlir::db::RuntimeCall>(loc, leftF.getType(), "PowerFloat", mlir::ValueRange({leftF, rightF})).getRes();
+            }
+            if(getBaseType(cast[0].getType()).isa<mlir::FloatType>()) {
+               mlir::Value leftF = !getBaseType(cast[0].getType()).isa<mlir::Float64Type>() ? builder.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(builder.getContext()), cast[0]) : cast[0];
+               mlir::Value rightF = !getBaseType(cast[1].getType()).isa<mlir::Float64Type>() ? builder.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(builder.getContext()), cast[1]) : cast[1];
+               return builder.create<mlir::db::RuntimeCall>(loc, leftF.getType(), "PowerFloat", mlir::ValueRange({leftF, rightF})).getRes();
+            }
+         }
+      }
       case ExpressionType::OPERATOR_MOD:
          return builder.create<mlir::db::ModOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonNumber(builder, {left, right}));
       case ExpressionType::COMPARE_EQUAL:
@@ -3087,56 +3107,6 @@ mlir::Type frontend::sql::Parser::createBaseTypeFromColumnType(mlir::MLIRContext
    return mlir::Type();
 }
 
-std::string frontend::sql::Parser::castTypetoString(mlir::Type type) {
-   if(auto intType = type.dyn_cast<mlir::IntegerType>()) {
-      unsigned bitWidth = intType.getWidth();
-      if (bitWidth == 32) {
-         return "int4";
-      } else if (bitWidth == 64) {
-         return "int8";
-      } else {
-         throw std::runtime_error("Integer Width not supported");
-      }
-   }
-   if(auto floatType = type.dyn_cast<mlir::FloatType>()) {
-      unsigned bitWidth = floatType.getWidth();
-      if (bitWidth == 16) {
-         return "float2";
-      } else if (bitWidth == 32) {
-         return "float4";
-      } else if (bitWidth == 64) {
-         return "float8";
-      } else if (bitWidth == 128) {
-         return "float16";
-      } else {
-         throw std::runtime_error("Float Width not supported");
-      }
-   }
-   if(type.isa<mlir::IndexType>()) {
-      return "index";
-   }
-   if(type.isa<mlir::db::DecimalType>()) {
-      return "decimal";
-   }
-   if(type.isa<mlir::db::CharType>()) {
-      return "char";
-   }
-   if(type.isa<mlir::db::StringType>()) {
-      return "string";
-   }
-   if(type.isa<mlir::db::TimestampType>()) {
-      return "timestamp";
-   }
-   if(type.isa<mlir::db::DateType>()) {
-      return "date";
-   }
-   if(type.isa<mlir::db::IntervalType>()) {
-      return "interval";
-   }
-   assert(false);
-   return std::string();
-}
-
 mlir::Type frontend::sql::Parser::createTypeFromColumnType(mlir::MLIRContext* context, const runtime::ColumnType& colType) {
    mlir::Type baseType = createBaseTypeFromColumnType(context, colType);
    return colType.nullable ? mlir::db::NullableType::get(context, baseType) : baseType;
@@ -3190,6 +3160,7 @@ mlir::Value frontend::sql::Parser::translateTableFunction(Node* node, mlir::OpBu
    return mlir::Value();
 }
 
+// concatenating all input tables for lambda expressions. If it is just one relation, it gets returned as it is
 mlir::Value frontend::sql::Parser::concatenateRangeVars(mlir::OpBuilder& builder, TranslationContext& context, TranslationContext::ResolverScope& scope, List* list) {
    if (!list) { return mlir::Value(); };
    mlir::Value concat;
@@ -3315,6 +3286,36 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
             }
             break;
          }
+         // derivating ^ expressions, e.g. x ^ y => d_x = seed * (y * x ^ (y - 1)); d_y = seed * (-(x / y^2))
+         case ExpressionType::OPERATOR_POWER:
+            if (left) {
+               auto base = translateExpression(builder, left, context);
+               auto exp = translateExpression(builder, right, context);
+               auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF32Type(), builder.getF32FloatAttr(1.0));
+               auto newExp = builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {exp, one}));
+               auto rightCast = SQLTypeInference::toCommonBaseTypes(builder, {base, newExp});
+               mlir::Value rightPow;
+               if(getBaseType(rightCast[0].getType()).isa<mlir::IntegerType>()) {
+                  rightPow = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), rightCast[0].getType(), "PowerInt", mlir::ValueRange({rightCast[0], rightCast[1]})).getRes();
+               }
+               if(getBaseType(rightCast[0].getType()).isa<mlir::FloatType>()) {
+                  for(auto& r : rightCast) {
+                     if(!getBaseType(r.getType()).isa<mlir::Float64Type>()) {
+                        r = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), r).getRes();
+                     }
+                  }
+                  rightPow = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), rightCast[0].getType(), "PowerFloat", mlir::ValueRange({rightCast[0], rightCast[1]})).getRes();
+               }
+               if(getBaseType(rightCast[0].getType()).isa<mlir::db::DecimalType>()) {
+                  auto first = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), rightCast[0]);
+                  auto second = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), rightCast[1]);
+                  rightPow = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), rightCast[0].getType(), "PowerFloat", mlir::ValueRange({first.getRes(), second.getRes()})).getRes();
+               }
+               auto pow = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {exp, rightPow}));
+               auto tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, pow}));
+               partList = calculatePartialDerivates(builder, context, left, partList, tmpSeed);
+            }
+            break;
          default: {
             throw std::runtime_error("ExpressionType not supported in derivation, yet.");
          }

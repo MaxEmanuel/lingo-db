@@ -24,6 +24,9 @@ double runtime::FloatRuntime::exp(double x) {
 double runtime::FloatRuntime::erf(double x) {
    return ::erf(x);
 }
+double runtime::FloatRuntime::pow(double base, double exp) {
+   return ::powf64(base, exp);
+}
 double runtime::FloatRuntime::random(){
    srand(time(NULL));
    return ((double) rand() / (double) RAND_MAX);
