@@ -1890,14 +1890,25 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
             case TABLE_SUBLINK: {
                assert(!targetInfo.namedResults.empty());
                // default table name
-               static std::string tableName = "x";
-               // add table to ctes
-               ctes.insert({tableName, {subQueryTree, targetInfo}});
-               // temporary Table name stays in a-z range
-               tableName[0]++;
-               if(tableName == "z") {
-                  tableName = "a";
+               std::string tableName = "x";
+
+               // find the next available Id
+               std::string availableTableId;
+               if (ctes.find(tableName) == ctes.end()) {
+                  availableTableId = tableName;
+               } else {
+                  size_t i = 1;
+                  while (true) {
+                     std::string currentKey = tableName + std::to_string(i);
+                     if (ctes.find(currentKey) == ctes.end()) {
+                         availableTableId = currentKey;
+                         break;
+                     }
+                     i++;
+                  }
                }
+               // add table to ctes
+               ctes.insert({availableTableId, {subQueryTree, targetInfo}});
                return subQueryTree;
             }
             default:
