@@ -437,6 +437,16 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       val = getBaseType(val.getType()).isa<mlir::db::DecimalType>() ? builder.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(builder.getContext()), val) : val;
       return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "Log", val).getRes();
    }
+   if(funcName == "sqrt") {
+      auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
+      val = getBaseType(val.getType()).isa<mlir::db::DecimalType>() ? builder.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(builder.getContext()), val) : val;
+      return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "Sqrt", val).getRes();
+   }
+   if(funcName == "exp") {
+      auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
+      val = getBaseType(val.getType()).isa<mlir::db::DecimalType>() ? builder.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(builder.getContext()), val) : val;
+      return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "Exp", val).getRes();
+   }
 
   throw std::runtime_error("could not translate func call");
    return mlir::Value();
@@ -3237,7 +3247,7 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
       }
       return partList;
    }
-   // processing expression types
+   // derivating expression types
    case T_A_Expr: {
       auto aexpr = reinterpret_cast<A_Expr*>(node);
       auto* name = (reinterpret_cast<value*>(aexpr->name_->head->data.ptr_value))->val_.str_;
@@ -3342,6 +3352,36 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
             throw std::runtime_error("ExpressionType not supported in derivation, yet.");
          }
       }
+      return partList;
+   }
+   // derivating function calls
+   case T_FuncCall: {
+      auto funcCall = reinterpret_cast<FuncCall*>(node);
+      std::string funcName = reinterpret_cast<value*>(funcCall->funcname_->head->data.ptr_value)->val_.str_;
+      auto xNode = reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value);
+      mlir::Value tmpSeed;
+      // derivating sqrt, e.g. sqrt(x) => d_x = seed * (0.5 * (1 / sqrt(x))) 
+      if (funcName == "sqrt") {
+         auto half = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(0.5));
+         auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(1.0));
+         auto val = translateExpression(builder, node, context);
+         auto div = builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {one, val}));
+         auto mul = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {half, div}));
+         tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, mul}));
+      // derivating exp, e.g. exp(x) => d_x = seed * exp(x)
+      } else if (funcName == "exp") {
+         auto val = translateExpression(builder, node, context);
+         tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, val}));
+      // derivating ln, e.g. ln(x) => d_x = seed * (1 / x)
+      } else if (funcName == "ln") {
+         auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(1.0));
+         auto val = translateExpression(builder, xNode, context);
+         auto div = builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {one, val}));
+         tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, div}));
+      } else {
+         throw std::runtime_error("Derivation of this function is not supported, yet.");
+      }
+      partList = calculatePartialDerivates(builder, context, xNode, partList, tmpSeed);
       return partList;
    }
    default:
