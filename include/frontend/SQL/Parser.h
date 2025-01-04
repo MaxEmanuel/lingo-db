@@ -407,11 +407,15 @@ struct Parser {
 
    mlir::Value calculateLambda(TranslationContext& context, mlir::OpBuilder& builder, ResolverScope& scope, LambdaExpr* stmt);
 
-   std::vector<std::pair<std::string, mlir::Value>> deriveLambda(mlir::OpBuilder& builder, TranslationContext& context, Node* node);
+   std::vector<std::pair<std::string, mlir::Value>> deriveLambda(mlir::OpBuilder& builder, TranslationContext& context, Node* node, bool backwardMode);
 
-   std::vector<std::pair<std::string, mlir::Value>> calculatePartialDerivates(mlir::OpBuilder& builder, TranslationContext& context, Node* node, std::vector<std::pair<std::string, mlir::Value>> partList, mlir::Value seed);
+   std::vector<std::pair<std::string, mlir::Value>> calculatePartialDerivatesBackwards(mlir::OpBuilder& builder, TranslationContext& context, Node* node, std::vector<std::pair<std::string, mlir::Value>> partList, mlir::Value seed);
 
-   std::pair<mlir::Value, std::vector<std::pair<std::string, mlir::tuples::ColumnRefAttr>>> mapDerivatesToAttributes(TranslationContext& context, mlir::OpBuilder& builder, ResolverScope& scope, Node* node, mlir::Value inputTable);
+   mlir::Value calculatePartialDerivatesForwards(mlir::OpBuilder& builder, TranslationContext& context, Node* node, Node* var);
+   
+   std::vector<Node*> getLambdaVariables(Node* node, std::vector<Node*> variables);
+
+   std::pair<mlir::Value, std::vector<std::pair<std::string, mlir::tuples::ColumnRefAttr>>> mapDerivatesToAttributes(TranslationContext& context, mlir::OpBuilder& builder, ResolverScope& scope, Node* node, mlir::Value inputTable, bool backwardMode);
 };
 } // end namespace frontend::sql
 #endif // FRONTEND_SQL_PARSER_H

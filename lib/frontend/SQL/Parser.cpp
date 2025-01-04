@@ -432,7 +432,7 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       left = SQLTypeInference::castValueToType(builder, left, mlir::db::StringType::get(builder.getContext()));
       return builder.create<mlir::db::RuntimeCall>(loc, array.array.getType(), "ArrayFill", mlir::ValueRange({arrayData.array, arrayData.dimension, left, type})).getRes();
    }
-   if(funcName == "ln") {
+   if(funcName == "log") {
       auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
       val = getBaseType(val.getType()).isa<mlir::db::DecimalType>() ? builder.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(builder.getContext()), val) : val;
       return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "Log", val).getRes();
@@ -3155,7 +3155,7 @@ bool frontend::sql::Parser::isParallelismAllowed() const {
 mlir::Value frontend::sql::Parser::translateTableFunction(Node* node, mlir::OpBuilder& builder, mlir::Location loc, TranslationContext& context, TranslationContext::ResolverScope& scope) {
    auto* funcCall = reinterpret_cast<FuncCall*>(node);
    std::string funcName = reinterpret_cast<value*>(funcCall->funcname_->head->data.ptr_value)->val_.str_;
-   if (funcName == "derivate") {
+   if (funcName == "derivatebackwards" || funcName == "derivateforwards") {
       // load arguments
       for(auto cell = funcCall->args_->head; cell != funcCall->args_->tail; cell = cell->next) {
          Node* variableNode = reinterpret_cast<Node*>(cell->data.ptr_value);
@@ -3173,8 +3173,15 @@ mlir::Value frontend::sql::Parser::translateTableFunction(Node* node, mlir::OpBu
 
       // get and concatenate all input tables of the lambda expression
       mlir::Value inputTable = concatenateRangeVars(builder, context, scope, param_list);
+
+      /*
+       *  mode flag indicating to calculate the derivates in either backward mode or in forward mode
+       *  backward mode: true  
+       *  forward mode: false
+       */
+      bool backwardMode = (funcName == "derivatebackwards");
       // evaluate LambdaExpression
-      auto results = mapDerivatesToAttributes(context, builder, scope, body, inputTable);
+      auto results = mapDerivatesToAttributes(context, builder, scope, body, inputTable, backwardMode);
       // add results to table
       for(auto res : results.second) {
          auto* newCol = &res.second.getColumn();
@@ -3205,13 +3212,27 @@ mlir::Value frontend::sql::Parser::concatenateRangeVars(mlir::OpBuilder& builder
    return concat;
 }
 
-std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::deriveLambda(mlir::OpBuilder& builder, TranslationContext& context, Node* node) {
-   // starting seed 1 for derivation
-   auto startseed = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF32Type(), builder.getF32FloatAttr(1.0));
-
+std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::deriveLambda(mlir::OpBuilder& builder, TranslationContext& context, Node* node, bool backwardMode) {
    // calculating the partial derivates
    std::vector<std::pair<std::string, mlir::Value>> partialDerivates;
-   partialDerivates = calculatePartialDerivates(builder, context, node, partialDerivates, startseed);
+
+   if (backwardMode) {
+      // calculating partial derivates in backward mode
+      // starting seed 1 for backward derivation
+      auto startseed = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(1.0));
+      partialDerivates = calculatePartialDerivatesBackwards(builder, context, node, partialDerivates, startseed);
+   } else {
+      // calculating partial derivates in forward mode
+      // getting the variables used in the lambda body
+      std::vector<Node*> variables;
+      variables = getLambdaVariables(node, variables);
+      for(auto* var : variables) {
+         auto* varRef = reinterpret_cast<ColumnRef*>(var);
+         std::string varName = fieldsToString(varRef->fields_);
+         mlir::Value varPartVal = calculatePartialDerivatesForwards(builder, context, node, var);
+         partialDerivates.push_back(std::make_pair(varName, varPartVal));
+      }
+   }
 
    // renaming the partial derivates
    for(auto& partial : partialDerivates) {
@@ -3227,7 +3248,7 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::deriveLa
    return partialDerivates;
 }
 
-std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculatePartialDerivates(mlir::OpBuilder& builder, TranslationContext& context, Node* node, std::vector<std::pair<std::string, mlir::Value>> partList, mlir::Value seed) {
+std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculatePartialDerivatesBackwards(mlir::OpBuilder& builder, TranslationContext& context, Node* node, std::vector<std::pair<std::string, mlir::Value>> partList, mlir::Value seed) {
    switch (node->type) {
    // constant values are not derivable, therefore, the partial derivates list is just returned, without any changes. The recursive loop will be broken
    case T_A_Const: {
@@ -3258,19 +3279,19 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
          // derivating + expressions, e.g. x + y => d_x = seed; d_y = seed
          case ExpressionType::OPERATOR_PLUS: {
             // d_x = seed
-            partList = calculatePartialDerivates(builder, context, left, partList, seed);
+            partList = calculatePartialDerivatesBackwards(builder, context, left, partList, seed);
             // d_y = seed
-            partList = calculatePartialDerivates(builder, context, right, partList, seed);
+            partList = calculatePartialDerivatesBackwards(builder, context, right, partList, seed);
             break;
          }
          // derivating - expressions, e.g. x - y => d_x = seed; d_y = seed * -1 
          case ExpressionType::OPERATOR_MINUS: {
             // d_x = seed
-            partList = calculatePartialDerivates(builder, context, left, partList, seed);
+            partList = calculatePartialDerivatesBackwards(builder, context, left, partList, seed);
             // d_y = seed * -1
-            auto minusOne = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF32Type(), builder.getF32FloatAttr(-1.0));
+            auto minusOne = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(-1.0));
             auto tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, minusOne}));
-            partList = calculatePartialDerivates(builder, context, right, partList, tmpSeed);
+            partList = calculatePartialDerivatesBackwards(builder, context, right, partList, tmpSeed);
             break;
          }
          // derivating * expressions, e.g. x * y => d_x = seed * y; d_y = seed * x
@@ -3278,32 +3299,32 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
             // d_x = seed * y
             auto valueL = translateExpression(builder, right, context);
             auto tmpSeedL = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, valueL}));
-            partList = calculatePartialDerivates(builder, context, left, partList, tmpSeedL);
+            partList = calculatePartialDerivatesBackwards(builder, context, left, partList, tmpSeedL);
             // d_y = seed * x
             auto valueR = translateExpression(builder, left, context);
             auto tmpSeedR = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, valueR}));
-            partList = calculatePartialDerivates(builder, context, right, partList, tmpSeedR);
+            partList = calculatePartialDerivatesBackwards(builder, context, right, partList, tmpSeedR);
             break;
          }
          // derivating / expressions, e.g. x / y => d_x = seed * (1 / y); d_y = seed * (-(x / y^2))
          case ExpressionType::OPERATOR_DIVIDE: {
             // d_x = seed * (1 / y) 
             auto divisor = translateExpression(builder, right, context);
-            auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF32Type(), builder.getF32FloatAttr(1.0));
+            auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(1.0));
             auto divL = builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {one, divisor}));
             auto tmpSeedL = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, divL}));
-            partList = calculatePartialDerivates(builder, context, left, partList, tmpSeedL);
+            partList = calculatePartialDerivatesBackwards(builder, context, left, partList, tmpSeedL);
             // d_y = seed * (-(x / y^2))
             auto dividend = translateExpression(builder, left, context);
             auto divisorPowered = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {divisor, divisor}));
             auto divR = builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {dividend, divisorPowered}));
-            auto minusOne = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF32Type(), builder.getF32FloatAttr(-1.0));
+            auto minusOne = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(-1.0));
             auto divNeg = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {minusOne, divR}));
             auto tmpSeedR = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, divNeg}));
-            partList = calculatePartialDerivates(builder, context, right, partList, tmpSeedR);
+            partList = calculatePartialDerivatesBackwards(builder, context, right, partList, tmpSeedR);
             break;
          }
-         // derivating ^ expressions, e.g. x ^ y => d_x = seed * (y * (x ^ (y - 1))); d_y = seed * (x ^ y * ln(x))
+         // derivating ^ expressions, e.g. x ^ y => d_x = seed * (y * (x ^ (y - 1))); d_y = seed * (x ^ y * log(x))
          case ExpressionType::OPERATOR_POWER: {
             auto base = translateExpression(builder, left, context);
             auto exp = translateExpression(builder, right, context);
@@ -3311,40 +3332,38 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
             auto partsCasted = SQLTypeInference::toCommonBaseTypes(builder, {base, exp});
             mlir::Value expMinusOne;
             mlir::Value val;
-            mlir::Value ln;
-            if(getBaseType(partsCasted[0].getType()).isa<mlir::FloatType>()) {
-               for(auto& r : partsCasted) {
-                  if(!getBaseType(r.getType()).isa<mlir::Float64Type>()) {
-                     r = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), r).getRes();
-                  }
-               }
-               auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(1.0));
-               auto newExpL = builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {partsCasted[1], one}));
-               expMinusOne = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), partsCasted[0].getType(), "PowerFloat", mlir::ValueRange({partsCasted[0], newExpL.getResult()})).getRes();
+            mlir::Value log;
+            if(getBaseType(partsCasted[0].getType()).isa<mlir::FloatType>() || getBaseType(partsCasted[0].getType()).isa<mlir::IntegerType>()) {
+               auto cast0 = !getBaseType(partsCasted[0].getType()).isa<mlir::Float64Type>() ? builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), partsCasted[0]).getRes() : partsCasted[0];
+               auto cast1 = !getBaseType(partsCasted[1].getType()).isa<mlir::Float64Type>() ? builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), partsCasted[1]).getRes() : partsCasted[1];
 
-               val = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), partsCasted[0].getType(), "PowerFloat", mlir::ValueRange({partsCasted[0], partsCasted[1]})).getRes();
-               ln = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), partsCasted[0].getType(), "Log", partsCasted[0]).getRes();
+               auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(1.0));
+               auto newExpL = builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {cast1, one}));
+               expMinusOne = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), cast0.getType(), "PowerFloat", mlir::ValueRange({cast0, newExpL.getResult()})).getRes();
+
+               val = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), cast0.getType(), "PowerFloat", mlir::ValueRange({cast0, cast1})).getRes();
+               log = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), cast0.getType(), "Log", cast0).getRes();
             } else if(getBaseType(partsCasted[0].getType()).isa<mlir::db::DecimalType>()) {
-               auto baseFloat = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), partsCasted[0]);
-               auto expFloat = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), partsCasted[1]);
+               auto baseFloat = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), partsCasted[0]).getRes();
+               auto expFloat = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), partsCasted[1]).getRes();
 
                auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(1.0));
                auto newExpL = builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {expFloat, one}));
-               expMinusOne = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), baseFloat.getType(), "PowerFloat", mlir::ValueRange({baseFloat.getRes(), newExpL.getResult()})).getRes();
+               expMinusOne = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), baseFloat.getType(), "PowerFloat", mlir::ValueRange({baseFloat, newExpL.getResult()})).getRes();
 
-               val = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), baseFloat.getType(), "PowerFloat", mlir::ValueRange({baseFloat.getRes(), expFloat.getRes()})).getRes();
-               ln = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), baseFloat.getType(), "Log", baseFloat.getRes()).getRes();
+               val = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), baseFloat.getType(), "PowerFloat", mlir::ValueRange({baseFloat, expFloat})).getRes();
+               log = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), baseFloat.getType(), "Log", baseFloat).getRes();
             } else {
                throw std::runtime_error("Datatype not supported in power derivation.");
             }
             // d_x = seed * (y * (x ^ (y - 1)))
             auto powL = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {exp, expMinusOne}));
             auto tmpSeedL = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, powL}));
-            partList = calculatePartialDerivates(builder, context, left, partList, tmpSeedL);
+            partList = calculatePartialDerivatesBackwards(builder, context, left, partList, tmpSeedL);
             // d_y = seed * (x ^ y * ln(x))
-            auto powR = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {val, ln}));
+            auto powR = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {val, log}));
             auto tmpSeedR = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, powR}));
-            partList = calculatePartialDerivates(builder, context, right, partList, tmpSeedR);
+            partList = calculatePartialDerivatesBackwards(builder, context, right, partList, tmpSeedR);
 
             break;
          }
@@ -3373,7 +3392,7 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
          auto val = translateExpression(builder, node, context);
          tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, val}));
       // derivating ln, e.g. ln(x) => d_x = seed * (1 / x)
-      } else if (funcName == "ln") {
+      } else if (funcName == "log") {
          auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(1.0));
          auto val = translateExpression(builder, xNode, context);
          auto div = builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {one, val}));
@@ -3381,7 +3400,7 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
       } else {
          throw std::runtime_error("Derivation of this function is not supported, yet.");
       }
-      partList = calculatePartialDerivates(builder, context, xNode, partList, tmpSeed);
+      partList = calculatePartialDerivatesBackwards(builder, context, xNode, partList, tmpSeed);
       return partList;
    }
    default:
@@ -3389,7 +3408,166 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
    }
 }
 
-std::pair<mlir::Value, std::vector<std::pair<std::string, mlir::tuples::ColumnRefAttr>>> frontend::sql::Parser::mapDerivatesToAttributes(TranslationContext& context, mlir::OpBuilder& builder, TranslationContext::ResolverScope& scope, Node* node, mlir::Value inputTable) {
+
+mlir::Value frontend::sql::Parser::calculatePartialDerivatesForwards(mlir::OpBuilder& builder, TranslationContext& context, Node* node, Node* var) {
+   switch (node->type) {
+   // constant values are not derivable, therefore, an empty mlir::Value object will be returned. The recursive loop will be broken
+   case T_A_Const: {
+      return mlir::Value();
+   }
+   // ColumnRefs are the variables here. If the given node is a ColumnRef to var, 1 will be returned, 0 otherwise
+   case T_ColumnRef: {
+      auto* nodeRef = reinterpret_cast<ColumnRef*>(node);
+      std::string nodeName = fieldsToString(nodeRef->fields_);
+      auto* varRef = reinterpret_cast<ColumnRef*>(var);
+      std::string varName = fieldsToString(varRef->fields_);
+      if(nodeName == varName) {
+         return builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(1.0));
+      } else {
+         return builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(0.0));
+      }
+   }
+   // derivating expression types
+   case T_A_Expr: {
+      auto aexpr = reinterpret_cast<A_Expr*>(node);
+      auto left = reinterpret_cast<Node*>(aexpr->lexpr_);
+      auto right = reinterpret_cast<Node*>(aexpr->rexpr_);
+      auto leftValue = translateExpression(builder, left, context);
+      auto rightValue = translateExpression(builder, right, context);
+      auto leftPartial = calculatePartialDerivatesForwards(builder, context, left, var);
+      auto rightPartial = calculatePartialDerivatesForwards(builder, context, right, var);
+
+      auto* name = (reinterpret_cast<value*>(aexpr->name_->head->data.ptr_value))->val_.str_;
+      auto opType = stringToExpressionType(name);
+      switch (opType) {
+         // derivating + expressions using the linearity of differentiation
+         case ExpressionType::OPERATOR_PLUS: {
+            return builder.create<mlir::db::AddOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {leftPartial, rightPartial}));
+         }
+         // derivating - expressions using the linearity of differentiation
+         case ExpressionType::OPERATOR_MINUS: {
+            return builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {leftPartial, rightPartial}));
+         }
+         // derivating * expressions using the product rule => x * y' + y * x'
+         case ExpressionType::OPERATOR_MULTIPLY: {
+            auto mul1 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {leftValue, rightPartial}));
+            auto mul2 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {rightValue, leftPartial}));
+            return builder.create<mlir::db::AddOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {mul1, mul2}));
+         }
+         // derivating / expressions using the quotient rule => ((x' * y) - (x * y')) / (y^2) 
+         case ExpressionType::OPERATOR_DIVIDE: {
+            auto mul1 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {leftPartial, rightValue}));
+            auto mul2 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {leftValue, rightPartial}));
+            auto dividend = builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {mul1, mul2}));
+            auto divisor = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {rightValue, rightValue}));
+            return builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {dividend, divisor}));
+         }
+         // derivating ^ expressions using the power rule => (x' * y * x ^ (y - 1)) + (y' * (x ^ y) * log(x))
+         case ExpressionType::OPERATOR_POWER: {
+            auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(1.0));   
+            auto exp = builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {rightValue, one}));
+
+            mlir::Value power;
+            mlir::Value log;
+            auto cast = SQLTypeInference::toCommonBaseTypes(builder, {leftValue, exp});
+            if (getBaseType(cast[0].getType()).isa<mlir::db::DecimalType>() ||
+                getBaseType(cast[0].getType()).isa<mlir::FloatType>() ||
+                getBaseType(cast[0].getType()).isa<mlir::IntegerType>()) {
+
+               auto cast0 = !getBaseType(cast[0].getType()).isa<mlir::Float64Type>() ? builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), cast[0]).getRes() : cast[0];
+               auto cast1 = !getBaseType(cast[1].getType()).isa<mlir::Float64Type>() ? builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), cast[1]).getRes() : cast[1];
+               power = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), cast0.getType(), "PowerFloat", mlir::ValueRange({cast0, cast1})).getRes();
+               log = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), cast0.getType(), "Log", cast0).getRes();
+            } else {
+               throw std::runtime_error("Datatype not supported in power derivation.");
+            }
+            auto val = translateExpression(builder, node, context);
+            auto mul1 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {rightValue, power}));
+            auto mul2 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {leftPartial, mul1}));
+            auto mul3 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {val, log}));
+            auto mul4 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {rightPartial, mul3}));
+            return builder.create<mlir::db::AddOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {mul2, mul4}));
+         }
+         default: {
+            throw std::runtime_error("ExpressionType not supported in derivation.");
+         }
+      }
+   }
+   // derivating function calls
+   case T_FuncCall: {
+      auto funcCall = reinterpret_cast<FuncCall*>(node);
+      std::string funcName = reinterpret_cast<value*>(funcCall->funcname_->head->data.ptr_value)->val_.str_;
+      auto xNode = reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value);
+      auto partial = calculatePartialDerivatesForwards(builder, context, xNode, var);
+      // derivating sqrt => x' * (0.5 * (1 / sqrt(x))) 
+      if (funcName == "sqrt") {
+         auto half = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(0.5));
+         auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(1.0));
+         auto val = translateExpression(builder, node, context);
+         auto div = builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {one, val}));
+         auto mul = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {half, div}));
+         return builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {partial, mul}));
+      // derivating exp => x' * exp(x) 
+      } else if (funcName == "exp") {
+         auto val = translateExpression(builder, node, context);
+         return builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {partial, val}));
+      // derivating ln => x' * (1 / x)
+      } else if (funcName == "log") {
+         auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(1.0));
+         auto val = translateExpression(builder, xNode, context);
+         auto div = builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {one, val}));
+         return builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {partial, div}));
+      } else {
+         throw std::runtime_error("Derivation of this function is not supported, yet.");
+      }
+   }
+   default:
+      throw std::runtime_error("Node type not supported in derivation.");
+   }
+}
+
+std::vector<Node*> frontend::sql::Parser::getLambdaVariables(Node* node, std::vector<Node*> variables) {
+   switch (node->type) {
+   case T_A_Const: {
+      return variables;
+   }
+   case T_ColumnRef: {
+      auto* varRef = reinterpret_cast<ColumnRef*>(node);
+      auto name = fieldsToString(varRef->fields_);
+      auto it = std::find_if(variables.begin(), variables.end(), [name](Node* p) {
+          auto* pRef = reinterpret_cast<ColumnRef*>(p);
+          return fieldsToString(pRef->fields_) == name;
+      });
+      // partial derivate has already been calculated for variable
+      if (it != variables.end()) {
+         return variables;
+      } else {
+         variables.push_back(node);
+         return variables;
+      }
+   }
+   case T_A_Expr: {
+      auto aexpr = reinterpret_cast<A_Expr*>(node);
+      auto left = reinterpret_cast<Node*>(aexpr->lexpr_);
+      auto right = reinterpret_cast<Node*>(aexpr->rexpr_);
+      variables = getLambdaVariables(left, variables);
+      variables = getLambdaVariables(right, variables);
+      return variables;
+   }
+   case T_FuncCall: {
+      auto funcCall = reinterpret_cast<FuncCall*>(node);
+      for (auto* cell = funcCall->args_->head; cell != nullptr; cell = cell->next) {
+         auto arg = reinterpret_cast<Node*>(cell->data.ptr_value);
+         variables = getLambdaVariables(arg, variables);
+      }
+      return variables;
+   }
+   default:
+      throw std::runtime_error("Node type not supported in Lambda.");
+   }
+}
+
+std::pair<mlir::Value, std::vector<std::pair<std::string, mlir::tuples::ColumnRefAttr>>> frontend::sql::Parser::mapDerivatesToAttributes(TranslationContext& context, mlir::OpBuilder& builder, TranslationContext::ResolverScope& scope, Node* node, mlir::Value inputTable, bool backwardMode) {
    if(!getBaseType(inputTable.getType()).isa<mlir::tuples::TupleStreamType>()) {
       throw std::runtime_error("Input has to be a relation (tuplestream)");
    }
@@ -3401,7 +3579,7 @@ std::pair<mlir::Value, std::vector<std::pair<std::string, mlir::tuples::ColumnRe
    context.setCurrentTuple(tuple);
    mapBuilder.setInsertionPointToStart(block);
 
-   auto results = deriveLambda(mapBuilder, context, node);
+   auto results = deriveLambda(mapBuilder, context, node, backwardMode);
 
    std::vector<std::pair<std::string, mlir::tuples::ColumnRefAttr>> colRefs;
    std::vector<mlir::Value> createdValues;
