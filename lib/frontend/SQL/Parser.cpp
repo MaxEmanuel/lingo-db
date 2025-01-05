@@ -447,6 +447,16 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       val = getBaseType(val.getType()).isa<mlir::db::DecimalType>() ? builder.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(builder.getContext()), val) : val;
       return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "Exp", val).getRes();
    }
+   if(funcName == "sin") {
+      auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
+      val = getBaseType(val.getType()).isa<mlir::db::DecimalType>() ? builder.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(builder.getContext()), val) : val;
+      return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "Sin", val).getRes();
+   }
+   if(funcName == "cos") {
+      auto val = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
+      val = getBaseType(val.getType()).isa<mlir::db::DecimalType>() ? builder.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(builder.getContext()), val) : val;
+      return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "Cos", val).getRes();
+   }
 
   throw std::runtime_error("could not translate func call");
    return mlir::Value();
@@ -3397,6 +3407,20 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
          auto val = translateExpression(builder, xNode, context);
          auto div = builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {one, val}));
          tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, div}));
+      // derivating sin, e.g. sin(x) => d_x = seed * cos(x)
+      } else if (funcName == "sin") {
+         auto val = translateExpression(builder, xNode, context);
+         val = getBaseType(val.getType()).isa<mlir::db::DecimalType>() ? builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), val) : val;
+         auto cos = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), val.getType(), "Cos", val).getRes();
+         tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, cos}));
+      // derivating sin, e.g. cos(x) => d_x = seed * -sin(x)
+      } else if (funcName == "cos") {
+         auto val = translateExpression(builder, xNode, context);
+         val = getBaseType(val.getType()).isa<mlir::db::DecimalType>() ? builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), val) : val;
+         auto sin = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), val.getType(), "Sin", val).getRes();
+         auto minusOne = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(-1.0));
+         auto mul = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {minusOne, sin}));
+         tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, mul}));
       } else {
          throw std::runtime_error("Derivation of this function is not supported, yet.");
       }
@@ -3517,6 +3541,20 @@ mlir::Value frontend::sql::Parser::calculatePartialDerivatesForwards(mlir::OpBui
          auto val = translateExpression(builder, xNode, context);
          auto div = builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {one, val}));
          return builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {partial, div}));
+      // derivating sin => x' * cos(x)
+      } else if (funcName == "sin") {
+         auto val = translateExpression(builder, xNode, context);
+         val = getBaseType(val.getType()).isa<mlir::db::DecimalType>() ? builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), val) : val;
+         auto cos = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), val.getType(), "Cos", val).getRes();
+         return builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {partial, cos}));
+      // derivating sin => x' * -sin(x)
+      } else if (funcName == "cos") {
+         auto val = translateExpression(builder, xNode, context);
+         val = getBaseType(val.getType()).isa<mlir::db::DecimalType>() ? builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), val) : val;
+         auto sin = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), val.getType(), "Sin", val).getRes();
+         auto minusOne = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(-1.0));
+         auto mul = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {minusOne, sin}));
+         return builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {partial, mul}));
       } else {
          throw std::runtime_error("Derivation of this function is not supported, yet.");
       }
