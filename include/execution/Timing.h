@@ -11,6 +11,7 @@ class TimingProcessor {
    public:
    virtual void addTiming(const std::unordered_map<std::string, double>& timing) = 0;
    virtual void process() = 0;
+   virtual std::unordered_map<std::string, double>& getTimeMap() = 0;
    virtual ~TimingProcessor() {}
 };
 class TimingPrinter : public TimingProcessor {
@@ -50,6 +51,9 @@ class TimingPrinter : public TimingProcessor {
             std::cout << std::setw(15) << "";
          }
       }
+   }
+   std::unordered_map<std::string, double>& getTimeMap() override {
+      return timing;
    }
 };
 } // namespace execution
