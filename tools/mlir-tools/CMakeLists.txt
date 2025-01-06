@@ -25,6 +25,11 @@ target_link_libraries(run-sql PUBLIC runner runtime utility mlir-support  PRIVAT
 set_target_properties(run-sql PROPERTIES  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 target_link_directories( run-sql PUBLIC ${CMAKE_BINARY_DIR}/lib/execution/cranelift/rust-cranelift/release)
 
+# measure-sql
+add_executable(measure-sql measure-sql.cpp)
+target_link_libraries(measure-sql PUBLIC runner runtime utility mlir-support  PRIVATE arrow)
+set_target_properties(measure-sql PROPERTIES  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+target_link_directories( measure-sql PUBLIC ${CMAKE_BINARY_DIR}/lib/execution/cranelift/rust-cranelift/release)
 
 # mlir-db-opt
 add_executable(mlir-db-opt mlir-opt.cpp)

@@ -17,6 +17,9 @@ class TimingCollector : public execution::TimingProcessor {
    virtual void process() override {
       target = collected;
    }
+   virtual std::unordered_map<std::string, double>& getTimeMap() override {
+      return collected;
+   }
    virtual ~TimingCollector() {}
 };
 } // namespace
