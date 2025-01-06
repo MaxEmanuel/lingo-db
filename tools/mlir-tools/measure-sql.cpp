@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
 
     // running the measurements
     for(size_t i = 0; i < repetitions; i++) {
-        if(i % 100 == 0) {
+        if(i % 100 == 0 || i == (repetitions - 1)) {
             std::cout.rdbuf(buffer);
             std::cout << "Iteration: " << i << std::endl;
             std::cout.rdbuf(file.rdbuf());
