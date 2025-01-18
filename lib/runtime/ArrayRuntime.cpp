@@ -455,3 +455,50 @@ runtime::VarLen32 runtime::ArrayRuntime::nullToArray(uint64_t dim) {
     memcpy(array, result.data(), result.length());     
     return runtime::VarLen32((uint8_t*) array, result.length());
 }
+
+runtime::VarLen32 runtime::ArrayRuntime::fillLike(runtime::VarLen32 str, uint64_t dim, double value, runtime::VarLen32 valueType) {
+    runtime::Array<int64_t> arrayData(str, dim, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+    std::string arrayDim = arrayData.getArray().getDimensionRange();
+    std::string formattedArrayDim = "{";
+    bool copyCharacter = false;
+    for(size_t i = 0; i < arrayDim.size(); ++i) {
+        char currentChar = arrayDim[i];
+        if(currentChar == ':') {
+            copyCharacter = true;
+            continue;
+        }
+        if(currentChar == ']') {
+            copyCharacter = false;
+            if ((i + 1) < arrayDim.size() && arrayDim[i + 1] == '[') {
+                formattedArrayDim.append(", ");
+            } 
+            continue;
+        }
+        if(copyCharacter) {
+            formattedArrayDim.push_back(currentChar);
+        }
+    }
+    formattedArrayDim.append("}");
+
+    runtime::Array<int64_t> reconstructedArrayData(formattedArrayDim, dim, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+
+    if (valueType.str() == "int32") {
+        runtime::Array<int32_t> result("{}", 1, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
+        result.fill(reconstructedArrayData, std::to_string(value), &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
+        return result.toString();
+    } else if (valueType.str() == "int64") {
+        runtime::Array<int64_t> result("{}", 1, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+        result.fill(reconstructedArrayData, std::to_string(value), &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+        return result.toString();
+    } else if (valueType.str() == "float") {
+        runtime::Array<float> result("{}", 1, &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
+        result.fill(reconstructedArrayData, std::to_string(value), &runtime::TypeCasts::stringToFloat, &runtime::TypeCasts::numericToString<float>);
+        return result.toString();
+    } else if (valueType.str() == "double") {
+        runtime::Array<double> result("{}", 1, &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
+        result.fill(reconstructedArrayData, std::to_string(value), &runtime::TypeCasts::stringToDouble, &runtime::TypeCasts::numericToString<double>);
+        return result.toString();
+    } else {
+        throw std::runtime_error("The entered value is not supported to be used for array_fill_like");
+    }
+}

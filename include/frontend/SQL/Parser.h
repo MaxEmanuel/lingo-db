@@ -416,6 +416,8 @@ struct Parser {
    std::vector<Node*> getLambdaVariables(Node* node, std::vector<Node*> variables);
 
    std::pair<mlir::Value, std::vector<std::pair<std::string, mlir::tuples::ColumnRefAttr>>> mapDerivatesToAttributes(TranslationContext& context, mlir::OpBuilder& builder, ResolverScope& scope, Node* node, mlir::Value inputTable, bool backwardMode);
+
+   mlir::Value ValueTypeToStringValue(mlir::OpBuilder& builder, mlir::Value val);
 };
 } // end namespace frontend::sql
 #endif // FRONTEND_SQL_PARSER_H
