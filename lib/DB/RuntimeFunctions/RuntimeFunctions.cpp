@@ -254,7 +254,28 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
 
    builtinRegistry->add("ToUpper").implementedAs(rt::StringRuntime::toUpper).matchesTypes({RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
    builtinRegistry->add("Concatenate").implementedAs(rt::StringRuntime::concat).matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
+   
+   // AUTO-DIFF
+   builtinRegistry->add("ConcatenateArray").implementedAs(rt::ArrayRuntime::concat).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsAnyArray).needsWrapping();
+   builtinRegistry->add("ArrayRange").implementedAs(rt::ArrayRuntime::getRange).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::intLike, RuntimeFunction::intLike, RuntimeFunction::intLike}, RuntimeFunction::matchesArgument());
+   builtinRegistry->add("ArrayElement").implementedAs(rt::ArrayRuntime::getEntry).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayDimensions").implementedAs(rt::ArrayRuntime::getDimensions).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsAnyString).needsWrapping();
+   builtinRegistry->add("ArrayCardinality").implementedAs(rt::ArrayRuntime::getCardinality).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsI64).needsWrapping();
+   builtinRegistry->add("ArrayFill").implementedAs(rt::ArrayRuntime::fill).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::stringLike}, resTypeIsAnyArray).needsWrapping();
+   builtinRegistry->add("ArrayIncDimension").implementedAs(rt::ArrayRuntime::incDim).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsAnyArray).needsWrapping();
+   builtinRegistry->add("ArrayTranspose").implementedAs(rt::ArrayRuntime::transpose).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
+   builtinRegistry->add("ArrayFillLike").implementedAs(rt::ArrayRuntime::fillLike).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::float64, RuntimeFunction::stringLike}, resTypeIsAnyArray).needsWrapping();
 
+   builtinRegistry->add("ArrayAdd").implementedAs(rt::ArrayRuntime::add).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsAnyArray).needsWrapping();
+   builtinRegistry->add("ArraySub").implementedAs(rt::ArrayRuntime::sub).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
+   builtinRegistry->add("ArrayEWMul").implementedAs(rt::ArrayRuntime::mulEW).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, RuntimeFunction::matchesArgument());
+   builtinRegistry->add("ArrayMatrixMul").implementedAs(rt::ArrayRuntime::matrixMul).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsAnyArray).needsWrapping();
+   builtinRegistry->add("ArrayScalarMultInt").implementedAs(rt::ArrayRuntime::scalarMultInt).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::anyNumber}, RuntimeFunction::matchesArgument());
+   builtinRegistry->add("ArrayScalarMultFloat").implementedAs(rt::ArrayRuntime::scalarMultFloat).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::float64}, RuntimeFunction::matchesArgument());
+
+   builtinRegistry->add("ArrayDimChange").implementedAs(rt::ArrayRuntime::arrayToArray).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike}, resTypeIsAnyArray).needsWrapping();
+   // AUTO-DIFF
+   
    builtinRegistry->add("Like").implementedAs(rt::StringRuntime::like).matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::stringLike}, resTypeIsBool);
    builtinRegistry->add("ConstLike").matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::stringLike}, resTypeIsBool).implementedAs(constLikeImpl).needsWrapping();
    builtinRegistry->add("RoundDecimal").matchesTypes({RuntimeFunction::anyDecimal, RuntimeFunction::intLike}, RuntimeFunction::matchesArgument()).needsWrapping().implementedAs([](mlir::OpBuilder& rewriter, mlir::ValueRange loweredArguments, mlir::TypeRange originalArgumentTypes, mlir::Type resType, const mlir::TypeConverter* typeConverter, mlir::Location loc) -> mlir::Value {

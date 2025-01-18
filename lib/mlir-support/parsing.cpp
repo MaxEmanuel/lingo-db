@@ -104,7 +104,11 @@ std::variant<int64_t, double, std::string> parseString(std::variant<int64_t, dou
          throw std::runtime_error("can not parse string from int: " + str);
       }
    } else if (std::holds_alternative<double>(val)) {
-      throw std::runtime_error("can not parse string from double: " + str);
+      if (acceptInts) {
+         str = std::to_string(std::get<double>(val));
+      } else {
+         throw std::runtime_error("can not parse string from double: " + str);
+      }
    } else {
       str = std::get<std::string>(val);
    }
