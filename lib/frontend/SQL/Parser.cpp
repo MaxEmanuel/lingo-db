@@ -997,6 +997,28 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
             }
             return builder.create<mlir::db::RuntimeCall>(loc, returnType, funcName, mlir::ValueRange({right, parameter2, left})).getRes();
          }
+         // AUTO-DIFF
+         // Matrix-Multiplication if both values are of type array or at least one of them, whereby the other one could only be a string
+         if ((getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) ||
+             (getBaseType(left.getType()).isa<mlir::db::StringType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) ||
+             (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::StringType>())) {
+            auto data = TypeFunctions::castToArrayIfNecessary(builder, left, right);
+            auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array, false);
+            auto result = builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayMatrixMul", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
+            return result;
+         // Scalar-Multiplication if right value is a primitve numeric type
+         } else if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && !getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            auto array = TypeFunctions::extractArrayDataDB(builder, left);
+            if (getBaseType(right.getType()).isa<mlir::IntegerType>()) {
+               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultInt", mlir::ValueRange({left, array.dimension, array.type, right})).getRes();
+            } else if (getBaseType(right.getType()).isa<mlir::FloatType>()) {
+               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultFloat", mlir::ValueRange({left, array.dimension, array.type, right})).getRes();
+            } else if (getBaseType(right.getType()).isa<mlir::db::DecimalType>()) {
+               mlir::Value cast = builder.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(builder.getContext()), right);
+               return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "ArrayScalarMultFloat", mlir::ValueRange({left, array.dimension, array.type, cast})).getRes();
+            }
+         }
+         // AUTO-DIFF
          return builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonNumber(builder, {left, right}));
       }
       case ExpressionType::OPERATOR_DIVIDE: {
@@ -3818,13 +3840,14 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
    case T_A_Const: {
       return partList;
    }
-   // ColumnRefs are the variables here. If the variable has already been processed, the seed will added to its partial derivate value.
+   // ColumnRefs are the variables here. If the variable has already been processed, the seed will be added to its partial derivate value.
    case T_ColumnRef: {
       auto* columnRef = reinterpret_cast<ColumnRef*>(node);
       auto name = fieldsToString(columnRef->fields_);
       auto it = std::find_if(partList.begin(), partList.end(), [name](const std::pair<std::string, mlir::Value>& p) {
           return p.first == name;
       });
+      // variable has already been processed. Adding seed value to it
       if (it != partList.end()) {
          if (getBaseType(it->second.getType()).isa<mlir::db::ArrayType>() || getBaseType(seed.getType()).isa<mlir::db::ArrayType>()) {
             auto data = TypeFunctions::castToArrayIfNecessary(builder, it->second, builder.getF64Type());
@@ -4009,10 +4032,25 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
 
 
 mlir::Value frontend::sql::Parser::calculatePartialDerivatesForwards(mlir::OpBuilder& builder, TranslationContext& context, Node* node, Node* var) {
+    auto checkIfZero = [](mlir::Value val) {
+        // Check if the value is defined by an operation
+        if (auto *defOp = val.getDefiningOp()) {
+            // Check if the operation is an arith::ConstantOp
+            if (auto constOp = llvm::dyn_cast<mlir::arith::ConstantOp>(defOp)) {
+                // Ensure the constant value is a floating-point attribute
+                if (auto floatAttr = constOp.getValue().dyn_cast<mlir::FloatAttr>()) {
+                    // Compare the floating-point value with 0.0
+                    return floatAttr.getValueAsDouble() == 0.0;
+                }
+            }
+        }
+        return false;
+    };
+   
    switch (node->type) {
-   // constant values are not derivable, therefore, an empty mlir::Value object will be returned. The recursive loop will be broken
+   // constant values are not derivable, therefore, 0 will be returned.
    case T_A_Const: {
-      return mlir::Value();
+      return builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(0.0));
    }
    // ColumnRefs are the variables here. If the given node is a ColumnRef to var, 1 will be returned, 0 otherwise
    case T_ColumnRef: {
@@ -4122,57 +4160,90 @@ mlir::Value frontend::sql::Parser::calculatePartialDerivatesForwards(mlir::OpBui
             auto leftValue = translateExpression(builder, left, context);
             auto rightValue = translateExpression(builder, right, context);
             if(!getBaseType(leftValue.getType()).isa<mlir::db::ArrayType>() &&
-               !getBaseType(rightValue.getType()).isa<mlir::db::ArrayType>() &&
-               !getBaseType(leftPartial.getType()).isa<mlir::db::ArrayType>() &&
-               !getBaseType(rightPartial.getType()).isa<mlir::db::ArrayType>()) {
+               !getBaseType(rightValue.getType()).isa<mlir::db::ArrayType>()) {
                auto mul1 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {leftValue, rightPartial}));
                auto mul2 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {rightValue, leftPartial}));
                return builder.create<mlir::db::AddOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {mul1, mul2}));
             }
-            // if arrays, A' * B^T + B' * A^T
-            if(getBaseType(leftPartial.getType()).isa<mlir::db::ArrayType>() && !getBaseType(rightValue.getType()).isa<mlir::db::ArrayType>()) {
-               auto array = TypeFunctions::castToArrayIfNecessary(builder, leftPartial, builder.getF64Type());
-               auto rightCasted = SQLTypeInference::castValueToType(builder, rightValue, mlir::FloatType::getF64(builder.getContext()));
-               auto type = ValueTypeToStringValue(builder, rightCasted);
-               rightValue = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), array.array.getType(), "ArrayFillLike", mlir::ValueRange({array.array, array.dimension, rightCasted, type})).getRes();
-            } else if (!getBaseType(leftPartial.getType()).isa<mlir::db::ArrayType>() && getBaseType(rightValue.getType()).isa<mlir::db::ArrayType>()) {
-               auto array = TypeFunctions::castToArrayIfNecessary(builder, rightValue, builder.getF64Type());
-               auto leftCasted = SQLTypeInference::castValueToType(builder, leftPartial, mlir::FloatType::getF64(builder.getContext()));
-               auto type = ValueTypeToStringValue(builder, leftCasted);
-               leftPartial = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), array.array.getType(), "ArrayFillLike", mlir::ValueRange({array.array, array.dimension, leftCasted, type})).getRes();
-            }
+
             mlir::Value mul1;
-            if(getBaseType(leftPartial.getType()).isa<mlir::db::ArrayType>() && getBaseType(rightValue.getType()).isa<mlir::db::ArrayType>()) {
+            if(getBaseType(leftValue.getType()).isa<mlir::db::ArrayType>() && getBaseType(rightValue.getType()).isa<mlir::db::ArrayType>()) {
                auto rightArr = TypeFunctions::castToArrayIfNecessary(builder, rightValue, builder.getF64Type());
                auto transposed = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), rightArr.array.getType(), "ArrayTranspose", mlir::ValueRange({rightArr.array, rightArr.dimension, rightArr.type})).getRes();
                auto data = TypeFunctions::castToArrayIfNecessary(builder, leftPartial, transposed);
                auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array, false);
-               mul1 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), returnType, "ArrayMatrixMul", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
+               auto two = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getI64IntegerAttr(2)).getResult();
+               mul1 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), returnType, "ArrayMatrixMul", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, two, std::get<1>(data).type})).getRes();
+            } else if(getBaseType(leftPartial.getType()).isa<mlir::db::ArrayType>() && !getBaseType(rightValue.getType()).isa<mlir::db::ArrayType>()) {
+               auto array = TypeFunctions::extractArrayDataDB(builder, leftPartial);
+               if (checkIfZero(rightValue)) {
+                  mul1 = rightValue;
+               } else if (getBaseType(rightValue.getType()).isa<mlir::IntegerType>()) {
+                  mul1 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), leftPartial.getType(), "ArrayScalarMultInt", mlir::ValueRange({leftPartial, array.dimension, array.type, rightValue})).getRes();
+               } else if (getBaseType(rightValue.getType()).isa<mlir::FloatType>()) {
+                  mul1 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), leftPartial.getType(), "ArrayScalarMultFloat", mlir::ValueRange({leftPartial, array.dimension, array.type, rightValue})).getRes();
+               } else if (getBaseType(rightValue.getType()).isa<mlir::db::DecimalType>()) {
+                  mlir::Value cast = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), rightValue);
+                  mul1 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), leftPartial.getType(), "ArrayScalarMultFloat", mlir::ValueRange({leftPartial, array.dimension, array.type, cast})).getRes();
+               } else {
+                  throw std::runtime_error("Data Type not supported");
+               }
+            } else if(!getBaseType(leftPartial.getType()).isa<mlir::db::ArrayType>() && getBaseType(rightValue.getType()).isa<mlir::db::ArrayType>()) {
+               auto array = TypeFunctions::extractArrayDataDB(builder, rightValue);
+               if (checkIfZero(leftPartial)) {
+                  mul1 = leftPartial;
+               } else if (getBaseType(leftPartial.getType()).isa<mlir::IntegerType>()) {
+                  mul1 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), rightValue.getType(), "ArrayScalarMultInt", mlir::ValueRange({rightValue, array.dimension, array.type, leftPartial})).getRes();
+               } else if (getBaseType(leftPartial.getType()).isa<mlir::FloatType>()) {
+                  mul1 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), rightValue.getType(), "ArrayScalarMultFloat", mlir::ValueRange({rightValue, array.dimension, array.type, leftPartial})).getRes();
+               } else if (getBaseType(leftPartial.getType()).isa<mlir::db::DecimalType>()) {
+                  mlir::Value cast = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), leftPartial);
+                  mul1 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), rightValue.getType(), "ArrayScalarMultFloat", mlir::ValueRange({rightValue, array.dimension, array.type, cast})).getRes();
+               } else {
+                  throw std::runtime_error("Data Type not supported");
+               }
             } else {
                mul1 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {rightValue, leftPartial}));
             }
 
-
-            if(getBaseType(rightPartial.getType()).isa<mlir::db::ArrayType>() && !getBaseType(leftValue.getType()).isa<mlir::db::ArrayType>()) {
-               auto array = TypeFunctions::castToArrayIfNecessary(builder, rightPartial, builder.getF64Type());
-               auto leftCasted = SQLTypeInference::castValueToType(builder, leftValue, mlir::FloatType::getF64(builder.getContext()));
-               auto type = ValueTypeToStringValue(builder, leftValue);
-               leftValue = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), array.array.getType(), "ArrayFillLike", mlir::ValueRange({array.array, array.dimension, leftCasted, type})).getRes();
-            } else if (!getBaseType(rightPartial.getType()).isa<mlir::db::ArrayType>() && getBaseType(leftValue.getType()).isa<mlir::db::ArrayType>()) {
-               auto array = TypeFunctions::castToArrayIfNecessary(builder, leftValue, builder.getF64Type());
-               auto rightCasted = SQLTypeInference::castValueToType(builder, rightPartial, mlir::FloatType::getF64(builder.getContext()));
-               auto type = ValueTypeToStringValue(builder, rightCasted);
-               rightPartial = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), array.array.getType(), "ArrayFillLike", mlir::ValueRange({array.array, array.dimension, rightCasted, type})).getRes();
-            }
             mlir::Value mul2;
             if(getBaseType(rightPartial.getType()).isa<mlir::db::ArrayType>() && getBaseType(leftValue.getType()).isa<mlir::db::ArrayType>()) {
                auto leftArr = TypeFunctions::castToArrayIfNecessary(builder, leftValue, builder.getF64Type());
                auto transposed = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), leftArr.array.getType(), "ArrayTranspose", mlir::ValueRange({leftArr.array, leftArr.dimension, leftArr.type})).getRes();
                auto data = TypeFunctions::castToArrayIfNecessary(builder, rightPartial, transposed);
                auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array, false);
-               mul2 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), returnType, "ArrayMatrixMul", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();     
+               auto two = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI64Type(), builder.getI64IntegerAttr(2)).getResult();
+               mul2 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), returnType, "ArrayMatrixMul", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, two, std::get<1>(data).type})).getRes();     
+            } else if(getBaseType(rightPartial.getType()).isa<mlir::db::ArrayType>() && !getBaseType(leftValue.getType()).isa<mlir::db::ArrayType>()) {
+               auto array = TypeFunctions::extractArrayDataDB(builder, rightPartial);
+               if (checkIfZero(leftValue)) {
+                  mul2 = leftValue;
+               } else if (getBaseType(leftValue.getType()).isa<mlir::IntegerType>()) {
+                  mul2 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), rightPartial.getType(), "ArrayScalarMultInt", mlir::ValueRange({rightPartial, array.dimension, array.type, leftValue})).getRes();
+               } else if (getBaseType(leftValue.getType()).isa<mlir::FloatType>()) {
+                  mul2 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), rightPartial.getType(), "ArrayScalarMultFloat", mlir::ValueRange({rightPartial, array.dimension, array.type, leftValue})).getRes();
+               } else if (getBaseType(leftValue.getType()).isa<mlir::db::DecimalType>()) {
+                  mlir::Value cast = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), leftValue);
+                  mul2 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), rightPartial.getType(), "ArrayScalarMultFloat", mlir::ValueRange({rightPartial, array.dimension, array.type, cast})).getRes();
+               } else {
+                  throw std::runtime_error("Data Type not supported");
+               } 
+            } else if(!getBaseType(rightPartial.getType()).isa<mlir::db::ArrayType>() && getBaseType(leftValue.getType()).isa<mlir::db::ArrayType>()) {
+               auto array = TypeFunctions::extractArrayDataDB(builder, leftValue);
+               if (checkIfZero(rightPartial)) {
+                  mul2 = rightPartial;
+               } else if (getBaseType(rightPartial.getType()).isa<mlir::IntegerType>()) {
+                  mul2 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), leftValue.getType(), "ArrayScalarMultInt", mlir::ValueRange({leftValue, array.dimension, array.type, rightPartial})).getRes();
+               } else if (getBaseType(rightPartial.getType()).isa<mlir::FloatType>()) {
+                  mul2 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), leftValue.getType(), "ArrayScalarMultFloat", mlir::ValueRange({leftValue, array.dimension, array.type, rightPartial})).getRes();
+               } else if (getBaseType(rightPartial.getType()).isa<mlir::db::DecimalType>()) {
+                  mlir::Value cast = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), rightPartial);
+                  mul2 = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), leftValue.getType(), "ArrayScalarMultFloat", mlir::ValueRange({leftValue, array.dimension, array.type, cast})).getRes();
+               } else {
+                  throw std::runtime_error("Data Type not supported");
+               }
             } else {
-               mul2 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {rightValue, leftPartial}));
+               mul2 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {rightPartial, leftValue}));
             }
 
             if(getBaseType(mul1.getType()).isa<mlir::db::ArrayType>() && getBaseType(mul2.getType()).isa<mlir::db::ArrayType>()) {
@@ -4180,6 +4251,9 @@ mlir::Value frontend::sql::Parser::calculatePartialDerivatesForwards(mlir::OpBui
                auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(dataMul).array, std::get<1>(dataMul).array);
                return builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), returnType, "ArrayAdd", mlir::ValueRange({std::get<0>(dataMul).array, std::get<0>(dataMul).dimension, std::get<0>(dataMul).type, std::get<1>(dataMul).array, std::get<1>(dataMul).dimension, std::get<1>(dataMul).type})).getRes();
             } else if(getBaseType(mul1.getType()).isa<mlir::db::ArrayType>() && !getBaseType(mul2.getType()).isa<mlir::db::ArrayType>()) {
+               if (checkIfZero(mul2)) {
+                  return mul2;
+               }
                auto array1 = TypeFunctions::castToArrayIfNecessary(builder, mul1, builder.getF64Type());
                auto mul2Casted = SQLTypeInference::castValueToType(builder, mul2, mlir::FloatType::getF64(builder.getContext()));
                auto type = ValueTypeToStringValue(builder, mul2);
@@ -4188,6 +4262,9 @@ mlir::Value frontend::sql::Parser::calculatePartialDerivatesForwards(mlir::OpBui
                auto returnType = TypeFunctions::getReturnType(builder, array1.array, array2.array);
                return builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), returnType, "ArrayAdd", mlir::ValueRange({array1.array, array1.dimension,array1.type, array2.array, array2.dimension, array2.type})).getRes();
             } else if(!getBaseType(mul1.getType()).isa<mlir::db::ArrayType>() && getBaseType(mul2.getType()).isa<mlir::db::ArrayType>()) {
+               if (checkIfZero(mul1)) {
+                  return mul1;
+               }
                auto array1 = TypeFunctions::castToArrayIfNecessary(builder, mul2, builder.getF64Type());
                auto mul1Casted = SQLTypeInference::castValueToType(builder, mul1, mlir::FloatType::getF64(builder.getContext()));
                auto type = ValueTypeToStringValue(builder, mul1Casted);
@@ -4205,7 +4282,9 @@ mlir::Value frontend::sql::Parser::calculatePartialDerivatesForwards(mlir::OpBui
             auto rightValue = translateExpression(builder, right, context);
             if(!getBaseType(leftValue.getType()).isa<mlir::db::ArrayType>() ||
                !getBaseType(rightValue.getType()).isa<mlir::db::ArrayType>()) {
-               throw std::runtime_error("Use '**' only with two arrays. Use '*' if you want to multiply each element of an array with a scalar.");
+               auto mul1 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {leftValue, rightPartial}));
+               auto mul2 = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {rightValue, leftPartial}));
+               return builder.create<mlir::db::AddOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {mul1, mul2}));
             }
             mlir::Value mul1;
             mlir::Value mul2;
