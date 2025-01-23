@@ -480,7 +480,7 @@ runtime::VarLen32 runtime::ArrayRuntime::fillLike(runtime::VarLen32 str, uint64_
     }
     formattedArrayDim.append("}");
 
-    runtime::Array<int64_t> reconstructedArrayData(formattedArrayDim, dim, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
+    runtime::Array<int64_t> reconstructedArrayData(formattedArrayDim, 1, &runtime::TypeCasts::stringToInt64, &runtime::TypeCasts::numericToString<int64_t>);
 
     if (valueType.str() == "int32") {
         runtime::Array<int32_t> result("{}", 1, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
