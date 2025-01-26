@@ -4722,8 +4722,12 @@ std::vector<Node*> frontend::sql::Parser::getLambdaVariables(Node* node, std::ve
       auto aexpr = reinterpret_cast<A_Expr*>(node);
       auto left = reinterpret_cast<Node*>(aexpr->lexpr_);
       auto right = reinterpret_cast<Node*>(aexpr->rexpr_);
-      variables = getLambdaVariables(left, variables);
-      variables = getLambdaVariables(right, variables);
+      if(left != nullptr) {
+         variables = getLambdaVariables(left, variables);
+      }
+      if(right != nullptr) {
+         variables = getLambdaVariables(right, variables);
+      }
       return variables;
    }
    case T_FuncCall: {
