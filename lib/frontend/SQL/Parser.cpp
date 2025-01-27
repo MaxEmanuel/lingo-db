@@ -630,10 +630,31 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
             if (left.getType().isa<mlir::db::DateType>() && right.getType().isa<mlir::db::IntervalType>()) {
                return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "DateSubtract", mlir::ValueRange({left, right})).getRes();
             }
-            if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() || getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+            if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
                auto data = TypeFunctions::castToArrayIfNecessary(builder, left, right);
                auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array);
                return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArraySub", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
+            }
+            // broadcasting scalar value to array
+            if (getBaseType(left.getType()).isa<mlir::db::ArrayType>() && !getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+               auto array = TypeFunctions::castToArrayIfNecessary(builder, left, mlir::IntegerType::get(builder.getContext(), 64));
+               auto arrayData = TypeFunctions::extractArrayRawData(builder, array.array);
+               auto type = ValueTypeToStringValue(builder, right);
+               auto rightCasted = SQLTypeInference::castValueToType(builder, right, mlir::FloatType::getF64(builder.getContext()));
+               auto scalarAr = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), array.array.getType(), "ArrayFillLike", mlir::ValueRange({array.array, array.dimension, rightCasted, type})).getRes();
+               auto scalarArray = TypeFunctions::castToArrayIfNecessary(builder, scalarAr, right.getType());
+               auto returnType = TypeFunctions::getReturnType(builder, array.array, scalarArray.array);
+               return builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), returnType, "ArraySub", mlir::ValueRange({array.array, array.dimension, array.type, scalarArray.array, scalarArray.dimension, scalarArray.type})).getRes();
+            }
+            if (!getBaseType(left.getType()).isa<mlir::db::ArrayType>() && getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
+               auto array = TypeFunctions::castToArrayIfNecessary(builder, right, mlir::IntegerType::get(builder.getContext(), 64));
+               auto arrayData = TypeFunctions::extractArrayRawData(builder, array.array);
+               auto type = ValueTypeToStringValue(builder, left);
+               auto leftCasted = SQLTypeInference::castValueToType(builder, left, mlir::FloatType::getF64(builder.getContext()));
+               auto scalarAr = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), array.array.getType(), "ArrayFillLike", mlir::ValueRange({array.array, array.dimension, leftCasted, type})).getRes();
+               auto scalarArray = TypeFunctions::castToArrayIfNecessary(builder, scalarAr, left.getType());
+               auto returnType = TypeFunctions::getReturnType(builder, array.array, scalarArray.array);
+               return builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), returnType, "ArraySub", mlir::ValueRange({scalarArray.array, scalarArray.dimension, scalarArray.type, array.array, array.dimension, array.type})).getRes();
             }
             return builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
          // unary minus
@@ -643,6 +664,10 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                auto minusone = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(-1.0)).getResult();
                auto negated = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {minusone, right}));
                return SQLTypeInference::castValueToType(builder, negated, type);
+            } else {
+               auto array = TypeFunctions::extractArrayDataDB(builder, right);
+               auto minusone = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(-1.0)).getResult();
+               return builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), array.array.getType(), "ArrayScalarMultFloat", mlir::ValueRange({array.array, array.dimension, array.type, minusone})).getRes();
             }
          }
       case ExpressionType::OPERATOR_MULTIPLY:
@@ -3414,8 +3439,14 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
                partList = calculatePartialDerivatesBackwards(builder, context, left, partList, seed);
             }
             // d_y = seed * -1
+            mlir::Value tmpSeed;
             auto minusOne = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(-1.0)).getResult();
-            mlir::Value tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, minusOne}));
+            if(getBaseType(seed.getType()).isa<mlir::db::ArrayType>()) {
+               auto array = TypeFunctions::extractArrayDataDB(builder, seed);
+               tmpSeed = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), seed.getType(), "ArrayScalarMultFloat", mlir::ValueRange({seed, array.dimension, array.type, minusOne})).getRes();
+            } else {
+               tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, minusOne}));
+            }
             partList = calculatePartialDerivatesBackwards(builder, context, right, partList, tmpSeed);
             break;
          }
@@ -3821,6 +3852,33 @@ mlir::Value frontend::sql::Parser::calculatePartialDerivatesForwards(mlir::OpBui
                   !getBaseType(rightPartial.getType()).isa<mlir::db::ArrayType>()) {
                   return builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {leftPartial, rightPartial}));
                }
+               // when leftPartial and rightPartial are both arrays
+               if(getBaseType(leftPartial.getType()).isa<mlir::db::ArrayType>() &&
+                  getBaseType(rightPartial.getType()).isa<mlir::db::ArrayType>()) {
+                  auto data = TypeFunctions::castToArrayIfNecessary(builder, leftPartial, rightPartial);
+                  auto returnType = TypeFunctions::getReturnType(builder, std::get<0>(data).array, std::get<1>(data).array);
+                  return builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), returnType, "ArraySub", mlir::ValueRange({std::get<0>(data).array, std::get<0>(data).dimension, std::get<0>(data).type, std::get<1>(data).array, std::get<1>(data).dimension, std::get<1>(data).type})).getRes();
+               }
+               // if leftPartial is an array and rightPartial is a scalar
+               if(getBaseType(leftPartial.getType()).isa<mlir::db::ArrayType>() &&
+                  !getBaseType(rightPartial.getType()).isa<mlir::db::ArrayType>()) {
+                  auto array = TypeFunctions::castToArrayIfNecessary(builder, leftPartial, builder.getF64Type());
+                  auto type = ValueTypeToStringValue(builder, rightPartial);
+                  auto scalarAr = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), array.array.getType(), "ArrayFillLike", mlir::ValueRange({array.array, array.dimension, rightPartial, type})).getRes();
+                  auto scalarArray = TypeFunctions::castToArrayIfNecessary(builder, scalarAr, builder.getF64Type());
+                  auto returnType = TypeFunctions::getReturnType(builder, array.array, scalarArray.array);
+                  return builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), returnType, "ArraySub", mlir::ValueRange({array.array, array.dimension, array.type, scalarArray.array, scalarArray.dimension, scalarArray.type})).getRes();
+               }
+               // if rightPartial is an array and leftPartial is a scalar
+               if(!getBaseType(leftPartial.getType()).isa<mlir::db::ArrayType>() &&
+                  getBaseType(rightPartial.getType()).isa<mlir::db::ArrayType>()) {
+                  auto array = TypeFunctions::castToArrayIfNecessary(builder, rightPartial, builder.getF64Type());
+                  auto type = ValueTypeToStringValue(builder, leftPartial);
+                  auto scalarAr = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), array.array.getType(), "ArrayFillLike", mlir::ValueRange({array.array, array.dimension, leftPartial, type})).getRes();
+                  auto scalarArray = TypeFunctions::castToArrayIfNecessary(builder, scalarAr, builder.getF64Type());
+                  auto returnType = TypeFunctions::getReturnType(builder, array.array, scalarArray.array);
+                  return builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), returnType, "ArraySub", mlir::ValueRange({scalarArray.array, scalarArray.dimension, scalarArray.type, array.array, array.dimension, array.type})).getRes();
+               }
             // handling unary minus
             } else {
                if (!getBaseType(rightPartial.getType()).isa<mlir::db::ArrayType>()) {
@@ -3828,6 +3886,10 @@ mlir::Value frontend::sql::Parser::calculatePartialDerivatesForwards(mlir::OpBui
                   auto minusone = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(-1.0)).getResult();
                   auto negated = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {minusone, rightPartial}));
                   return SQLTypeInference::castValueToType(builder, negated, type);
+               } else {
+                  auto array = TypeFunctions::extractArrayDataDB(builder, rightPartial);
+                  auto minusone = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(-1.0)).getResult();
+                  return builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), array.array.getType(), "ArrayScalarMultFloat", mlir::ValueRange({array.array, array.dimension, array.type, minusone})).getRes();
                }
             }
          }
