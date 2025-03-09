@@ -17,7 +17,7 @@ std::vector<double> calcCompilationTime(std::vector<std::unordered_map<std::stri
 
 int main(int argc, char** argv) {
     if (argc <= 4) {
-       std::cerr << "USAGE: run-sql *.sql database number_of_repetitions [base file name]" << std::endl;
+       std::cerr << "USAGE: measure-sql *.sql database number_of_repetitions [base file name]" << std::endl;
        return 1;
     }
     // arguments
