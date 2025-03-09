@@ -4615,7 +4615,7 @@ mlir::Value frontend::sql::Parser::calculatePartialDerivatesForwards(mlir::OpBui
             auto divisor = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {rightValue, rightValue}));
             return builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {dividend, divisor}));
          }
-         // derivating ^ expressions using the power rule => (x' * y * x ^ (y - 1)) + (y' * (x ^ y) * log(x))
+         // derivating ^ expressions using the power rule => (x' * y * x ^ (y - 1)) + (y' * (x ^ y) * log(y))
          case ExpressionType::OPERATOR_POWER: {
             auto leftValue = translateExpression(builder, left, context);
             auto rightValue = translateExpression(builder, right, context);
@@ -4632,7 +4632,8 @@ mlir::Value frontend::sql::Parser::calculatePartialDerivatesForwards(mlir::OpBui
                auto cast0 = !getBaseType(cast[0].getType()).isa<mlir::Float64Type>() ? builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), cast[0]).getRes() : cast[0];
                auto cast1 = !getBaseType(cast[1].getType()).isa<mlir::Float64Type>() ? builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), cast[1]).getRes() : cast[1];
                power = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), cast0.getType(), "PowerFloat", mlir::ValueRange({cast0, cast1})).getRes();
-               log = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), cast0.getType(), "Log", cast0).getRes();
+               auto rightValueCast = !getBaseType(rightValue.getType()).isa<mlir::Float64Type>() ? builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), rightValue).getRes() : rightValue;
+               log = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), rightValueCast.getType(), "Log", rightValueCast).getRes();
             } else {
                throw std::runtime_error("Datatype not supported in power derivation.");
             }
