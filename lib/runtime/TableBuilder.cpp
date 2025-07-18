@@ -37,6 +37,8 @@ class TableBuilder {
             case 32: return arrow::uint32();
             case 64: return arrow::uint64();
          }
+      } else if (name == "bfloat") {
+         return arrow::float16();
       } else if (name == "float") {
          switch (p1) {
             case 16: return arrow::float16();
@@ -151,6 +153,7 @@ class TableBuilder {
    void addInt16(bool isValid, int16_t);
    void addInt32(bool isValid, int32_t);
    void addInt64(bool isValid, int64_t);
+   void addBFloat(bool isValid, __bf16);
    void addFloat32(bool isValid, float);
    void addFloat64(bool isValid, double);
    void addDecimal(bool isValid, __int128);
@@ -187,6 +190,18 @@ void TableBuilder::addBool(bool isValid, bool value) {
       handleStatus(typedBuilder->Append(value));
    }
 }
+
+
+void TableBuilder::addBFloat(bool isValid, __bf16 value) {
+   auto* typedBuilder = getBuilder<arrow::NumericBuilder<arrow::HalfFloatType>>();
+   if (!isValid) {
+      handleStatus(typedBuilder->AppendNull());
+   } else {
+      uint16_t* savedValue = std::bit_cast<uint16_t*>(&value);
+      handleStatus(typedBuilder->Append(*savedValue));
+   }
+}
+
 
 #define TABLE_BUILDER_ADD_PRIMITIVE(name, type)                                                \
    void TableBuilder::add##name(bool isValid, arrow::type ::c_type val) {                      \
@@ -250,6 +265,7 @@ RESULT_TABLE_FORWARD(addInt8, int8_t);
 RESULT_TABLE_FORWARD(addInt16, int16_t);
 RESULT_TABLE_FORWARD(addInt32, int32_t);
 RESULT_TABLE_FORWARD(addInt64, int64_t);
+RESULT_TABLE_FORWARD(addBFloat, __bf16);
 RESULT_TABLE_FORWARD(addFloat32, float);
 RESULT_TABLE_FORWARD(addFloat64, double);
 RESULT_TABLE_FORWARD(addDecimal, __int128);

@@ -139,6 +139,13 @@ __int128 runtime::StringRuntime::toDecimal(runtime::VarLen32 string, int32_t req
    res |= decimalrep.low_bits();
    return res;
 }
+
+__bf16 runtime::StringRuntime::toBfloat(runtime::VarLen32 str) { // NOLINT (clang-diagnostic-return-type-c-linkage)
+   std::string string = str.str();
+   float value = std::stof(string);
+   return static_cast<__bf16>(value);
+}
+
 #define CAST_NUMERIC_TO_STRING(IN_TYPE, ARROW_TYPE, TYPE_NAME)                                                                     \
    runtime::VarLen32 runtime::StringRuntime::from##TYPE_NAME(IN_TYPE value) { /* NOLINT (clang-diagnostic-return-type-c-linkage)*/ \
       arrow::internal::StringFormatter<ARROW_TYPE> formatter;                                                                      \
@@ -165,6 +172,14 @@ runtime::VarLen32 runtime::StringRuntime::fromDecimal(__int128 val, int32_t scal
    uint8_t* data = new uint8_t[len];
    memcpy(data, str.data(), len);
 
+   return runtime::VarLen32(data, len);
+}
+
+runtime::VarLen32 runtime::StringRuntime::fromBfloat(__bf16 value) { // NOLINT (clang-diagnostic-return-type-c-linkage)
+   std::string str = std::to_string((float) value);
+   size_t len = str.length();
+   uint8_t* data = new uint8_t[len];
+   memcpy(data, str.data(), len);
    return runtime::VarLen32(data, len);
 }
 

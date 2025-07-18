@@ -128,6 +128,9 @@ std::shared_ptr<arrow::DataType> createDataType(const runtime::ColumnType& colum
    if (columnType.base == "index") {
       return arrow::int64();
    }
+   if (columnType.base == "bfloat") {
+      return arrow::float16();
+   }
    if (columnType.base == "float") {
       switch (asInt(columnType.modifiers.at(0))) {
          case 16: return arrow::float16();

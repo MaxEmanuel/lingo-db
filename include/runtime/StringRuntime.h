@@ -12,6 +12,7 @@ struct StringRuntime {
    static bool NO_SIDE_EFFECTS like(VarLen32 l, VarLen32 r);
    static bool NO_SIDE_EFFECTS startsWith(VarLen32 str, VarLen32 substr);
    static bool NO_SIDE_EFFECTS endsWith(VarLen32 str, VarLen32 substr);
+   static NO_SIDE_EFFECTS __bf16 toBfloat(VarLen32 str);
    static NO_SIDE_EFFECTS int64_t toInt(VarLen32 str);
    static NO_SIDE_EFFECTS int64_t len(VarLen32 str);
    static NO_SIDE_EFFECTS float toFloat32(VarLen32 str);
@@ -20,6 +21,7 @@ struct StringRuntime {
    static NO_SIDE_EFFECTS int64_t toDate(VarLen32 str);
    static VarLen32 fromDate(int64_t);
    static VarLen32 fromInt(int64_t);
+   static VarLen32 fromBfloat(__bf16);
    static VarLen32 fromFloat32(float);
    static VarLen32 fromFloat64(double);
    static VarLen32 fromChar(uint64_t, size_t bytes);

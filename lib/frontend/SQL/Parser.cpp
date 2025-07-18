@@ -1360,6 +1360,9 @@ runtime::ColumnType frontend::sql::Parser::createColumnType(std::string datatype
       datatypeName = "int";
       typeModifiers.push_back(64ull);
    }
+   if (datatypeName == "bfloat") {
+      typeModifiers.push_back(16ull);
+   }
    if (datatypeName == "float4") {
       datatypeName = "float";
       typeModifiers.push_back(32ull);
@@ -2497,6 +2500,7 @@ mlir::Type frontend::sql::Parser::createBaseTypeFromColumnType(mlir::MLIRContext
    if (colType.base == "bool") return mlir::IntegerType::get(context, 1);
    if (colType.base == "int") return mlir::IntegerType::get(context, asInt(colType.modifiers.at(0)));
    if (colType.base == "index") return mlir::IndexType::get(context);
+   if (colType.base == "bfloat") return mlir::FloatType::getBF16(context);
    if (colType.base == "float") return asInt(colType.modifiers.at(0)) == 32 ? mlir::FloatType::getF32(context) : mlir::FloatType::getF64(context);
    if (colType.base == "date") return mlir::db::DateType::get(context, mlir::db::symbolizeDateUnitAttr(std::get<std::string>(colType.modifiers.at(0))).value());
    if (colType.base == "string") return mlir::db::StringType::get(context);

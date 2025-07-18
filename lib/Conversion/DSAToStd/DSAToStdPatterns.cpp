@@ -56,6 +56,8 @@ class TBAppendLowering : public OpConversionPattern<mlir::dsa::Append> {
                default: assert(false && "should not happen");
             }
          }
+      } else if (auto floatType = type.dyn_cast_or_null<mlir::BFloat16Type>()) {
+         rt::ResultTable::addBFloat(rewriter, loc)({builderVal, isValid, val});
       } else if (auto floatType = type.dyn_cast_or_null<mlir::FloatType>()) {
          switch (floatType.getWidth()) {
             case 32: rt::ResultTable::addFloat32(rewriter, loc)({builderVal, isValid, val}); break;

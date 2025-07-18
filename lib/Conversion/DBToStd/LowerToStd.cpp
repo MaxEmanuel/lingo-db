@@ -244,6 +244,8 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
             if (intWidth < 64) {
                result = rewriter.create<arith::TruncIOp>(loc, convertedTargetType, result);
             }
+         } else if (auto bfloatType = mlir::dyn_cast_or_null<BFloat16Type>(scalarTargetType)) {
+            result = rt::StringRuntime::toBfloat(rewriter, loc)({valueToCast})[0];
          } else if (auto floatType = scalarTargetType.dyn_cast_or_null<FloatType>()) {
             result = floatType.getWidth() == 32 ? rt::StringRuntime::toFloat32(rewriter, loc)({valueToCast})[0] : rt::StringRuntime::toFloat64(rewriter, loc)({valueToCast})[0];
          } else if (auto decimalType = scalarTargetType.dyn_cast_or_null<db::DecimalType>()) {
@@ -258,6 +260,8 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
          }
       } else if (auto intWidth = getIntegerWidth(scalarSourceType, false)) {
          result = rt::StringRuntime::fromInt(rewriter, loc)({valueToCast})[0];
+      } else if (auto bfloatType = mlir::dyn_cast_or_null<BFloat16Type>(scalarSourceType)) {
+         result = rt::StringRuntime::fromBfloat(rewriter, loc)({valueToCast})[0];
       } else if (auto floatType = scalarSourceType.dyn_cast_or_null<FloatType>()) {
          result = floatType.getWidth() == 32 ? rt::StringRuntime::fromFloat32(rewriter, loc)({valueToCast})[0] : rt::StringRuntime::fromFloat64(rewriter, loc)({valueToCast})[0];
       } else if (auto decimalSourceType = scalarSourceType.dyn_cast_or_null<db::DecimalType>()) {
@@ -847,7 +851,15 @@ class CastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
             return success();
          }
       } else if (auto floatType = scalarSourceType.dyn_cast_or_null<FloatType>()) {
-         if (getIntegerWidth(scalarTargetType, false)) {
+         if (auto targetFloatType = scalarTargetType.dyn_cast_or_null<FloatType>()) {
+            if (floatType.getWidth() < targetFloatType.getWidth()) {
+               value = rewriter.create<arith::ExtFOp>(loc, convertedTargetType, value);
+            } else if (floatType.getWidth() > targetFloatType.getWidth()) {
+               value = rewriter.create<arith::TruncFOp>(loc, convertedTargetType, value);
+            }
+            rewriter.replaceOp(op, value);
+            return success();
+         } else if (getIntegerWidth(scalarTargetType, false)) {
             value = rewriter.replaceOpWithNewOp<arith::FPToSIOp>(op, convertedTargetType, value);
             return success();
          } else if (auto decimalTargetType = scalarTargetType.dyn_cast_or_null<db::DecimalType>()) {
