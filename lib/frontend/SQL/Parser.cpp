@@ -1892,7 +1892,7 @@ std::tuple<mlir::Value, std::unordered_map<std::string, mlir::tuples::Column*>> 
                   div.getDefiningOp()->erase();
                   x.getDefiningOp()->erase();
                }
-               if (refAttr.getColumn().type.isa<mlir::db::NullableType>()) {
+               if (refAttr.getColumn().type.isa<mlir::db::NullableType>() && !aggrResultType.isa<mlir::db::NullableType>()) {
                   aggrResultType = mlir::db::NullableType::get(builder.getContext(), aggrResultType);
                }
             }
@@ -2309,7 +2309,7 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                      div.getDefiningOp()->erase();
                      x.getDefiningOp()->erase();
                   }
-                  if (refAttr.getColumn().type.isa<mlir::db::NullableType>()) {
+                  if (refAttr.getColumn().type.isa<mlir::db::NullableType>() && !aggrResultType.isa<mlir::db::NullableType>()) {
                      aggrResultType = mlir::db::NullableType::get(builder.getContext(), aggrResultType);
                   }
                }
