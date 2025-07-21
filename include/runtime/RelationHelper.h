@@ -11,7 +11,7 @@ class RelationHelper {
    public:
    static void createTable(runtime::ExecutionContext* context, runtime::VarLen32 name, runtime::VarLen32 meta);
    static void appendTableFromResult(runtime::VarLen32 tableName, runtime::ExecutionContext* context, size_t resultId);
-   static void copyFromIntoTable(runtime::ExecutionContext* context, runtime::VarLen32 tableName, runtime::VarLen32 fileName, runtime::VarLen32 delimiter, runtime::VarLen32 escape);
+   static void copyFromIntoTable(runtime::ExecutionContext* context, runtime::VarLen32 tableName, runtime::VarLen32 fileName, runtime::VarLen32 delimiter, runtime::VarLen32 escape, bool hasHeader);
    static void setPersist(runtime::ExecutionContext* context, bool value);
    static HashIndexAccess* getIndex(runtime::ExecutionContext* context, runtime::VarLen32 description);
 };

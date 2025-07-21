@@ -28,7 +28,7 @@ void RelationHelper::appendTableFromResult(runtime::VarLen32 tableName, runtime:
       }
    }
 }
-void RelationHelper::copyFromIntoTable(runtime::ExecutionContext* context, runtime::VarLen32 tableName, runtime::VarLen32 fileName, runtime::VarLen32 delimiter, runtime::VarLen32 escape) {
+void RelationHelper::copyFromIntoTable(runtime::ExecutionContext* context, runtime::VarLen32 tableName, runtime::VarLen32 fileName, runtime::VarLen32 delimiter, runtime::VarLen32 escape, bool hasHeader) {
    auto& session = context->getSession();
    auto catalog = session.getCatalog();
    if (auto relation = catalog->findRelation(tableName)) {
@@ -53,6 +53,11 @@ void RelationHelper::copyFromIntoTable(runtime::ExecutionContext* context, runti
          if (f->name().find("primaryKeyHashValue") != std::string::npos) continue;
          readOptions.column_names.push_back(f->name());
          convertOptions.column_types.insert({f->name(), f->type()});
+      }
+
+      // Skip first line if it is header
+      if (hasHeader) {
+         readOptions.skip_rows = 1;
       }
 
       // Instantiate TableReader from input stream and options

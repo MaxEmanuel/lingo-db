@@ -1256,6 +1256,7 @@ void frontend::sql::Parser::translateCopyStatement(mlir::OpBuilder& builder, Cop
    std::string tableName = copyStatement->relation_->relname_;
    std::string delimiter = ",";
    std::string escape = "";
+   bool hasHeader = false;
    for (auto* optionCell = copyStatement->options_->head; optionCell != nullptr; optionCell = optionCell->next) {
       auto* defElem = reinterpret_cast<DefElem*>(optionCell->data.ptr_value);
       std::string optionName = defElem->defname_;
@@ -1268,6 +1269,8 @@ void frontend::sql::Parser::translateCopyStatement(mlir::OpBuilder& builder, Cop
          if (format != "csv") {
            throw std::runtime_error("copy only supports csv");
          }
+      } else if (optionName == "header") {
+         hasHeader = reinterpret_cast<value*>(defElem->arg_)->val_.ival_;
       } else if (optionName == "null") {
       } else {
         throw std::runtime_error("unsupported copy option");
@@ -1277,7 +1280,8 @@ void frontend::sql::Parser::translateCopyStatement(mlir::OpBuilder& builder, Cop
    auto fileNameValue = createStringValue(builder, fileName);
    auto delimiterValue = createStringValue(builder, delimiter);
    auto escapeValue = createStringValue(builder, escape);
-   rt::RelationHelper::copyFromIntoTable(builder, builder.getUnknownLoc())(mlir::ValueRange{getExecutionContextValue(builder), tableNameValue, fileNameValue, delimiterValue, escapeValue});
+   auto hasHeaderValue = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), hasHeader));
+   rt::RelationHelper::copyFromIntoTable(builder, builder.getUnknownLoc())(mlir::ValueRange{getExecutionContextValue(builder), tableNameValue, fileNameValue, delimiterValue, escapeValue, hasHeaderValue});
 }
 void frontend::sql::Parser::translateVariableSetStatement(mlir::OpBuilder& builder, VariableSetStmt* variableSetStatement) {
    std::string varName = variableSetStatement->name_;
