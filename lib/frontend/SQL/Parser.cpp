@@ -555,22 +555,59 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
          mlir::Value subQuery;
          TargetInfo targetInfo;
          {
+            uint maxIterations = 10;
             auto subQueryScope = context.createResolverScope();
             auto subQueryDefineScope = context.createDefineScope();
-            auto [subQuery_, targetInfo_] = translateSelectStmt(builder, reinterpret_cast<SelectStmt*>(cte->ctequery_), context, subQueryScope);
-            subQuery = subQuery_;
-            targetInfo = targetInfo_;
-            if (cte->aliascolnames_) {
-               size_t i = 0;
-               std::cout << pg_query_nodes_to_json(cte->aliascolnames_) << std::endl;
-               for (auto* el = cte->aliascolnames_->head; el != nullptr; el = el->next) {
-                  auto* val = reinterpret_cast<value*>(el->data.ptr_value);
-                  targetInfo.namedResults.at(i++).first = val->val_.str_;
+            auto* substmt = reinterpret_cast<SelectStmt*>(cte->ctequery_);
+            if (substmt->op_ == SETOP_UNION && stmt->with_clause_->recursive_) {
+               // This is a recursive CTE, start by evaluating the base case
+               auto [subQuery_, targetInfo_] = translateSelectStmt(builder, reinterpret_cast<SelectStmt*>(substmt->larg_), context, subQueryScope);
+               subQuery = subQuery_;
+               targetInfo = targetInfo_;
+               if (cte->aliascolnames_) {
+                  size_t i = 0;
+                  for (auto* el = cte->aliascolnames_->head; el != nullptr; el = el->next) {
+                     auto* val = reinterpret_cast<value*>(el->data.ptr_value);
+                     targetInfo.namedResults.at(i++).first = val->val_.str_;
+                  }
                }
+
+               ctes.insert({cte->ctename_, {subQuery, targetInfo}});
+
+               // Then do the recursive part
+               for (int i = 0; i < maxIterations; ++i) {
+                  auto [subQuery_, targetInfo_] = translateSelectStmt(builder, substmt, context, subQueryScope);
+                  subQuery = subQuery_;
+                  targetInfo = targetInfo_;
+                  if (cte->aliascolnames_) {
+                     size_t i = 0;
+                     for (auto* el = cte->aliascolnames_->head; el != nullptr; el = el->next) {
+                        auto* val = reinterpret_cast<value*>(el->data.ptr_value);
+                        targetInfo.namedResults.at(i++).first = val->val_.str_;
+                     }
+                  }
+
+                  ctes[cte->ctename_] = {subQuery, targetInfo};
+               }
+
+            } else {
+               auto [subQuery_, targetInfo_] = translateSelectStmt(builder, substmt, context, subQueryScope);
+               subQuery = subQuery_;
+               targetInfo = targetInfo_;
+
+               if (cte->aliascolnames_) {
+                  size_t i = 0;
+                  for (auto* el = cte->aliascolnames_->head; el != nullptr; el = el->next) {
+                     auto* val = reinterpret_cast<value*>(el->data.ptr_value);
+                     targetInfo.namedResults.at(i++).first = val->val_.str_;
+                  }
+               }
+
+               ctes.insert({cte->ctename_, {subQuery, targetInfo}});
             }
          }
-         ctes.insert({cte->ctename_, {subQuery, targetInfo}});
       }
+
    }
    // FROM
    mlir::Value tree = translateFromClause(builder, stmt, context, scope);
