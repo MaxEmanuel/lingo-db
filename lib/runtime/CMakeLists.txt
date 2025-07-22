@@ -31,6 +31,21 @@ add_library(runtime OBJECT
         HashIndex.cpp
         Relation.cpp
         Session.cpp
-        Catalog.cpp)
-target_link_libraries(runtime PRIVATE tbb arrow)
+        Catalog.cpp
+        Array/Array.cpp
+        Array/ArrayElementHandling.cpp
+        Array/ArrayWidthHandling.cpp
+        Array/ArrayNullHandling.cpp
+        Array/ArrayParsing.cpp
+        Array/ArrayAppend.cpp
+        Array/ArraySlice.cpp
+        Array/ArraySubscript.cpp
+        Array/ArrayArithmetic.cpp
+        Array/ArrayActivation.cpp
+        Array/ArrayTranspose.cpp
+        Array/ArrayFill.cpp
+        Array/ArrayCast.cpp
+        Array/ArrayPrint.cpp
+        ArrayRuntime.cpp)
+target_link_libraries(runtime PRIVATE tbb arrow BLAS::BLAS)
 
