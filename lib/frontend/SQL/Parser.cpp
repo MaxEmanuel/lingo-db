@@ -962,7 +962,7 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
                auto* castNode = reinterpret_cast<TypeCast*>(node);
                auto* typeName = reinterpret_cast<value*>(castNode->type_name_->names_->tail->data.ptr_value)->val_.str_;
                auto toCast = translateExpression(builder, castNode->arg_, context);
-               bool isArray = castNode->type_name_->array_bounds_->length != 0;
+               bool isArray = castNode->type_name_->array_bounds_;
                auto columnType = createColumnType(typeName, false, isArray, getTypeModList(castNode->type_name_->typmods_));
                auto resType = createTypeFromColumnType(builder.getContext(), columnType);
                if (auto constOp = mlir::dyn_cast_or_null<mlir::db::ConstantOp>(toCast.getDefiningOp())) {
@@ -1435,7 +1435,7 @@ std::pair<std::string, std::shared_ptr<runtime::ColumnMetaData>> frontend::sql::
    auto* typeName = columnDef->type_name_;
    std::vector<std::variant<size_t, std::string>> typeModifiers = getTypeModList(typeName->typmods_);
    bool isNotNull = false;
-   bool isArray = typeName->array_bounds_->length != 0;
+   bool isArray = typeName->array_bounds_;
 
    if (columnDef->constraints_ != nullptr) {
       for (auto* cell = columnDef->constraints_->head; cell != nullptr; cell = cell->next) {
