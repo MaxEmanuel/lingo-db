@@ -962,7 +962,8 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
                auto* castNode = reinterpret_cast<TypeCast*>(node);
                auto* typeName = reinterpret_cast<value*>(castNode->type_name_->names_->tail->data.ptr_value)->val_.str_;
                auto toCast = translateExpression(builder, castNode->arg_, context);
-               auto columnType = createColumnType(typeName, false, getTypeModList(castNode->type_name_->typmods_));
+               bool isArray = castNode->type_name_->array_bounds_->length != 0;
+               auto columnType = createColumnType(typeName, false, isArray, getTypeModList(castNode->type_name_->typmods_));
                auto resType = createTypeFromColumnType(builder.getContext(), columnType);
                if (auto constOp = mlir::dyn_cast_or_null<mlir::db::ConstantOp>(toCast.getDefiningOp())) {
                   if (auto intervalType = resType.dyn_cast<mlir::db::IntervalType>()) {
@@ -1345,28 +1346,52 @@ std::shared_ptr<runtime::TableMetaData> frontend::sql::Parser::translateTableMet
    tableMetaData->setNumRows(0);
    return tableMetaData;
 }
-runtime::ColumnType frontend::sql::Parser::createColumnType(std::string datatypeName, bool isNull, std::vector<std::variant<size_t, std::string>> typeModifiers) {
+runtime::ColumnType frontend::sql::Parser::createColumnType(std::string datatypeName, bool isNull, bool isArray, std::vector<std::variant<size_t, std::string>> typeModifiers) {
    datatypeName = llvm::StringSwitch<std::string>(datatypeName)
                      .Case("bpchar", "char")
                      .Case("varchar", "string")
                      .Case("numeric", "decimal")
                      .Case("text", "string")
                      .Default(datatypeName);
+   if (datatypeName == "string" && isArray) {
+      datatypeName = "string[]";
+      typeModifiers.push_back(5ull);
+   }
    if (datatypeName == "int4") {
-      datatypeName = "int";
-      typeModifiers.push_back(32ull);
+      if (isArray) {
+         datatypeName = "int[]";
+         typeModifiers.push_back(0ull);
+      } else {
+         datatypeName = "int";
+         typeModifiers.push_back(32ull);
+      }
    }
    if (datatypeName == "int8") {
-      datatypeName = "int";
-      typeModifiers.push_back(64ull);
+      if (isArray) {
+         datatypeName = "int[]";
+         typeModifiers.push_back(1ull);
+      } else {
+         datatypeName = "int";
+         typeModifiers.push_back(64ull);
+      }
    }
    if (datatypeName == "float4") {
-      datatypeName = "float";
-      typeModifiers.push_back(32ull);
+      if (isArray) {
+         datatypeName = "float[]";
+         typeModifiers.push_back(3ull);
+      } else {
+         datatypeName = "float";
+         typeModifiers.push_back(32ull);
+      }
    }
    if (datatypeName == "float8") {
-      datatypeName = "float";
-      typeModifiers.push_back(64ull);
+      if (isArray) {
+         datatypeName = "float[]";
+         typeModifiers.push_back(4ull);
+      } else {
+         datatypeName = "float";
+         typeModifiers.push_back(64ull);
+      }
    }
    if (datatypeName == "char" && std::get<size_t>(typeModifiers[0]) > 8) {
       typeModifiers.clear();
@@ -1410,6 +1435,7 @@ std::pair<std::string, std::shared_ptr<runtime::ColumnMetaData>> frontend::sql::
    auto* typeName = columnDef->type_name_;
    std::vector<std::variant<size_t, std::string>> typeModifiers = getTypeModList(typeName->typmods_);
    bool isNotNull = false;
+   bool isArray = typeName->array_bounds_->length != 0;
 
    if (columnDef->constraints_ != nullptr) {
       for (auto* cell = columnDef->constraints_->head; cell != nullptr; cell = cell->next) {
@@ -1430,7 +1456,7 @@ std::pair<std::string, std::shared_ptr<runtime::ColumnMetaData>> frontend::sql::
    std::string name = columnDef->colname_;
    std::string datatypeName = reinterpret_cast<value*>(typeName->names_->tail->data.ptr_value)->val_.str_;
    auto columnMetaData = std::make_shared<runtime::ColumnMetaData>();
-   columnMetaData->setColumnType(createColumnType(datatypeName, !isNotNull, typeModifiers));
+   columnMetaData->setColumnType(createColumnType(datatypeName, !isNotNull, isArray, typeModifiers));
    return {name, columnMetaData};
 }
 std::vector<std::variant<size_t, std::string>> frontend::sql::Parser::getTypeModList(List* typeMods) {
@@ -2504,6 +2530,9 @@ mlir::Type frontend::sql::Parser::createBaseTypeFromColumnType(mlir::MLIRContext
    if (colType.base == "decimal") return mlir::db::DecimalType::get(context, asInt(colType.modifiers.at(0)), asInt(colType.modifiers.at(1)));
    if (colType.base == "interval") return mlir::db::IntervalType::get(context, std::get<std::string>(colType.modifiers.at(0)) == "daytime" ? mlir::db::IntervalUnitAttr::daytime : mlir::db::IntervalUnitAttr::months);
    if (colType.base == "timestamp") return mlir::db::TimestampType::get(context, mlir::db::TimeUnitAttr::second);
+   if (colType.base.find("[]") != std::string::npos) {
+      return mlir::db::ArrayType::get(context, asInt(colType.modifiers.at(0)));
+   }
    assert(false);
    return mlir::Type();
 }

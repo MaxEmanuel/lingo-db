@@ -28,6 +28,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
 #include "runtime-defs/StringRuntime.h"
+#include "runtime-defs/ArrayRuntime.h"
 #include <mlir/Dialect/util/FunctionHelper.h>
 
 using namespace mlir;
@@ -255,6 +256,9 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
             }
          } else if (scalarTargetType.isa<mlir::db::DateType>()) {
             result = rt::StringRuntime::toDate(rewriter, loc)({valueToCast})[0];
+         } else if (auto arrayType = scalarTargetType.dyn_cast_or_null<db::ArrayType>()) {
+            auto type = rewriter.create<arith::ConstantOp>(loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(arrayType.getType()));
+            result = rt::ArrayRuntime::fromString(rewriter, loc)({valueToCast, type})[0];
          }
       } else if (auto intWidth = getIntegerWidth(scalarSourceType, false)) {
          result = rt::StringRuntime::fromInt(rewriter, loc)({valueToCast})[0];
@@ -1059,6 +1063,9 @@ void DBToStdLoweringPass::runOnOperation() {
       return (Type) mlir::IntegerType::get(ctxt, bits);
    });
    typeConverter.addConversion([&](::mlir::db::StringType t) {
+      return mlir::util::VarLen32Type::get(ctxt);
+   });
+   typeConverter.addConversion([&](::mlir::db::ArrayType t) {
       return mlir::util::VarLen32Type::get(ctxt);
    });
    typeConverter.addConversion([&](::mlir::db::TimestampType t) {

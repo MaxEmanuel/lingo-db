@@ -1,10 +1,13 @@
 #include <iomanip>
 #include <iostream>
 
+#define NDEBUG
 #include <arrow/pretty_print.h>
 #include <arrow/table.h>
+#undef NDEBUG
 
 #include "execution/ResultProcessing.h"
+#include "execution/PrettyPrintExtension.h"
 #include "runtime/TableBuilder.h"
 #include <functional>
 
@@ -52,7 +55,12 @@ void printTable(const std::shared_ptr<arrow::Table>& table) {
       convertHex.push_back(table->schema()->field(positions.size())->type()->id() == arrow::Type::FIXED_SIZE_BINARY);
       rowSep += std::string(33, '-');
       std::stringstream sstr;
-      arrow::PrettyPrint(*c.get(), options, &sstr); //NOLINT (clang-diagnostic-unused-result)
+      if (table->schema()->field(positions.size())->type()->id() != arrow::Type::STRING) {
+         arrow::PrettyPrint(*c.get(), options, &sstr); //NOLINT (clang-diagnostic-unused-result)
+      } else {
+         execution::ExtensionPrinter printer;
+         printer.PrettyPrint(*c.get(), options, &sstr);
+      }
       columnReps.push_back(sstr.str());
       positions.push_back(0);
    }

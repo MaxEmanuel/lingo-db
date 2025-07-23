@@ -1,4 +1,4 @@
-set(EXECUTION_FILES ResultProcessor.cpp EnforceCABIPass.cpp AnnotateProfilingDataPass.cpp Frontend.cpp LLVMBackends.cpp Execution.cpp BackendPasses.cpp CEmitter.cpp CBackend.cpp BareFunctions.cpp)
+set(EXECUTION_FILES PrettyPrintExtension.cpp ResultProcessor.cpp EnforceCABIPass.cpp AnnotateProfilingDataPass.cpp Frontend.cpp LLVMBackends.cpp Execution.cpp BackendPasses.cpp CEmitter.cpp CBackend.cpp BareFunctions.cpp)
 if(ENABLE_CRANELIFT_BACKEND)
     list(APPEND EXECUTION_FILES CraneliftBackend.cpp DecomposeTuplePass.cpp)
 endif(ENABLE_CRANELIFT_BACKEND)

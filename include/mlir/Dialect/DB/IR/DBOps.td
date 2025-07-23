@@ -128,6 +128,16 @@ def DB_StringType : DB_Type<"String","string"> {
     }];
 }
 
+def DB_ArrayType : DB_Type<"Array","array"> {
+    let summary = "array";
+    let description = [{
+        Variable-length array storing multiple elements of same type.
+    }];
+
+    let parameters = (ins "int":$type);
+    let assemblyFormat="`<`$type`>`";
+}
+
 def AnyBool: AnyTypeOf<[I1,NullableType]>;
 def NullableDBType: AnyTypeOf<[AnyType,NullableType]>;
 

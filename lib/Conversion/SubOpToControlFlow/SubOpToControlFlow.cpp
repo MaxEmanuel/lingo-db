@@ -871,6 +871,8 @@ class CreateTableLowering : public SubOpConversionPattern<mlir::subop::CreateRes
          }
       } else if (auto timestampType = type.dyn_cast_or_null<mlir::db::TimestampType>()) {
          return "timestamp[" + std::to_string(static_cast<uint32_t>(timestampType.getUnit())) + "]";
+      } else if (auto arrayType = type.dyn_cast_or_null<mlir::db::ArrayType>()) {
+         return "array";
       }
       return "";
    }

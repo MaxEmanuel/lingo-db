@@ -59,6 +59,8 @@ class TableBuilder {
          return arrow::decimal(p1, p2);
       } else if (name == "bool") {
          return arrow::boolean();
+      } else if (name == "array") {
+         return arrow::utf8();
       }
       throw std::runtime_error("unknown type");
    }
