@@ -896,3 +896,13 @@ struct GroupingFunc
    Index		agglevelsup;	/* same as Aggref.agglevelsup */
    int			location;		/* token location */
 };
+
+/*
+ * A_ArrayExpr - an ARRAY[] construct
+ */
+struct A_ArrayExpr
+{
+	NodeTag		type;
+	List	   *elements;		/* array element expressions */
+	int			location;		/* token location, or -1 if unknown */
+};

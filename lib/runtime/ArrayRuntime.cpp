@@ -7,6 +7,10 @@ runtime::VarLen32 ArrayRuntime::fromString(runtime::VarLen32 str, int32_t type) 
     return runtime::Array::fromString(content, type);
 }
 
+runtime::VarLen32 ArrayRuntime::getEmtpyArray(int32_t type) {
+    return runtime::Array::createEmptyArray(type);
+}
+
 runtime::VarLen32 ArrayRuntime::appendArray(
     runtime::VarLen32 left,
     runtime::VarLen32 right,
@@ -48,6 +52,12 @@ runtime::VarLen32 ArrayRuntime::appendString(runtime::VarLen32 array, int32_t ty
     std::string valueVal = value.str();
     Array arrayObj(arrayVal, type);
     return arrayObj.append(valueVal);
+}
+
+runtime::VarLen32 ArrayRuntime::appendNull(runtime::VarLen32 array, int32_t type) {
+    std::string arrayVal = array.str();
+    Array arrayObj(arrayVal, type);
+    return arrayObj.append();
 }
 
 runtime::VarLen32 ArrayRuntime::slice(runtime::VarLen32 array, int32_t type, int32_t lowerBound, int32_t upperBound, int32_t dimension) {
@@ -277,4 +287,10 @@ runtime::VarLen32 ArrayRuntime::cast(runtime::VarLen32 array, int32_t srcType, i
     std::string arrayVal = array.str();
     Array arrayObj(arrayVal, srcType);
     return arrayObj.cast(dstType);
+}
+
+runtime::VarLen32 ArrayRuntime::increment(runtime::VarLen32 array, int32_t type) {
+    std::string arrayVal = array.str();
+    Array arrayObj(arrayVal, type);
+    return arrayObj.increment();
 }

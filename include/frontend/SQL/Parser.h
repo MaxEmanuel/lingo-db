@@ -320,6 +320,9 @@ struct Parser {
    //translates a rangevar expression inside a from clause, i.e. a table scan
    mlir::Value translateRangeVar(mlir::OpBuilder& builder, RangeVar* stmt, TranslationContext& context, ResolverScope& scope);
 
+   //translates an arrayexpr expression (array constructor) 
+   mlir::Value translateArrayExpr(mlir::OpBuilder& builder, A_ArrayExpr* expr, TranslationContext& context);
+
    //translate sub-query in from clause
    mlir::Value translateSubSelect(mlir::OpBuilder& builder, SelectStmt* stmt, std::string alias, std::vector<std::string> colAlias, TranslationContext& context, ResolverScope& scope);
 

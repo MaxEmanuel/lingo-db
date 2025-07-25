@@ -6,12 +6,15 @@ namespace runtime {
 
         static VarLen32 fromString(VarLen32 str, int32_t type);
 
+        static VarLen32 getEmtpyArray(int32_t type);
+
         static VarLen32 appendArray(VarLen32 left, VarLen32 right, int32_t leftType, int32_t rightType);
         static VarLen32 appendInt32(VarLen32 array, int32_t type, int32_t value);
         static VarLen32 appendInt64(VarLen32 array, int32_t type, int64_t value);
         static VarLen32 appendFloat(VarLen32 array, int32_t type, float value);
         static VarLen32 appendDouble(VarLen32 array, int32_t type, double value);
         static VarLen32 appendString(VarLen32 array, int32_t type, VarLen32 value);
+        static VarLen32 appendNull(VarLen32 array, int32_t type);
 
         static VarLen32 slice(VarLen32 array, int32_t type, int32_t lowerBound, int32_t upperBound, int32_t dimension);
 
@@ -58,6 +61,8 @@ namespace runtime {
         static int32_t getHighestPosition(VarLen32 array, int32_t type);
 
         static VarLen32 cast(VarLen32 array, int32_t srcType, int32_t dstType);
+
+        static VarLen32 increment(VarLen32 array, int32_t type);
 
     };
 

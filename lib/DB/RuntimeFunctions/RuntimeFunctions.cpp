@@ -7,6 +7,7 @@
 #include "runtime-defs/FloatRuntime.h"
 #include "runtime-defs/IntegerRuntime.h"
 #include "runtime-defs/StringRuntime.h"
+#include "runtime-defs/ArrayRuntime.h"
 #include "runtime-defs/Timing.h"
 #include "runtime/DateRuntime.h"
 
@@ -245,6 +246,7 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    auto resTypeIsF64 = [](mlir::Type t, mlir::TypeRange) { return t.isF64(); };
    auto resTypeIsBool = [](mlir::Type t, mlir::TypeRange) { return t.isInteger(1); };
    auto resTypeIsIndex = [](mlir::Type t, mlir::TypeRange) { return t.isIndex(); };
+   auto resTypeIsAnyArray = [](mlir::Type t, mlir::TypeRange) { return t.isa<mlir::db::ArrayType>(); };
    builtinRegistry->add("Substring").implementedAs(rt::StringRuntime::substr).matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::intLike, RuntimeFunction::intLike}, RuntimeFunction::matchesArgument());
    builtinRegistry->add("StringFind").implementedAs(rt::StringRuntime::findNext).matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::stringLike, RuntimeFunction::intLike}, resTypeIsI64);
    builtinRegistry->add("StringLength").implementedAs(rt::StringRuntime::len).matchesTypes({RuntimeFunction::stringLike}, resTypeIsI64);
@@ -297,5 +299,9 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    builtinRegistry->add("CombineHashes").matchesTypes({RuntimeFunction::onlyIndex, RuntimeFunction::onlyIndex}, resTypeIsIndex).needsWrapping().implementedAs([](mlir::OpBuilder& rewriter, mlir::ValueRange loweredArguments, mlir::TypeRange originalArgumentTypes, mlir::Type resType, const mlir::TypeConverter* typeConverter, mlir::Location loc) -> mlir::Value {
       return rewriter.create<mlir::util::HashCombine>(loc, rewriter.getIndexType(), loweredArguments[0], loweredArguments[1]);
    });
+
+   builtinRegistry->add("EmptyArray").implementedAs(rt::ArrayRuntime::getEmtpyArray).matchesTypes({RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayIncrement").implementedAs(rt::ArrayRuntime::increment).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+
    return builtinRegistry;
 }

@@ -644,6 +644,14 @@ class Array {
     VarLen32 append(TYPE &toAppend);
 
     /**
+     * This function appends a new NULL value to the last array structure that stores single
+     * elements.
+     * 
+     * @return The string in array processable format storing the extended array. 
+     */
+    VarLen32 append();
+
+    /**
      * This method executes a slice operation.
      * 
      * @param lowerBound The index of the first element that should remain.
@@ -827,6 +835,15 @@ class Array {
      * elements could not be casted to the provided type.
      */
     VarLen32 cast(int32_t type);
+
+    /**
+     * This function increases the total number of dimensions by one. The current
+     * content of this array is wrapped into a new dimension.
+     * 
+     * @return The array with increased dimension as string in array
+     * processable format.
+     */
+    VarLen32 increment();
 
     /**
      * This function transforms the array in a string that can be printed to the console.

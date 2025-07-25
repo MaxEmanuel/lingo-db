@@ -157,6 +157,42 @@ runtime::VarLen32 Array::append(Array &toAppend) {
     return toVarLen32(result);
 }
 
+runtime::VarLen32 Array::append() {
+    // Variables that will change in new array
+    auto totalElements = getSize(true) + 1;
+    auto nullBytes = getNullBytes(totalElements);
+    auto widthSize = getWidthSize();
+    auto stringLengths = getStringLength();
+    auto lastWidth = this->widths[widthSize-1] + 1;
+
+    std::string result;
+    size_t size = getStringSize(this->dimensions, this->size, widthSize, nullBytes, stringLengths, this->type);
+    result.resize(size);
+    char *buffer = result.data();
+
+    // Write complete content to result string
+    writeToBuffer(buffer, ARRAYHEADER.data(), ARRAYHEADER.length());
+    writeToBuffer(buffer, &this->type, 1);
+    writeToBuffer(buffer, &this->dimensions, 1);
+    writeToBuffer(buffer, &this->size, 1);
+    writeToBuffer(buffer, this->indices, this->dimensions);
+    writeToBuffer(buffer, this->dimensionWidthMap, this->dimensions);
+    writeToBuffer(buffer, this->widths, widthSize-1);
+    writeToBuffer(buffer, &lastWidth, 1);
+    copyElements(buffer);
+    writeToBuffer(buffer, this->nulls, nullBytes);
+    // Add new null bit
+    if ((totalElements-1) % 8 != 0) {
+        buffer--;
+    }
+    uint8_t newIndex = (totalElements-1) % 8;
+    uint8_t newShift = 8 - newIndex - 1;
+    *buffer |= (1 << newShift);
+    buffer++;
+    copyStrings(buffer);
+    return toVarLen32(result);
+}
+
 template<>
 runtime::VarLen32 Array::append(int32_t &toAppend) {
     if (type != ArrayType::INTEGER32) {

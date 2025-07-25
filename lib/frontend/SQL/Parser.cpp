@@ -1136,6 +1136,11 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
          auto* coalesceExpr = reinterpret_cast<AExpr*>(node);
          return translateCoalesceExpression(builder, context, reinterpret_cast<List*>(coalesceExpr->lexpr_)->head);
       }
+      case T_A_ArrayExpr: {
+         auto* array = reinterpret_cast<A_ArrayExpr*>(node);
+         auto result = translateArrayExpr(builder, array, context);
+         return result;
+      }
       default: {
         throw std::runtime_error("unsupported expression type");
       }
@@ -1143,6 +1148,75 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
   throw std::runtime_error("should never happen");
    return mlir::Value();
 }
+
+mlir::Value frontend::sql::Parser::translateArrayExpr(mlir::OpBuilder& builder, A_ArrayExpr* expr, TranslationContext& context) {
+   auto location = builder.getUnknownLoc();
+   auto mlirContext = builder.getContext();
+   mlir::Type returnType = mlir::db::ArrayType::get(mlirContext, 0);
+
+   // Case if Array_Expr does not have any childs (is empty)
+   if (!expr->elements) {
+      auto arrayType = builder.create<mlir::db::ConstantOp>(location, builder.getI32Type(), builder.getI32IntegerAttr(0));
+      return builder.create<mlir::db::RuntimeCall>(location, returnType, "EmptyArray", mlir::ValueRange({arrayType})).getRes();
+   }
+
+   auto *element = expr->elements->head;
+   auto arrayType = builder.create<mlir::db::ConstantOp>(location, builder.getI32Type(), builder.getI32IntegerAttr(0));
+   mlir::Value result = builder.create<mlir::db::RuntimeCall>(location, returnType, "EmptyArray", mlir::ValueRange({arrayType})).getRes();
+   mlir::Type constantType;
+   bool isFirst = true;
+   while (element) {
+      auto* elementNode = reinterpret_cast<Node*>(element->data.ptr_value);
+      if (elementNode->type == T_A_ArrayExpr) {
+         auto *childExpr = reinterpret_cast<A_ArrayExpr*>(elementNode);
+         auto value = translateArrayExpr(builder, childExpr, context);
+         returnType = value.getType();
+         if (isFirst) {
+            result = value;
+            if (element->next) {
+               auto type = mlir::dyn_cast_or_null<mlir::db::ArrayType>(value.getType());
+               auto arrayType = builder.create<mlir::db::ConstantOp>(location, builder.getI32Type(), builder.getI32IntegerAttr(type.getType()));
+               result = builder.create<mlir::db::RuntimeCall>(location, returnType, "ArrayIncrement", mlir::ValueRange({result, arrayType})).getRes();
+            }
+            isFirst = false;
+         } else {
+            auto leftType = mlir::dyn_cast_or_null<mlir::db::ArrayType>(result.getType());
+            auto rightType = mlir::dyn_cast_or_null<mlir::db::ArrayType>(value.getType());
+            if (leftType.getType() != rightType.getType()) {
+               value = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), result.getType(), value);
+            }
+            result = builder.create<mlir::db::ConstructorOp>(location, returnType, result, value);
+         }
+      } else {
+         auto value = translateExpression(builder, elementNode, context);
+         auto elementType = getBaseType(value.getType());
+         if (auto intType = mlir::dyn_cast_or_null<mlir::IntegerType>(elementType)) {
+            if (intType.getWidth() > 32) returnType = mlir::db::ArrayType::get(mlirContext, 1);
+         } else if (auto floatType = mlir::dyn_cast_or_null<mlir::FloatType>(elementType)) {
+            if (floatType.getWidth() < 64) returnType = mlir::db::ArrayType::get(mlirContext, 3);
+            else returnType = mlir::db::ArrayType::get(mlirContext, 4);
+         } else if (auto stringType = mlir::dyn_cast_or_null<mlir::db::StringType>(elementType)) {
+            returnType = mlir::db::ArrayType::get(mlirContext, 5);
+         }
+         if (isFirst) {
+            result = builder.create<mlir::db::ConstructorOp>(location, returnType, value, result);
+            constantType = elementType;
+            isFirst = false;
+         } else {
+            if (!constantType.isa<mlir::NoneType>() && !value.getType().isa<mlir::db::NullableType>()) {
+               value = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), constantType, value);
+            }
+            if (constantType.isa<mlir::NoneType>()) {
+               constantType = elementType;
+            }
+            result = builder.create<mlir::db::ConstructorOp>(location, returnType, result, value);
+         }
+      }
+      element = element->next;
+   }
+   return result;
+}
+
 void frontend::sql::Parser::translateCreateStatement(mlir::OpBuilder& builder, CreateStmt* statement) {
    RangeVar* relation = statement->relation_;
    std::string tableName = relation->relname_ != nullptr ? relation->relname_ : "";

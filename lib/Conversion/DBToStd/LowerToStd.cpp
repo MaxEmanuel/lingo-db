@@ -501,6 +501,108 @@ class OrOpLowering : public OpConversionPattern<mlir::db::OrOp> {
    }
 };
 
+class ConstructorOpLowering : public OpConversionPattern<mlir::db::ConstructorOp> {
+   public:
+   using OpConversionPattern<mlir::db::ConstructorOp>::OpConversionPattern;
+   LogicalResult matchAndRewrite(mlir::db::ConstructorOp op, OpAdaptor adaptor, ConversionPatternRewriter& rewriter) const override {
+      auto leftType = op.getLeft().getType();
+      auto rightType = op.getRight().getType();
+      auto loc = op->getLoc();
+      Value result;
+
+      if (auto leftNull = leftType.dyn_cast_or_null<mlir::db::NullableType>()) {
+         if (!leftNull.getType().isa<mlir::NoneType>()) {
+            leftType = leftNull.getType();
+         }
+      }
+      if (auto rightNull = rightType.dyn_cast_or_null<mlir::db::NullableType>()) {
+         if (!rightNull.getType().isa<mlir::NoneType>()) {
+            rightType = rightNull.getType();
+         }
+      }
+      if (leftType.isa<mlir::db::ArrayType>() && rightType.isa<mlir::db::ArrayType>()) {
+         auto left = leftType.dyn_cast<mlir::db::ArrayType>();
+         auto right = rightType.dyn_cast<mlir::db::ArrayType>();
+         mlir::Value leftArrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), left.getType()));
+         mlir::Value rightArrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), right.getType()));
+
+         result = rt::ArrayRuntime::appendArray(rewriter, loc)({adaptor.getLeft(), adaptor.getRight(), leftArrayType, rightArrayType})[0];
+         rewriter.replaceOp(op, result);
+         return success();
+      }
+      if (leftType.isa<mlir::db::ArrayType>() && !rightType.isa<mlir::db::ArrayType>()) {
+         auto left = leftType.dyn_cast<mlir::db::ArrayType>();
+         int type = left.getType();
+         result = adaptor.getLeft();
+         mlir::Value leftArrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), type));
+
+         if (rightType.isa<mlir::db::NullableType>()) {
+            result = rt::ArrayRuntime::appendNull(rewriter, loc)({result, leftArrayType})[0];
+            rewriter.replaceOp(op, result);
+            return success(); 
+         } else if (auto intType = rightType.dyn_cast_or_null<mlir::IntegerType>()) {
+            if (intType.getWidth() < 64) {
+               result = rt::ArrayRuntime::appendInt32(rewriter, loc)({result, leftArrayType, adaptor.getRight()})[0];
+            } else {
+               result = rt::ArrayRuntime::appendInt64(rewriter, loc)({result, leftArrayType, adaptor.getRight()})[0];
+            }
+            rewriter.replaceOp(op, result);
+            return success(); 
+         } else if (auto floatType = rightType.dyn_cast_or_null<mlir::FloatType>()) {
+            if (floatType.getWidth() < 64) {
+               result = rt::ArrayRuntime::appendFloat(rewriter, loc)({result, leftArrayType, adaptor.getRight()})[0];
+            } else {
+               result = rt::ArrayRuntime::appendDouble(rewriter, loc)({result, leftArrayType, adaptor.getRight()})[0];
+            }
+            rewriter.replaceOp(op, result);
+            return success(); 
+         } else if (auto stringType = rightType.dyn_cast_or_null<mlir::db::StringType>()) {
+            result = rt::ArrayRuntime::appendString(rewriter, loc)({result, leftArrayType, adaptor.getRight()})[0];
+            rewriter.replaceOp(op, result);
+            return success(); 
+         }        
+      }
+
+      if (!leftType.isa<mlir::db::ArrayType>() && rightType.isa<mlir::db::ArrayType>()) {
+         auto right = rightType.dyn_cast<mlir::db::ArrayType>();
+         int type = right.getType();
+         result = adaptor.getRight();
+         if (leftType.isa<mlir::db::NullableType>()) {
+            mlir::Value arrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), type));
+            result = rt::ArrayRuntime::appendNull(rewriter, loc)({result, arrayType})[0];
+            rewriter.replaceOp(op, result);
+            return success();
+         } else if (auto intType = leftType.dyn_cast_or_null<mlir::IntegerType>()) {
+            if (intType.getWidth() < 64) {
+               mlir::Value arrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), 0));
+               result = rt::ArrayRuntime::appendInt32(rewriter, loc)({result, arrayType, adaptor.getLeft()})[0];
+            } else {
+               mlir::Value arrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), 1));
+               result = rt::ArrayRuntime::appendInt64(rewriter, loc)({result, arrayType, adaptor.getLeft()})[0];
+            }
+            rewriter.replaceOp(op, result);
+            return success();
+         } else if (auto floatType = leftType.dyn_cast_or_null<mlir::FloatType>()) {
+            if (floatType.getWidth() < 64) {
+               mlir::Value arrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), 3));
+               result = rt::ArrayRuntime::appendFloat(rewriter, loc)({result, arrayType, adaptor.getLeft()})[0];
+            } else {
+               mlir::Value arrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), 4));
+               result = rt::ArrayRuntime::appendDouble(rewriter, loc)({result, arrayType, adaptor.getLeft()})[0];
+            }
+            rewriter.replaceOp(op, result);
+            return success();
+         } else if (auto stringType = leftType.dyn_cast_or_null<mlir::db::StringType>()) {
+            mlir::Value arrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), 5));
+            result = rt::ArrayRuntime::appendString(rewriter, loc)({result, arrayType, adaptor.getLeft()})[0];
+            rewriter.replaceOp(op, result);
+            return success();
+         }
+      }
+      return failure();
+   }
+};
+
 template <class OpClass, class OperandType, class StdOpClass>
 class BinOpLowering : public OpConversionPattern<OpClass> {
    public:
@@ -668,6 +770,9 @@ class ConstantLowering : public OpConversionPattern<mlir::db::ConstantOp> {
             case 32: typeConstant = arrow::Type::type::FLOAT; break;
             case 64: typeConstant = arrow::Type::type::DOUBLE; break;
          }
+      } else if (auto arrayType = type.dyn_cast_or_null<mlir::db::ArrayType>()) {
+         typeConstant = arrow::Type::type::STRING;
+         param1 = arrayType.getType();
       } else if (auto stringType = type.dyn_cast_or_null<mlir::db::StringType>()) {
          typeConstant = arrow::Type::type::STRING;
       } else if (auto dateType = type.dyn_cast_or_null<mlir::db::DateType>()) {
@@ -889,6 +994,14 @@ class CastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
             if (targetIntWidth < decimalWidth) {
                value = rewriter.create<arith::TruncIOp>(loc, convertedTargetType, value);
             }
+            rewriter.replaceOp(op, value);
+            return success();
+         }
+      } else if (auto arraySourceType = scalarSourceType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+         if (auto arrayTargetType = scalarTargetType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto sourceType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), arraySourceType.getType()));
+            auto targetType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), arrayTargetType.getType()));
+            value = rt::ArrayRuntime::cast(rewriter, loc)({value, sourceType, targetType})[0];
             rewriter.replaceOp(op, value);
             return success();
          }
@@ -1172,6 +1285,7 @@ void DBToStdLoweringPass::runOnOperation() {
 
    patterns.insert<AndOpLowering>(typeConverter, ctxt);
    patterns.insert<OrOpLowering>(typeConverter, ctxt);
+   patterns.insert<ConstructorOpLowering>(typeConverter, ctxt);
    patterns.insert<BinOpLowering<mlir::db::AddOp, mlir::IntegerType, arith::AddIOp>>(typeConverter, ctxt);
    patterns.insert<BinOpLowering<mlir::db::SubOp, mlir::IntegerType, arith::SubIOp>>(typeConverter, ctxt);
    patterns.insert<BinOpLowering<mlir::db::MulOp, mlir::IntegerType, arith::MulIOp>>(typeConverter, ctxt);
