@@ -24,26 +24,30 @@ arrow::Status execution::ExtensionPrinter::Visit(const arrow::StringArray& array
     int index = 0;
     bool setDots = false;
     for (std::optional<std::string_view> value : array) {
-        if (value.has_value() && (index < options.window || index >= (array.length() - options.window))) {
+        if (index < options.window || index >= (array.length() - options.window)) {
             *sink << "\n";
-            std::string str(value.value());
-            if (str.length() < runtime::Array::ARRAYHEADER.length()) {
-                *sink << str;
-            } else {
-                std::string header = str.substr(0, runtime::Array::ARRAYHEADER.length());
-                if (header == runtime::Array::ARRAYHEADER) {
-                    runtime::Array arrayObj(str);
-                    *sink << arrayObj.print();
-                } else {
+            if (value.has_value()) {
+                std::string str(value.value());
+                if (str.length() < runtime::Array::ARRAYHEADER.length()) {
                     *sink << str;
+                } else {
+                    std::string header = str.substr(0, runtime::Array::ARRAYHEADER.length());
+                    if (header == runtime::Array::ARRAYHEADER) {
+                        runtime::Array arrayObj(str);
+                        *sink << arrayObj.print();
+                    } else {
+                        *sink << str;
+                    }
                 }
+            } else {
+                *sink << "null";
             }
             if (index < array.length() - 1) {
                *sink << ",";
             } else {
                *sink << "\n";
             }
-        } else if (value.has_value() && !setDots) {
+        } else if (!setDots) {
             *sink << "\n";
             *sink << "...";
             setDots = true;
