@@ -30,6 +30,7 @@ struct RuntimeFunction {
    static inline auto stringLike = [](mlir::Type t) { return getBaseType(t).isa<mlir::db::StringType, mlir::db::CharType>(); };
    static inline auto dateLike = [](mlir::Type t) { return getBaseType(t).isa<mlir::db::DateType, mlir::db::TimestampType>(); };
    static inline auto arrayLike = [](mlir::Type t) { return getBaseType(t).isa<mlir::db::ArrayType>(); };
+   static inline auto float32 = [](mlir::Type t) { return getBaseType(t).isF32(); };
    static inline auto float64 = [](mlir::Type t) { return getBaseType(t).isF64(); };
    static inline auto dateInterval = [](mlir::Type t) { return getBaseType(t).isa<mlir::db::IntervalType>(); };
    static inline auto anyDecimal = [](mlir::Type t) { return getBaseType(t).isa<mlir::db::DecimalType>(); };

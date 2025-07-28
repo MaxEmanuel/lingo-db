@@ -242,6 +242,7 @@ mlir::LogicalResult dateSubtractFoldFn(mlir::TypeRange types, ::llvm::ArrayRef<:
 std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegistry::getBuiltinRegistry(mlir::MLIRContext* context) {
    auto builtinRegistry = std::make_shared<RuntimeFunctionRegistry>(context);
    builtinRegistry->add("DumpValue").handlesNulls().matchesTypes({RuntimeFunction::anyType}, RuntimeFunction::noReturnType).implementedAs(dumpValuesImpl);
+   auto resTypeIsI32 = [](mlir::Type t, mlir::TypeRange) { return t.isInteger(32); };
    auto resTypeIsI64 = [](mlir::Type t, mlir::TypeRange) { return t.isInteger(64); };
    auto resTypeIsF64 = [](mlir::Type t, mlir::TypeRange) { return t.isF64(); };
    auto resTypeIsBool = [](mlir::Type t, mlir::TypeRange) { return t.isInteger(1); };
@@ -302,6 +303,15 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
 
    builtinRegistry->add("EmptyArray").implementedAs(rt::ArrayRuntime::getEmtpyArray).matchesTypes({RuntimeFunction::intLike}, resTypeIsAnyArray);
    builtinRegistry->add("ArrayIncrement").implementedAs(rt::ArrayRuntime::increment).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayFillInt32").implementedAs(rt::ArrayRuntime::fillInt32).matchesTypes({RuntimeFunction::intLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayFillInt64").implementedAs(rt::ArrayRuntime::fillInt64).matchesTypes({RuntimeFunction::intLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayFillFloat").implementedAs(rt::ArrayRuntime::fillFloat).matchesTypes({RuntimeFunction::float32, RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayFillDouble").implementedAs(rt::ArrayRuntime::fillDouble).matchesTypes({RuntimeFunction::float64, RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayFillString").implementedAs(rt::ArrayRuntime::fillString).matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayFillNull").implementedAs(rt::ArrayRuntime::fillNull).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayTranspose").implementedAs(rt::ArrayRuntime::transpose).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArraySigmoid").implementedAs(rt::ArrayRuntime::sigmoid).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayGetHighestPosition").implementedAs(rt::ArrayRuntime::getHighestPosition).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsI32);
 
    return builtinRegistry;
 }

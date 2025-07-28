@@ -48,16 +48,6 @@ class Array {
     // A pointer to the first character of a string (if array stores strings).
     char *strings;
 
-    // This enumeration specifies all array element types
-    enum ArrayType {
-        INTEGER32,
-        INTEGER64,
-        BFLOAT,
-        FLOAT,
-        DOUBLE,
-        STRING,
-    };
-
 /*##########################################################################################################################################################  
  *                                                              PRIVATE METHODS
  *##########################################################################################################################################################*/    
@@ -371,6 +361,16 @@ class Array {
 *##########################################################################################################################################################*/
 
     public:
+
+    // This enumeration specifies all array element types
+    enum ArrayType {
+        INTEGER32,
+        INTEGER64,
+        BFLOAT,
+        FLOAT,
+        DOUBLE,
+        STRING,
+    };
 
     // This constant defines the first characters of an array (necessary for printing)
     static const std::string ARRAYHEADER;

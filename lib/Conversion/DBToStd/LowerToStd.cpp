@@ -833,6 +833,11 @@ class ConstantLowering : public OpConversionPattern<mlir::db::ConstantOp> {
 
          rewriter.replaceOpWithNewOp<mlir::util::CreateConstVarLen>(constantOp, mlir::util::VarLen32Type::get(rewriter.getContext()), rewriter.getStringAttr(str));
          return success();
+      } else if (type.isa<mlir::db::ArrayType>()) {
+         std::string str = std::get<std::string>(parseResult);
+
+         rewriter.replaceOpWithNewOp<mlir::util::CreateConstVarLen>(constantOp, mlir::util::VarLen32Type::get(rewriter.getContext()), rewriter.getStringAttr(str));
+         return success();
       } else {
          return failure();
       }
