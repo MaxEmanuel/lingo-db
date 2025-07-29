@@ -150,6 +150,7 @@ frontend::sql::ExpressionType frontend::sql::stringToExpressionType(const std::s
       .Case("+", ExpressionType::OPERATOR_PLUS)
       .Case("-", ExpressionType::OPERATOR_MINUS)
       .Case("*", ExpressionType::OPERATOR_MULTIPLY)
+      .Case("**", ExpressionType::OPERATOR_POW)
       .Case("/", ExpressionType::OPERATOR_DIVIDE)
       .Case("||", ExpressionType::OPERATOR_CONCAT)
       .Case("%", ExpressionType::OPERATOR_MOD)
@@ -527,21 +528,320 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
 }
 mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& builder, frontend::sql::ExpressionType opType, mlir::Value left, mlir::Value right) {
    auto loc = builder.getUnknownLoc();
+   auto leftType = getBaseType(left.getType());
+   auto rightType = getBaseType(right.getType());
    switch (opType) {
-      case ExpressionType::OPERATOR_PLUS:
-         if (getBaseType(left.getType()).isa<mlir::db::DateType>() && getBaseType(right.getType()).isa<mlir::db::IntervalType>()) {
+      case ExpressionType::OPERATOR_PLUS: {
+         if (leftType.isa<mlir::db::DateType>() && rightType.isa<mlir::db::IntervalType>()) {
             return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "DateAdd", mlir::ValueRange({left, right})).getRes();
          }
+         // Both arguments are arrays
+         if (leftType.isa<mlir::db::ArrayType>() && rightType.isa<mlir::db::ArrayType>()) {
+            auto leftArrayType = leftType.dyn_cast<mlir::db::ArrayType>();
+            auto rightArrayType = rightType.dyn_cast<mlir::db::ArrayType>();
+            auto returnType = left.getType();
+            // Ensure if one argument is nullable, result must be nullable as well 
+            if (!returnType.isa<mlir::db::NullableType>() && right.getType().isa<mlir::db::NullableType>()) {
+               returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+            }
+            auto parameter3 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(leftArrayType.getType()));
+            auto parameter4 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(rightArrayType.getType()));
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayAdd", mlir::ValueRange({left, right, parameter3, parameter4})).getRes();
+         }
+         // Left argument is an array
+         if (auto arrayType = leftType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto returnType = left.getType();
+            // Ensure if one argument is nullable, result must be nullable as well 
+            if (!returnType.isa<mlir::db::NullableType>() && right.getType().isa<mlir::db::NullableType>()) {
+               returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+            }
+            auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            // Identify right argument type to select correct function
+            std::string funcName = "";
+            if (auto scalarType = rightType.dyn_cast_or_null<mlir::IntegerType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarAddI32";
+               } else {
+                  funcName = "ArrayScalarAddI64";
+               }
+            } else if (auto scalarType = rightType.dyn_cast_or_null<mlir::FloatType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarAddF32";
+               } else {
+                  funcName = "ArrayScalarAddF64";
+               }
+            } else {
+               throw std::runtime_error("Operator-Plus: The combination of given types is not supported");
+            }
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, funcName, mlir::ValueRange({left, parameter2, right})).getRes();
+         }
+         // Right argument is an array
+         if (auto arrayType = rightType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto returnType = right.getType();
+            // Ensure if one argument is nullable, result must be nullable as well 
+            if (!returnType.isa<mlir::db::NullableType>() && left.getType().isa<mlir::db::NullableType>()) {
+               returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+            }
+            auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            // Identify left argument type to select correct function
+            std::string funcName = "";
+            if (auto scalarType = leftType.dyn_cast_or_null<mlir::IntegerType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarAddI32";
+               } else {
+                  funcName = "ArrayScalarAddI64";
+               }
+            } else if (auto scalarType = leftType.dyn_cast_or_null<mlir::FloatType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarAddF32";
+               } else {
+                  funcName = "ArrayScalarAddF64";
+               }
+            } else {
+               throw std::runtime_error("Operator-Plus: The combination of given types is not supported");
+            }
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, funcName, mlir::ValueRange({right, parameter2, left})).getRes();
+         }
+         auto test = SQLTypeInference::toCommonBaseTypes(builder, {left, right});
          return builder.create<mlir::db::AddOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
-      case ExpressionType::OPERATOR_MINUS:
-         if (left.getType().isa<mlir::db::DateType>() && right.getType().isa<mlir::db::IntervalType>()) {
+      }
+      case ExpressionType::OPERATOR_MINUS: {
+         if (leftType.isa<mlir::db::DateType>() && rightType.isa<mlir::db::IntervalType>()) {
             return builder.create<mlir::db::RuntimeCall>(loc, left.getType(), "DateSubtract", mlir::ValueRange({left, right})).getRes();
          }
+         // Both arguments are arrays
+         if (leftType.isa<mlir::db::ArrayType>() && rightType.isa<mlir::db::ArrayType>()) {
+            auto leftArrayType = leftType.dyn_cast<mlir::db::ArrayType>();
+            auto rightArrayType = rightType.dyn_cast<mlir::db::ArrayType>();
+            auto returnType = left.getType();
+            // Ensure if one argument is nullable, result must be nullable as well 
+            if (!returnType.isa<mlir::db::NullableType>() && right.getType().isa<mlir::db::NullableType>()) {
+               returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+            }
+            auto parameter3 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(leftArrayType.getType()));
+            auto parameter4 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(rightArrayType.getType()));
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArraySub", mlir::ValueRange({left, right, parameter3, parameter4})).getRes();
+         }
+         // Left argument is an array
+         if (auto arrayType = leftType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto returnType = left.getType();
+            // Ensure if one argument is nullable, result must be nullable as well 
+            if (!returnType.isa<mlir::db::NullableType>() && right.getType().isa<mlir::db::NullableType>()) {
+               returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+            }
+            auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            // Scalar is not the left argument
+            auto parameter4 = builder.create<mlir::db::ConstantOp>(loc, builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), 0));
+            // Identify right argument type to select correct function
+            std::string funcName = "";
+            if (auto scalarType = rightType.dyn_cast_or_null<mlir::IntegerType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarSubI32";
+               } else {
+                  funcName = "ArrayScalarSubI64";
+               }
+            } else if (auto scalarType = rightType.dyn_cast_or_null<mlir::FloatType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarSubF32";
+               } else {
+                  funcName = "ArrayScalarSubF64";
+               }
+            } else {
+               throw std::runtime_error("Operator-Minus: The combination of given types is not supported");
+            }
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, funcName, mlir::ValueRange({left, parameter2, right, parameter4})).getRes();
+         }
+         // Right argument is an array
+         if (auto arrayType = rightType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto returnType = right.getType();
+            // Ensure if one argument is nullable, result must be nullable as well 
+            if (!returnType.isa<mlir::db::NullableType>() && left.getType().isa<mlir::db::NullableType>()) {
+               returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+            }
+            auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            // Scalar is the left argument
+            auto parameter4 = builder.create<mlir::db::ConstantOp>(loc, builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), 1));
+            // Identify left argument type to select correct function
+            std::string funcName = "";
+            if (auto scalarType = leftType.dyn_cast_or_null<mlir::IntegerType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarSubI32";
+               } else {
+                  funcName = "ArrayScalarSubI64";
+               }
+            } else if (auto scalarType = leftType.dyn_cast_or_null<mlir::FloatType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarSubF32";
+               } else {
+                  funcName = "ArrayScalarSubF64";
+               }
+            } else {
+               throw std::runtime_error("Operator-Minus: The combination of given types is not supported");
+            }
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, funcName, mlir::ValueRange({right, parameter2, left, parameter4})).getRes();
+         }
          return builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {left, right}));
-      case ExpressionType::OPERATOR_MULTIPLY:
+      }
+      case ExpressionType::OPERATOR_MULTIPLY: {
+         // Both arguments are arrays
+         if (leftType.isa<mlir::db::ArrayType>() && rightType.isa<mlir::db::ArrayType>()) {
+            auto leftArrayType = leftType.dyn_cast<mlir::db::ArrayType>();
+            auto rightArrayType = rightType.dyn_cast<mlir::db::ArrayType>();
+            auto returnType = left.getType();
+            // Ensure if one argument is nullable, result must be nullable as well 
+            if (!returnType.isa<mlir::db::NullableType>() && right.getType().isa<mlir::db::NullableType>()) {
+               returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+            }
+            auto parameter3 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(leftArrayType.getType()));
+            auto parameter4 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(rightArrayType.getType()));
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayMul", mlir::ValueRange({left, right, parameter3, parameter4})).getRes();
+         }
+         // Left argument is an array
+         if (auto arrayType = leftType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto returnType = left.getType();
+            // Ensure if one argument is nullable, result must be nullable as well 
+            if (!returnType.isa<mlir::db::NullableType>() && right.getType().isa<mlir::db::NullableType>()) {
+               returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+            }
+            auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            // Identify right argument type to select correct function
+            std::string funcName = "";
+            if (auto scalarType = rightType.dyn_cast_or_null<mlir::IntegerType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarMulI32";
+               } else {
+                  funcName = "ArrayScalarMulI64";
+               }
+            } else if (auto scalarType = rightType.dyn_cast_or_null<mlir::FloatType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarMulF32";
+               } else {
+                  funcName = "ArrayScalarMulF64";
+               }
+            } else {
+               throw std::runtime_error("Operator-Multiply: The combination of given types is not supported");
+            }
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, funcName, mlir::ValueRange({left, parameter2, right})).getRes();
+         }
+         // Right argument is an array
+         if (auto arrayType = rightType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto returnType = right.getType();
+            // Ensure if one argument is nullable, result must be nullable as well 
+            if (!returnType.isa<mlir::db::NullableType>() && left.getType().isa<mlir::db::NullableType>()) {
+               returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+            }
+            auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            // Identify left argument type to select correct function
+            std::string funcName = "";
+            if (auto scalarType = leftType.dyn_cast_or_null<mlir::IntegerType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarMulI32";
+               } else {
+                  funcName = "ArrayScalarMulI64";
+               }
+            } else if (auto scalarType = leftType.dyn_cast_or_null<mlir::FloatType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarMulF32";
+               } else {
+                  funcName = "ArrayScalarMulF64";
+               }
+            } else {
+               throw std::runtime_error("Operator-Multiply: The combination of given types is not supported");
+            }
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, funcName, mlir::ValueRange({right, parameter2, left})).getRes();
+         }
          return builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonNumber(builder, {left, right}));
-      case ExpressionType::OPERATOR_DIVIDE:
+      }
+      case ExpressionType::OPERATOR_DIVIDE: {
+         // Both arguments are arrays
+         if (leftType.isa<mlir::db::ArrayType>() && rightType.isa<mlir::db::ArrayType>()) {
+            auto leftArrayType = leftType.dyn_cast<mlir::db::ArrayType>();
+            auto rightArrayType = rightType.dyn_cast<mlir::db::ArrayType>();
+            auto returnType = left.getType();
+            // Ensure if one argument is nullable, result must be nullable as well 
+            if (!returnType.isa<mlir::db::NullableType>() && right.getType().isa<mlir::db::NullableType>()) {
+               returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+            }
+            auto parameter3 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(leftArrayType.getType()));
+            auto parameter4 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(rightArrayType.getType()));
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayDiv", mlir::ValueRange({left, right, parameter3, parameter4})).getRes();
+         }
+         // Left argument is an array
+         if (auto arrayType = leftType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto returnType = left.getType();
+            // Ensure if one argument is nullable, result must be nullable as well 
+            if (!returnType.isa<mlir::db::NullableType>() && right.getType().isa<mlir::db::NullableType>()) {
+               returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+            }
+            auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            // Scalar is not the left argument
+            auto parameter4 = builder.create<mlir::db::ConstantOp>(loc, builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), 0));
+            // Identify right argument type to select correct function
+            std::string funcName = "";
+            if (auto scalarType = rightType.dyn_cast_or_null<mlir::IntegerType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarDivI32";
+               } else {
+                  funcName = "ArrayScalarDivI64";
+               }
+            } else if (auto scalarType = rightType.dyn_cast_or_null<mlir::FloatType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarDivF32";
+               } else {
+                  funcName = "ArrayScalarDivF64";
+               }
+            } else {
+               throw std::runtime_error("Operator-Division: The combination of given types is not supported");
+            }
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, funcName, mlir::ValueRange({left, parameter2, right, parameter4})).getRes();
+         }
+         // Right argument is an array
+         if (auto arrayType = rightType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto returnType = right.getType();
+            // Ensure if one argument is nullable, result must be nullable as well 
+            if (!returnType.isa<mlir::db::NullableType>() && left.getType().isa<mlir::db::NullableType>()) {
+               returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+            }
+            auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            // Scalar is the left argument
+            auto parameter4 = builder.create<mlir::db::ConstantOp>(loc, builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), 1));
+            // Identify left argument type to select correct function
+            std::string funcName = "";
+            if (auto scalarType = leftType.dyn_cast_or_null<mlir::IntegerType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarDivI32";
+               } else {
+                  funcName = "ArrayScalarDivI64";
+               }
+            } else if (auto scalarType = leftType.dyn_cast_or_null<mlir::FloatType>()) {
+               if (scalarType.getWidth() < 64) {
+                  funcName = "ArrayScalarDivF32";
+               } else {
+                  funcName = "ArrayScalarDivF64";
+               }
+            } else {
+               throw std::runtime_error("Operator-Division: The combination of given types is not supported");
+            }
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, funcName, mlir::ValueRange({right, parameter2, left, parameter4})).getRes();
+         }
          return builder.create<mlir::db::DivOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonNumber(builder, {left, right}));
+      }
+      case ExpressionType::OPERATOR_POW: {
+         if (leftType.isa<mlir::db::ArrayType>() && rightType.isa<mlir::db::ArrayType>()) {
+            auto leftArrayType = leftType.dyn_cast<mlir::db::ArrayType>();
+            auto rightArrayType = rightType.dyn_cast<mlir::db::ArrayType>();
+            auto returnType = left.getType();
+            // Ensure if one argument is nullable, result must be nullable as well 
+            if (!returnType.isa<mlir::db::NullableType>() && right.getType().isa<mlir::db::NullableType>()) {
+               returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+            }
+            auto parameter3 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(leftArrayType.getType()));
+            auto parameter4 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(rightArrayType.getType()));
+            return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayMMul", mlir::ValueRange({left, right, parameter3, parameter4})).getRes();
+         } else {
+            throw std::runtime_error("Operator-Pow: The combination of given types is not supported");
+         }
+      }
       case ExpressionType::OPERATOR_MOD:
          return builder.create<mlir::db::ModOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonNumber(builder, {left, right}));
       case ExpressionType::COMPARE_EQUAL:
