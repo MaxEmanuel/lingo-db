@@ -199,6 +199,16 @@ class Array {
     VarLen32 appendElement(TYPE value);
 
     /**
+     * This method appends a single element of type `TYPE` to the first array structure
+     * (lowest dimension). This method should only be used to append primitive elements.
+     * 
+     * @param value The value which should be appended.
+     * @return The extended array in array processable string format.
+     */
+    template<class TYPE>
+    VarLen32 appendElementFront(TYPE value);
+
+    /**
      * This method executes a specified binary scalar operation (`OP`).
      * 
      * @param value The scalar value of type `TYPE`. Should be numeric type.
@@ -642,6 +652,19 @@ class Array {
      */
     template<class TYPE> 
     VarLen32 append(TYPE &toAppend);
+
+    /**
+     * This function appends a structure or value of type `TYPE` to the array. Thereby the content
+     * will be appended to the first array element. This depends on the dimension structure of the
+     * parameter.
+     * 
+     * @param toAppend A reference to the structure or value that should be appended.
+     * @throws `std::runtime_error`: If the structure to be appended has more dimensions or a 
+     * different element type. If the value to be appended of a different type.
+     * @return The string in array processable format storing the extended array. 
+     */
+    template<class TYPE>
+    VarLen32 appendFront(TYPE &toAppend);
 
     /**
      * This function appends a new NULL value to the last array structure that stores single

@@ -125,6 +125,38 @@ runtime::VarLen32 Array::appendElement(TYPE value) {
     return toVarLen32(result);
 }
 
+template<class TYPE>
+runtime::VarLen32 Array::appendElementFront(TYPE value) {
+    // Variables that will change in new array
+    auto numberElements = this->size + 1;
+    auto nullBytes = getNullBytes(getSize(true) + 1);
+    auto widthSize = getWidthSize();
+    auto lastWidthSize = getWidthSize(this->dimensions);
+    auto changedWidth = this->widths[widthSize - lastWidthSize] + 1;
+
+    std::string result;
+    size_t size = getStringSize(this->dimensions, numberElements, widthSize, nullBytes, 0, this->type);
+    result.resize(size);
+    char *buffer = result.data();
+
+    // Write complete content to result string
+    writeToBuffer(buffer, ARRAYHEADER.data(), ARRAYHEADER.length());
+    writeToBuffer(buffer, &this->type, 1);
+    writeToBuffer(buffer, &this->dimensions, 1);
+    writeToBuffer(buffer, &numberElements, 1);
+    writeToBuffer(buffer, this->indices, this->dimensions);
+    writeToBuffer(buffer, this->dimensionWidthMap, this->dimensions);
+    // Write widths from upper dimensions
+    writeToBuffer(buffer, this->widths, widthSize - lastWidthSize);
+    writeToBuffer(buffer, &changedWidth, 1);
+    // Write not changed widths in last dimension
+    writeToBuffer(buffer, this->widths + widthSize - lastWidthSize + 1, lastWidthSize-1);
+    writeToBuffer(buffer, &value, 1);
+    copyElements(buffer);
+    writeToBuffer(buffer, this->nulls, nullBytes);
+    return toVarLen32(result);
+}
+
 template<class TYPE, class ARRAYTYPE>
 runtime::VarLen32 Array::generate(TYPE *value, Array &structure, uint8_t type, uint32_t stringSize) {
     const ARRAYTYPE *elements = reinterpret_cast<const ARRAYTYPE*>(structure.getElements());

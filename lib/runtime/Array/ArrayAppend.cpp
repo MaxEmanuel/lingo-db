@@ -36,6 +36,42 @@ runtime::VarLen32 Array::appendElement(std::string value) {
 };
 
 template<>
+runtime::VarLen32 Array::appendElementFront(std::string value) {
+    // Variables that will change in new array
+    auto numberElements = this->size + 1;
+    auto totalElements = getSize(true) + 1;
+    auto widthSize = getWidthSize();
+    auto lastWidthSize = getWidthSize(this->dimensions);
+    auto changedWidth = this->widths[widthSize - lastWidthSize] + 1;
+    uint32_t length = value.length();
+    auto stringLengths = getStringLength() + length;
+
+    std::string result;
+    size_t size = getStringSize(this->dimensions, numberElements, widthSize, getNullBytes(totalElements), stringLengths, this->type);
+    result.resize(size);
+    char *buffer = result.data();
+
+    // Write complete content to result string
+    writeToBuffer(buffer, ARRAYHEADER.data(), ARRAYHEADER.length());
+    writeToBuffer(buffer, &this->type, 1);
+    writeToBuffer(buffer, &this->dimensions, 1);
+    writeToBuffer(buffer, &numberElements, 1);
+    writeToBuffer(buffer, this->indices, this->dimensions);
+    writeToBuffer(buffer, this->dimensionWidthMap, this->dimensions);
+    // Write widths from upper dimensions
+    writeToBuffer(buffer, this->widths, widthSize - lastWidthSize);
+    writeToBuffer(buffer, &changedWidth, 1);
+    // Write not changed widths in last dimension
+    writeToBuffer(buffer, this->widths + widthSize - lastWidthSize + 1, lastWidthSize-1);
+    writeToBuffer(buffer, &length, 1);
+    copyElements(buffer);
+    copyNulls(buffer, this->nulls, totalElements, 0);
+    writeToBuffer(buffer, value.data(), length);
+    copyStrings(buffer);
+    return toVarLen32(result);
+}
+
+template<>
 runtime::VarLen32 Array::append(Array &toAppend) {
     if (this->type != toAppend.getType()) {
         throw std::runtime_error("Array-Append: Arrays have different types");
@@ -231,4 +267,44 @@ runtime::VarLen32 Array::append(std::string &toAppend) {
         throw std::runtime_error("Array-Append: Array elements are not of type string");
     }
     return appendElement(toAppend);
+}
+
+template<>
+runtime::VarLen32 Array::appendFront(int32_t &toAppend) {
+    if (type != ArrayType::INTEGER32) {
+        throw std::runtime_error("Array-Append: Array elements are not of type integer (32-bit)");
+    }
+    return appendElementFront(toAppend);
+}
+
+template<>
+runtime::VarLen32 Array::appendFront(int64_t &toAppend) {
+    if (type != ArrayType::INTEGER64) {
+        throw std::runtime_error("Array-Append: Array elements are not of type integer (64-bit)");
+    }
+    return appendElementFront(toAppend);
+}
+
+template<>
+runtime::VarLen32 Array::appendFront(float &toAppend) {
+    if (type != ArrayType::FLOAT) {
+        throw std::runtime_error("Array-Append: Array elements are not of type float");
+    }
+    return appendElementFront(toAppend);
+}
+
+template<>
+runtime::VarLen32 Array::appendFront(double &toAppend) {
+    if (type != ArrayType::DOUBLE) {
+        throw std::runtime_error("Array-Append: Array elements are not of type double");
+    }
+    return appendElementFront(toAppend);
+}
+
+template<>
+runtime::VarLen32 Array::appendFront(std::string &toAppend) {
+    if (type != ArrayType::STRING) {
+        throw std::runtime_error("Array-Append: Array elements are not of type string");
+    }
+    return appendElementFront(toAppend);
 }

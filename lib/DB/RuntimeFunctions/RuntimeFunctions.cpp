@@ -309,6 +309,7 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    builtinRegistry->add("ArrayFillDouble").implementedAs(rt::ArrayRuntime::fillDouble).matchesTypes({RuntimeFunction::float64, RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
    builtinRegistry->add("ArrayFillString").implementedAs(rt::ArrayRuntime::fillString).matchesTypes({RuntimeFunction::stringLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
    builtinRegistry->add("ArrayFillNull").implementedAs(rt::ArrayRuntime::fillNull).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   
    builtinRegistry->add("ArrayTranspose").implementedAs(rt::ArrayRuntime::transpose).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
    builtinRegistry->add("ArraySigmoid").implementedAs(rt::ArrayRuntime::sigmoid).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
    builtinRegistry->add("ArrayGetHighestPosition").implementedAs(rt::ArrayRuntime::getHighestPosition).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike}, resTypeIsI32);
@@ -338,6 +339,13 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    builtinRegistry->add("ArrayScalarDivF64").implementedAs(rt::ArrayRuntime::scalarDivDouble).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::float64, RuntimeFunction::intLike}, resTypeIsAnyArray);
 
    builtinRegistry->add("ArrayMMul").implementedAs(rt::ArrayRuntime::matrixMul).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+
+   builtinRegistry->add("ArrayConcat").implementedAs(rt::ArrayRuntime::appendArray).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayConcatI32").implementedAs(rt::ArrayRuntime::appendInt32).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::intLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayConcatI64").implementedAs(rt::ArrayRuntime::appendInt64).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::intLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayConcatF32").implementedAs(rt::ArrayRuntime::appendFloat).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::float32, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayConcatF64").implementedAs(rt::ArrayRuntime::appendDouble).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::float64, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayConcatString").implementedAs(rt::ArrayRuntime::appendString).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
 
    return builtinRegistry;
 }

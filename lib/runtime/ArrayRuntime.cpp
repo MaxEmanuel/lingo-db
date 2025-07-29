@@ -23,35 +23,40 @@ runtime::VarLen32 ArrayRuntime::appendArray(
         return leftArray.append(rightArray);
 }
 
-runtime::VarLen32 ArrayRuntime::appendInt32(runtime::VarLen32 array, int32_t type, int32_t value) {
+runtime::VarLen32 ArrayRuntime::appendInt32(runtime::VarLen32 array, int32_t type, int32_t value, bool isFront) {
     std::string arrayVal = array.str();
     Array arrayObj(arrayVal, type);
-    return arrayObj.append(value);
+    if (isFront) return arrayObj.appendFront(value);
+    else return arrayObj.append(value);
 }
 
-runtime::VarLen32 ArrayRuntime::appendInt64(runtime::VarLen32 array, int32_t type, int64_t value) {
+runtime::VarLen32 ArrayRuntime::appendInt64(runtime::VarLen32 array, int32_t type, int64_t value, bool isFront) {
     std::string arrayVal = array.str();
     Array arrayObj(arrayVal, type);
-    return arrayObj.append(value);
+    if (isFront) return arrayObj.appendFront(value);
+    else return arrayObj.append(value);
 }
 
-runtime::VarLen32 ArrayRuntime::appendFloat(runtime::VarLen32 array, int32_t type, float value) {
+runtime::VarLen32 ArrayRuntime::appendFloat(runtime::VarLen32 array, int32_t type, float value, bool isFront) {
     std::string arrayVal = array.str();
     Array arrayObj(arrayVal, type);
-    return arrayObj.append(value);
+    if (isFront) return arrayObj.appendFront(value);
+    else return arrayObj.append(value);
 }
 
-runtime::VarLen32 ArrayRuntime::appendDouble(runtime::VarLen32 array, int32_t type, double value) {
+runtime::VarLen32 ArrayRuntime::appendDouble(runtime::VarLen32 array, int32_t type, double value, bool isFront) {
     std::string arrayVal = array.str();
     Array arrayObj(arrayVal, type);
-    return arrayObj.append(value);
+    if (isFront) return arrayObj.appendFront(value);
+    else return arrayObj.append(value);
 }
 
-runtime::VarLen32 ArrayRuntime::appendString(runtime::VarLen32 array, int32_t type, VarLen32 value) {
+runtime::VarLen32 ArrayRuntime::appendString(runtime::VarLen32 array, int32_t type, VarLen32 value, bool isFront) {
     std::string arrayVal = array.str();
     std::string valueVal = value.str();
     Array arrayObj(arrayVal, type);
-    return arrayObj.append(valueVal);
+    if (isFront) return arrayObj.appendFront(valueVal);
+    else return arrayObj.append(valueVal);
 }
 
 runtime::VarLen32 ArrayRuntime::appendNull(runtime::VarLen32 array, int32_t type) {
