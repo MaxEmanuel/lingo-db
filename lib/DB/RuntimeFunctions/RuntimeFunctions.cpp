@@ -347,5 +347,9 @@ std::shared_ptr<mlir::db::RuntimeFunctionRegistry> mlir::db::RuntimeFunctionRegi
    builtinRegistry->add("ArrayConcatF64").implementedAs(rt::ArrayRuntime::appendDouble).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::float64, RuntimeFunction::intLike}, resTypeIsAnyArray);
    builtinRegistry->add("ArrayConcatString").implementedAs(rt::ArrayRuntime::appendString).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::stringLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
 
+   builtinRegistry->add("ArraySlice").implementedAs(rt::ArrayRuntime::slice).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::intLike, RuntimeFunction::intLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArraySubscript").implementedAs(rt::ArrayRuntime::subscript).matchesTypes({RuntimeFunction::arrayLike, RuntimeFunction::intLike, RuntimeFunction::intLike}, resTypeIsAnyArray);
+   builtinRegistry->add("ArrayNullCheck").implementedAs(rt::ArrayRuntime::isNull).matchesTypes({RuntimeFunction::arrayLike}, resTypeIsBool);
+
    return builtinRegistry;
 }

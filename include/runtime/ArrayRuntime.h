@@ -61,8 +61,15 @@ namespace runtime {
         static int32_t getHighestPosition(VarLen32 array, int32_t type);
 
         static VarLen32 cast(VarLen32 array, int32_t srcType, int32_t dstType);
+        static int32_t toInt32(VarLen32 array);
+        static int64_t toInt64(VarLen32 array);
+        static float toFloat(VarLen32 array);
+        static double toDouble(VarLen32 array);
+        static VarLen32 toString(VarLen32 array);
 
         static VarLen32 increment(VarLen32 array, int32_t type);
+
+        static bool isNull(VarLen32 array);
 
     };
 

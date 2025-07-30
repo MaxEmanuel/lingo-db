@@ -51,14 +51,6 @@ class Array {
 /*##########################################################################################################################################################  
  *                                                              PRIVATE METHODS
  *##########################################################################################################################################################*/    
-
-    /**
-     * This function converts the given string into an VarLen32.
-     * 
-     * @param str The string that should be converted.
-     * @return The VarLen32 object containing the given string.
-     */
-    static VarLen32 toVarLen32(std::string &str);
  
     /**
      * This function copies the specified data into the provided target.
@@ -867,6 +859,14 @@ class Array {
      * processable format.
      */
     VarLen32 increment();
+
+    /**
+     * This function converts the given string into an VarLen32.
+     * 
+     * @param str The string that should be converted.
+     * @return The VarLen32 object containing the given string.
+     */
+    static VarLen32 toVarLen32(std::string &str);
 
     /**
      * This function transforms the array in a string that can be printed to the console.

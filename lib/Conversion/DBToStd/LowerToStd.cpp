@@ -272,6 +272,8 @@ class StringCastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
          result = rt::StringRuntime::fromChar(rewriter, loc)({valueToCast, bytes})[0];
       } else if (scalarSourceType.isa<mlir::db::DateType>()) {
          result = rt::StringRuntime::fromDate(rewriter, loc)({valueToCast})[0];
+      } else if (scalarSourceType.isa<mlir::db::ArrayType>()) {
+         result = rt::ArrayRuntime::toString(rewriter, loc)({valueToCast})[0];
       }
       if (result) {
          rewriter.replaceOp(castOp, result);
@@ -1007,6 +1009,22 @@ class CastOpLowering : public OpConversionPattern<mlir::db::CastOp> {
             auto sourceType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), arraySourceType.getType()));
             auto targetType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), arrayTargetType.getType()));
             value = rt::ArrayRuntime::cast(rewriter, loc)({value, sourceType, targetType})[0];
+            rewriter.replaceOp(op, value);
+            return success();
+         } else if (auto intType = scalarTargetType.dyn_cast_or_null<mlir::IntegerType>()) {
+            if (intType.getWidth() < 64) {
+               value = rt::ArrayRuntime::toInt32(rewriter, loc)({value})[0];
+            } else {
+               value = rt::ArrayRuntime::toInt64(rewriter, loc)({value})[0];
+            }
+            rewriter.replaceOp(op, value);
+            return success();
+         } else if (auto floatType = scalarTargetType.dyn_cast_or_null<mlir::FloatType>()) {
+            if (floatType.getWidth() < 64) {
+               value = rt::ArrayRuntime::toFloat(rewriter, loc)({value})[0];
+            } else {
+               value = rt::ArrayRuntime::toDouble(rewriter, loc)({value})[0];
+            }
             rewriter.replaceOp(op, value);
             return success();
          }

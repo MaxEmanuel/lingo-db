@@ -1592,6 +1592,10 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
          auto* coalesceExpr = reinterpret_cast<AExpr*>(node);
          return translateCoalesceExpression(builder, context, reinterpret_cast<List*>(coalesceExpr->lexpr_)->head);
       }
+      case T_A_Indirection: {
+         auto* indirection = reinterpret_cast<A_Indirection*>(node);
+         return translateIndirectionExpression(builder, indirection, context);
+      }
       case T_A_ArrayExpr: {
          auto* array = reinterpret_cast<A_ArrayExpr*>(node);
          auto result = translateArrayExpr(builder, array, context);
@@ -1603,6 +1607,93 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
    }
   throw std::runtime_error("should never happen");
    return mlir::Value();
+}
+
+mlir::Value frontend::sql::Parser::translateIndirectionExpression(mlir::OpBuilder& builder, A_Indirection* stmt, TranslationContext& context) {
+   auto loc = builder.getUnknownLoc();
+   mlir::Value argument = translateExpression(builder, reinterpret_cast<Node*>(stmt->arg), context, true);
+   auto* indirections = reinterpret_cast<List*>(stmt->indirection);
+   auto* indirection = indirections->head;
+   auto argType = getBaseType(argument.getType());
+   auto slice = false;
+   auto dimension = 1;
+   
+   // First identify if slice operator exists 
+   // If one slice all operators are slice
+   while (indirection) {
+      auto* node = reinterpret_cast<Node*>(indirection->data.ptr_value);
+      if (node->type == T_A_Indices) {
+         auto* index = reinterpret_cast<A_Indices*>(node);
+         auto* leftNode = reinterpret_cast<Node*>(index->lidx);
+         if (leftNode) {
+            slice = true;
+            break;
+         }
+      }
+      indirection = indirection->next;
+   }
+   
+   indirection = indirections->head;
+   // Iterate over chain of indirection expressions
+   while (indirection) {
+      auto* node = reinterpret_cast<Node*>(indirection->data.ptr_value);
+      switch (node->type) {
+         // Expression is an index
+         case T_A_Indices: {
+            auto* index = reinterpret_cast<A_Indices*>(node);
+            mlir::Value leftIndex = translateExpression(builder, reinterpret_cast<Node*>(index->lidx), context, true);
+            mlir::Value rightIndex = translateExpression(builder, reinterpret_cast<Node*>(index->uidx), context, true);
+            if (auto arrayType = argType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+               auto returnType = argument.getType();
+               mlir::Value parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+               // Slice-Operations
+               if (slice) {
+                  mlir::Value parameter5 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(dimension));
+                  // If left value is not set, create default value
+                  if (!index->lidx) {
+                     leftIndex = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(1));
+                  }
+                  // If single parameter is nullable, result must be nullable as well
+                  if (!returnType.isa<mlir::db::NullableType>() && (leftIndex.getType().isa<mlir::db::NullableType>() || rightIndex.getType().isa<mlir::db::NullableType>())) {
+                     returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+                  }
+                  argument = builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArraySlice", mlir::ValueRange({argument, parameter2, leftIndex, rightIndex, parameter5})).getRes();
+               // Subscript-Operations
+               } else {
+                  // Make return value nullable, because subscript can produce NULL values
+                  if (!returnType.isa<mlir::db::NullableType>()) {
+                     returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
+                     argument = builder.create<mlir::db::AsNullableOp>(loc, returnType, argument);
+                  }
+                  mlir::Type condType = mlir::db::NullableType::get(builder.getContext(), mlir::IntegerType::get(builder.getContext(), 1));
+                  // Subscript operation (will only be executed if input is not NULL)
+                  mlir::Value subscript = builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArraySubscript", mlir::ValueRange({argument, parameter2, rightIndex})).getRes();
+                  // Produce a NULL value (Map an empty string from subscript to NULL)
+                  mlir::Value nullSubscript = builder.create<mlir::db::NullOp>(loc, returnType);
+                  // Execute NULL check
+                  mlir::Value condition = builder.create<mlir::db::RuntimeCall>(loc, condType, "ArrayNullCheck", mlir::ValueRange({subscript})).getRes();
+                  mlir::Value isNull = builder.create<mlir::db::IsNullOp>(loc, condition);
+                  mlir::Value notNull = builder.create<mlir::db::NullableGetVal>(loc, condition);
+                  mlir::Value null = builder.create<mlir::db::ConstantOp>(loc, builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), 1));
+                  // Select a boolean that is not NULL
+                  mlir::Value ifCond = builder.create<mlir::arith::SelectOp>(loc, isNull, null, notNull);
+                  // Select NULL if the return value is empty, otherwise the result of subscript
+                  argument = builder.create<mlir::arith::SelectOp>(loc, ifCond, nullSubscript, subscript);     
+               }
+            } else {
+               throw std::runtime_error("Indices-Expression: Is not supported with provided type"); 
+            }
+            break;
+         }
+         default: {
+            throw std::runtime_error("Indirection-Expression: Provided indirection expression is not supported");
+         }
+      }
+      dimension++;
+      indirection = indirection->next;
+   }
+
+   return argument;
 }
 
 mlir::Value frontend::sql::Parser::translateArrayExpr(mlir::OpBuilder& builder, A_ArrayExpr* expr, TranslationContext& context) {

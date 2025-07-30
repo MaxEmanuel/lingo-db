@@ -73,6 +73,11 @@ runtime::VarLen32 ArrayRuntime::slice(runtime::VarLen32 array, int32_t type, int
 
 runtime::VarLen32 ArrayRuntime::subscript(runtime::VarLen32 array, int32_t type, int32_t position) {
     std::string arrayVal = array.str();
+    std::string header(arrayVal.data(), Array::ARRAYHEADER.size());
+    if (header != Array::ARRAYHEADER) {
+        std::string result = "";
+        return Array::toVarLen32(result);
+    }
     Array arrayObj(arrayVal, type);
     return arrayObj[position];
 }
@@ -294,8 +299,62 @@ runtime::VarLen32 ArrayRuntime::cast(runtime::VarLen32 array, int32_t srcType, i
     return arrayObj.cast(dstType);
 }
 
+int32_t ArrayRuntime::toInt32(runtime::VarLen32 array) {
+    try {
+        return std::stoi(array.str());
+    } catch (std::invalid_argument &exc) {
+        throw std::runtime_error(array.str() + " is not of type INTEGER");
+    } catch (std::out_of_range &exc) {
+        throw std::runtime_error(array.str() + " is out of range of 32-Bit INTEGER");
+    }
+}
+
+int64_t ArrayRuntime::toInt64(runtime::VarLen32 array) {
+    try {
+        return std::stol(array.str());
+    } catch (std::invalid_argument &exc) {
+        throw std::runtime_error(array.str() + " is not of type INTEGER");
+    } catch (std::out_of_range &exc) {
+        throw std::runtime_error(array.str() + " is out of range of 64-Bit INTEGER");
+    }
+}
+
+float ArrayRuntime::toFloat(runtime::VarLen32 array) {
+    try {
+        return std::stof(array.str());
+    } catch (std::invalid_argument &exc) {
+        throw std::runtime_error(array.str() + " is not of type FLOAT");
+    } catch (std::out_of_range &exc) {
+        throw std::runtime_error(array.str() + " is out of range of FLOAT");
+    }
+}
+
+double ArrayRuntime::toDouble(runtime::VarLen32 array) {
+    try {
+        return std::stod(array.str());
+    } catch (std::invalid_argument &exc) {
+        throw std::runtime_error(array.str() + " is not of type DOUBLE");
+    } catch (std::out_of_range &exc) {
+        throw std::runtime_error(array.str() + " is out of range of DOUBLE");
+    }
+}
+
+runtime::VarLen32 ArrayRuntime::toString(runtime::VarLen32 array) {
+    std::string value = array.str();
+    std::string header(value.data(), Array::ARRAYHEADER.size());
+    if (header == Array::ARRAYHEADER) {
+        throw std::runtime_error("Array cannot be casted to a string");
+    }
+    return array;
+}
+
 runtime::VarLen32 ArrayRuntime::increment(runtime::VarLen32 array, int32_t type) {
     std::string arrayVal = array.str();
     Array arrayObj(arrayVal, type);
     return arrayObj.increment();
+}
+
+bool ArrayRuntime::isNull(runtime::VarLen32 array) {
+    std::string value = array.str();
+    return value == "";
 }
