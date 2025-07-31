@@ -276,3 +276,8 @@ bool Array::hasEmptyValue() {
     }
     return false;
 }
+
+bool Array::isEmpty() {
+    auto size = getSize(true);
+    return size == 0;
+}

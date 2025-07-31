@@ -1703,6 +1703,7 @@ mlir::Value frontend::sql::Parser::translateArrayExpression(mlir::OpBuilder& bui
    auto mlirContext = builder.getContext();
    // Default array type
    mlir::Type returnType = mlir::db::ArrayType::get(mlirContext, runtime::Array::ArrayType::INTEGER32);
+   mlir::Value type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(runtime::Array::ArrayType::INTEGER32));
    // Start with an empty array
    mlir::Value result = builder.create<mlir::db::RuntimeCall>(loc, returnType, "EmptyArray", mlir::ValueRange({type})).getRes();
 

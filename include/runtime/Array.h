@@ -607,6 +607,11 @@ class Array {
     bool hasEmptyValue();
 
     /**
+     * This method proofs if this array is empty.
+     */
+    bool isEmpty();
+
+    /**
      * This method proofs if the array is symmetric. This means that each dimension
      * must have equal sizes.
      * 
@@ -793,7 +798,7 @@ class Array {
      * @return The result array as string in array processable format.
      */
     VarLen32 matrixMul(Array &other);
-
+    
     /**
      * This method transposes the arrays dimension. In particular the first two dimensions
      * will be swapped which leads to a rearrangement of the elements. 

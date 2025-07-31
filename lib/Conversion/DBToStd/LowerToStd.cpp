@@ -612,6 +612,31 @@ class ConstructorOpLowering : public OpConversionPattern<mlir::db::ConstructorOp
    }
 };
 
+class AddOpLowering : public OpConversionPattern<mlir::db::AddOp> {
+   public:
+   using OpConversionPattern<mlir::db::AddOp>::OpConversionPattern;
+   LogicalResult matchAndRewrite(mlir::db::AddOp op, OpAdaptor adaptor, ConversionPatternRewriter& rewriter) const override {
+      auto loc = rewriter.getUnknownLoc();
+      auto param1Type = getBaseType(op.getLeft().getType());
+      auto param2Type = getBaseType(op.getRight().getType());
+
+      if (param1Type.isa<mlir::db::ArrayType>() && param2Type.isa<mlir::db::ArrayType>()) {
+         auto leftType = param1Type.dyn_cast<mlir::db::ArrayType>();
+         auto rightType = param2Type.dyn_cast<mlir::db::ArrayType>();
+
+         auto parameter3 = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), leftType.getType()));
+         auto parameter4 = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), rightType.getType()));
+
+         Value result = rt::ArrayRuntime::sum(rewriter, loc)({adaptor.getLeft(), adaptor.getRight(), parameter3, parameter4})[0];
+
+         rewriter.replaceOp(op, result);
+         return success(); 
+      }
+      
+      return failure();
+   }
+};
+
 template <class OpClass, class OperandType, class StdOpClass>
 class BinOpLowering : public OpConversionPattern<OpClass> {
    public:
@@ -1316,6 +1341,7 @@ void DBToStdLoweringPass::runOnOperation() {
    patterns.insert<AndOpLowering>(typeConverter, ctxt);
    patterns.insert<OrOpLowering>(typeConverter, ctxt);
    patterns.insert<ConstructorOpLowering>(typeConverter, ctxt);
+   patterns.insert<AddOpLowering>(typeConverter, ctxt);
    patterns.insert<BinOpLowering<mlir::db::AddOp, mlir::IntegerType, arith::AddIOp>>(typeConverter, ctxt);
    patterns.insert<BinOpLowering<mlir::db::SubOp, mlir::IntegerType, arith::SubIOp>>(typeConverter, ctxt);
    patterns.insert<BinOpLowering<mlir::db::MulOp, mlir::IntegerType, arith::MulIOp>>(typeConverter, ctxt);

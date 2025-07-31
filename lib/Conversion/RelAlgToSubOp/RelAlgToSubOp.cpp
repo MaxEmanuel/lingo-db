@@ -1762,7 +1762,12 @@ class SumAggrFunc : public DistAggrFunc {
       if (stateType.isa<mlir::db::NullableType>()) {
          return builder.create<mlir::db::NullOp>(loc, stateType);
       } else {
-         return builder.create<mlir::db::ConstantOp>(loc, stateType, builder.getI64IntegerAttr(0));
+         if (auto arrayType = stateType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            return builder.create<mlir::db::RuntimeCall>(loc, stateType, "EmptyArray", mlir::ValueRange({type})).getRes();
+         } else {
+            return builder.create<mlir::db::ConstantOp>(loc, stateType, builder.getI64IntegerAttr(0));
+         }
       }
    }
    mlir::Value aggregate(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value state, mlir::ValueRange args) override {
@@ -1776,7 +1781,13 @@ class SumAggrFunc : public DistAggrFunc {
       } else if (stateType.isa<mlir::db::NullableType>()) {
          // state nullable, arg not nullable
          mlir::Value isStateNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), state);
-         mlir::Value zero = builder.create<mlir::db::ConstantOp>(loc, getBaseType(stateType), builder.getI64IntegerAttr(0));
+         mlir::Value zero;
+         if (auto arrayType = args[0].getType().dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            zero = builder.create<mlir::db::RuntimeCall>(loc, getBaseType(stateType), "EmptyArray", mlir::ValueRange({type})).getRes();
+         } else {
+            zero = builder.create<mlir::db::ConstantOp>(loc, getBaseType(stateType), builder.getI64IntegerAttr(0));
+         }
          zero = builder.create<mlir::db::AsNullableOp>(loc, stateType, zero);
          state = builder.create<mlir::arith::SelectOp>(loc, isStateNull, zero, state);
          return builder.create<mlir::db::AddOp>(loc, state, args[0]);
@@ -1790,7 +1801,13 @@ class SumAggrFunc : public DistAggrFunc {
          // state nullable, arg not nullable
          mlir::Value isLeftNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), left);
          mlir::Value isRightNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), right);
-         mlir::Value zero = builder.create<mlir::db::ConstantOp>(loc, getBaseType(stateType), builder.getI64IntegerAttr(0));
+         mlir::Value zero;
+         if (auto arrayType = getBaseType(left.getType()).dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            zero = builder.create<mlir::db::RuntimeCall>(loc, getBaseType(stateType), "EmptyArray", mlir::ValueRange({type})).getRes();
+         } else {
+            zero = builder.create<mlir::db::ConstantOp>(loc, getBaseType(stateType), builder.getI64IntegerAttr(0));
+         }
          zero = builder.create<mlir::db::AsNullableOp>(loc, stateType, zero);
          mlir::Value newLeft = builder.create<mlir::arith::SelectOp>(loc, isLeftNull, zero, left);
          mlir::Value newRight = builder.create<mlir::arith::SelectOp>(loc, isRightNull, zero, right);

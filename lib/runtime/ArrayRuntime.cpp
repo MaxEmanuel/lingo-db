@@ -287,6 +287,32 @@ runtime::VarLen32 ArrayRuntime::matrixMul(
         return leftArray.matrixMul(rightArray);
 }
 
+runtime::VarLen32 ArrayRuntime::sum(
+    runtime::VarLen32 left,
+    runtime::VarLen32 right,
+    int32_t leftType,
+    int32_t rightType) {
+        std::string leftVal = left.str();
+        std::string rightVal = right.str();
+        // Currently NULL values are pushed to the function
+        // Treat like empty arrays
+        if (leftVal == "") {
+            return right;
+        }
+        if (rightVal == "") {
+            return left;
+        }
+        Array leftArray(leftVal, leftType);
+        Array rightArray(rightVal, rightType);
+        if (leftArray.isEmpty()) {
+            return right;
+        }
+        if (rightArray.isEmpty()) {
+            return left;
+        }
+        return leftArray + rightArray;
+}
+
 int32_t ArrayRuntime::getHighestPosition(runtime::VarLen32 array, int32_t type) {
     std::string arrayVal = array.str();
     Array arrayObj(arrayVal, type);
