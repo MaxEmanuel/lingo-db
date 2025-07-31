@@ -1598,7 +1598,8 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
       }
       case T_A_ArrayExpr: {
          auto* array = reinterpret_cast<A_ArrayExpr*>(node);
-         auto result = translateArrayExpr(builder, array, context);
+         mlir::Type type = mlir::NoneType::get(builder.getContext());
+         auto result = translateArrayExpression(builder, array, context, type);
          return result;
       }
       default: {
@@ -1696,68 +1697,73 @@ mlir::Value frontend::sql::Parser::translateIndirectionExpression(mlir::OpBuilde
    return argument;
 }
 
-mlir::Value frontend::sql::Parser::translateArrayExpr(mlir::OpBuilder& builder, A_ArrayExpr* expr, TranslationContext& context) {
-   auto location = builder.getUnknownLoc();
+mlir::Value frontend::sql::Parser::translateArrayExpression(mlir::OpBuilder& builder, A_ArrayExpr* stmt, TranslationContext& context, mlir::Type& arrayType) {
+   // This function executes a Depth-first search, calling this function recursively
+   auto loc = builder.getUnknownLoc();
    auto mlirContext = builder.getContext();
-   mlir::Type returnType = mlir::db::ArrayType::get(mlirContext, 0);
+   // Default array type
+   mlir::Type returnType = mlir::db::ArrayType::get(mlirContext, runtime::Array::ArrayType::INTEGER32);
+   // Start with an empty array
+   mlir::Value result = builder.create<mlir::db::RuntimeCall>(loc, returnType, "EmptyArray", mlir::ValueRange({type})).getRes();
 
-   // Case if Array_Expr does not have any childs (is empty)
-   if (!expr->elements) {
-      auto arrayType = builder.create<mlir::db::ConstantOp>(location, builder.getI32Type(), builder.getI32IntegerAttr(0));
-      return builder.create<mlir::db::RuntimeCall>(location, returnType, "EmptyArray", mlir::ValueRange({arrayType})).getRes();
+   // If the expression does not contain elements, return emtpy array
+   if (!stmt->elements) {
+      return result;
    }
 
-   auto *element = expr->elements->head;
-   auto arrayType = builder.create<mlir::db::ConstantOp>(location, builder.getI32Type(), builder.getI32IntegerAttr(0));
-   mlir::Value result = builder.create<mlir::db::RuntimeCall>(location, returnType, "EmptyArray", mlir::ValueRange({arrayType})).getRes();
-   mlir::Type constantType;
-   bool isFirst = true;
+   auto *element = stmt->elements->head;
+   // Defines the actual array element type
+   mlir::Type finalType = arrayType;
+   // Iterate over each element in expression
    while (element) {
       auto* elementNode = reinterpret_cast<Node*>(element->data.ptr_value);
+      // Array expression contains further array expressions
       if (elementNode->type == T_A_ArrayExpr) {
          auto *childExpr = reinterpret_cast<A_ArrayExpr*>(elementNode);
-         auto value = translateArrayExpr(builder, childExpr, context);
-         returnType = value.getType();
-         if (isFirst) {
+         auto value = translateArrayExpression(builder, childExpr, context, finalType);
+         // If first element, no operation is needed (only adjust array type)
+         if (element == stmt->elements->head) {
+            returnType = value.getType();
             result = value;
-            if (element->next) {
-               auto type = mlir::dyn_cast_or_null<mlir::db::ArrayType>(value.getType());
-               auto arrayType = builder.create<mlir::db::ConstantOp>(location, builder.getI32Type(), builder.getI32IntegerAttr(type.getType()));
-               result = builder.create<mlir::db::RuntimeCall>(location, returnType, "ArrayIncrement", mlir::ValueRange({result, arrayType})).getRes();
-            }
-            isFirst = false;
          } else {
-            auto leftType = mlir::dyn_cast_or_null<mlir::db::ArrayType>(result.getType());
-            auto rightType = mlir::dyn_cast_or_null<mlir::db::ArrayType>(value.getType());
-            if (leftType.getType() != rightType.getType()) {
-               value = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), result.getType(), value);
+            // Change the type of the array if the first element is NULL or empty, but array does not contain only empty array os NULLs 
+            // Otherwise NULL or an empty array as first element would enforce int32 as type
+            if (!finalType.isa<mlir::NoneType>() && arrayType.isa<mlir::NoneType>()) {
+               // If type changed cast left array to the array type of right
+               result = builder.create<mlir::db::CastOp>(loc, value.getType(), result);
+               returnType = value.getType();
+               arrayType = finalType;           
             }
-            result = builder.create<mlir::db::ConstructorOp>(location, returnType, result, value);
+            // Boolean that will define, if the left array should be increased in its dimension (only if it is the first element)
+            mlir::Value changeLeft;
+            if (element == stmt->elements->head->next) {
+               changeLeft = builder.create<mlir::db::ConstantOp>(loc, builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), 1));
+            } else {
+               changeLeft = builder.create<mlir::db::ConstantOp>(loc, builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), 0));
+            }
+            result = builder.create<mlir::db::ConstructorOp>(loc, returnType, result, value, changeLeft);
          }
+      // Array expression contains other expressions or constants
       } else {
          auto value = translateExpression(builder, elementNode, context);
-         auto elementType = getBaseType(value.getType());
-         if (auto intType = mlir::dyn_cast_or_null<mlir::IntegerType>(elementType)) {
-            if (intType.getWidth() > 32) returnType = mlir::db::ArrayType::get(mlirContext, 1);
-         } else if (auto floatType = mlir::dyn_cast_or_null<mlir::FloatType>(elementType)) {
-            if (floatType.getWidth() < 64) returnType = mlir::db::ArrayType::get(mlirContext, 3);
-            else returnType = mlir::db::ArrayType::get(mlirContext, 4);
-         } else if (auto stringType = mlir::dyn_cast_or_null<mlir::db::StringType>(elementType)) {
-            returnType = mlir::db::ArrayType::get(mlirContext, 5);
-         }
-         if (isFirst) {
-            result = builder.create<mlir::db::ConstructorOp>(location, returnType, value, result);
-            constantType = elementType;
-            isFirst = false;
-         } else {
-            if (!constantType.isa<mlir::NoneType>() && !value.getType().isa<mlir::db::NullableType>()) {
-               value = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), constantType, value);
+         auto valueType = getBaseType(value.getType());
+         mlir::Value changeLeft = builder.create<mlir::db::ConstantOp>(loc, builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), 0));
+
+         // Identify the type of the array elements
+         // Again, otherwise NULL or an empty array as first element would enforce int32 as type
+         if (!valueType.isa<mlir::NoneType>() && arrayType.isa<mlir::NoneType>()) {
+            if (auto intType = mlir::dyn_cast_or_null<mlir::IntegerType>(valueType)) {
+               if (intType.getWidth() > 32) returnType = mlir::db::ArrayType::get(mlirContext, runtime::Array::ArrayType::INTEGER64);
+            } else if (auto floatType = mlir::dyn_cast_or_null<mlir::FloatType>(valueType)) {
+               if (floatType.getWidth() < 64) returnType = mlir::db::ArrayType::get(mlirContext, runtime::Array::ArrayType::FLOAT);
+               else returnType = mlir::db::ArrayType::get(mlirContext, runtime::Array::ArrayType::DOUBLE);
+            } else if (auto stringType = mlir::dyn_cast_or_null<mlir::db::StringType>(valueType)) {
+               returnType = mlir::db::ArrayType::get(mlirContext, runtime::Array::ArrayType::STRING);
             }
-            if (constantType.isa<mlir::NoneType>()) {
-               constantType = elementType;
-            }
-            result = builder.create<mlir::db::ConstructorOp>(location, returnType, result, value);
-         }
+            result = builder.create<mlir::db::CastOp>(loc, returnType, result);
+            arrayType = valueType;           
+         }         
+         result = builder.create<mlir::db::ConstructorOp>(loc, returnType, result, value, changeLeft);
       }
       element = element->next;
    }

@@ -390,9 +390,9 @@ def CastOp : DB_Op<"cast",[DB_NeedsNullWrap,DB_MaySupportInvalidValues,Pure]> {
 
 def ConstructorOp : DB_Op<"constructor"> {
     let summary = "Constructs an array through the array constructor";
-    let arguments = (ins NullableDBType:$left, NullableDBType:$right);
+    let arguments = (ins NullableDBType:$left, NullableDBType:$right, AnyBool:$changeLeft);
     let results = (outs NullableDBType:$result);
-    let assemblyFormat = "$left `:` type($left) `,` $right `:` type($right) `->` type($result) attr-dict";
+    let assemblyFormat = "$left `:` type($left) `,` $right `:` type($right) `,` $changeLeft `:` type($changeLeft) `->` type($result) attr-dict";
 }
 
 #endif// OPS

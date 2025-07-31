@@ -29,6 +29,7 @@
 #include "mlir/Transforms/Passes.h"
 #include "runtime-defs/StringRuntime.h"
 #include "runtime-defs/ArrayRuntime.h"
+#include "runtime/Array.h"
 #include <mlir/Dialect/util/FunctionHelper.h>
 
 using namespace mlir;
@@ -507,99 +508,105 @@ class ConstructorOpLowering : public OpConversionPattern<mlir::db::ConstructorOp
    public:
    using OpConversionPattern<mlir::db::ConstructorOp>::OpConversionPattern;
    LogicalResult matchAndRewrite(mlir::db::ConstructorOp op, OpAdaptor adaptor, ConversionPatternRewriter& rewriter) const override {
-      auto leftType = op.getLeft().getType();
-      auto rightType = op.getRight().getType();
+      auto left = adaptor.getLeft();
+      auto right = adaptor.getRight();
+      auto leftType = getBaseType(op.getLeft().getType());
+      auto rightType = getBaseType(op.getRight().getType());
       auto loc = op->getLoc();
       Value result;
 
-      if (auto leftNull = leftType.dyn_cast_or_null<mlir::db::NullableType>()) {
-         if (!leftNull.getType().isa<mlir::NoneType>()) {
-            leftType = leftNull.getType();
-         }
-      }
-      if (auto rightNull = rightType.dyn_cast_or_null<mlir::db::NullableType>()) {
-         if (!rightNull.getType().isa<mlir::NoneType>()) {
-            rightType = rightNull.getType();
-         }
-      }
+      // Case if both parameters are arrays
       if (leftType.isa<mlir::db::ArrayType>() && rightType.isa<mlir::db::ArrayType>()) {
-         auto left = leftType.dyn_cast<mlir::db::ArrayType>();
-         auto right = rightType.dyn_cast<mlir::db::ArrayType>();
-         mlir::Value leftArrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), left.getType()));
-         mlir::Value rightArrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), right.getType()));
+         auto arrayLeft = leftType.dyn_cast<mlir::db::ArrayType>();
+         auto arrayRight = rightType.dyn_cast<mlir::db::ArrayType>();
+         mlir::Value arrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), arrayLeft.getType()));
 
-         result = rt::ArrayRuntime::appendArray(rewriter, loc)({adaptor.getLeft(), adaptor.getRight(), leftArrayType, rightArrayType})[0];
+         // Cast right on the type of left if needed
+         if (arrayLeft.getType() != arrayRight.getType()) {
+            mlir::Value srcType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), arrayRight.getType()));
+            right = rt::ArrayRuntime::cast(rewriter, loc)({right, srcType, arrayType})[0];
+         }
+
+         // Define a select operation which selects the increment operation if given boolean (changeLeft) is true
+         mlir::Value increment = rt::ArrayRuntime::increment(rewriter, loc)({left, arrayType})[0];
+         left = rewriter.create<arith::SelectOp>(loc, adaptor.getChangeLeft(), increment, left);
+         result = rt::ArrayRuntime::appendArray(rewriter, loc)({left, right, arrayType, arrayType})[0];
          rewriter.replaceOp(op, result);
          return success();
       }
+      // Case if left is an array and right a different type
       if (leftType.isa<mlir::db::ArrayType>() && !rightType.isa<mlir::db::ArrayType>()) {
-         auto left = leftType.dyn_cast<mlir::db::ArrayType>();
-         int type = left.getType();
-         result = adaptor.getLeft();
-         mlir::Value leftArrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), type));
+         auto arrayLeft = leftType.dyn_cast<mlir::db::ArrayType>();
+         mlir::Value arrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), arrayLeft.getType()));
+         mlir::Value inFront = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI1Type(), 0));
+         mlir::Value appendNull = rt::ArrayRuntime::appendNull(rewriter, loc)({left, arrayType})[0];
+         mlir::Value appendElement;
+         mlir::Value element = right;
 
-         if (rightType.isa<mlir::db::NullableType>()) {
-            result = rt::ArrayRuntime::appendNull(rewriter, loc)({result, leftArrayType})[0];
-            rewriter.replaceOp(op, result);
+         // If right is a NULL value
+         if (rightType.isa<mlir::NoneType>()) {
+            rewriter.replaceOp(op, appendNull);
             return success(); 
-         } else if (auto intType = rightType.dyn_cast_or_null<mlir::IntegerType>()) {
-            if (intType.getWidth() < 64) {
-               result = rt::ArrayRuntime::appendInt32(rewriter, loc)({result, leftArrayType, adaptor.getRight()})[0];
-            } else {
-               result = rt::ArrayRuntime::appendInt64(rewriter, loc)({result, leftArrayType, adaptor.getRight()})[0];
-            }
-            rewriter.replaceOp(op, result);
-            return success(); 
-         } else if (auto floatType = rightType.dyn_cast_or_null<mlir::FloatType>()) {
-            if (floatType.getWidth() < 64) {
-               result = rt::ArrayRuntime::appendFloat(rewriter, loc)({result, leftArrayType, adaptor.getRight()})[0];
-            } else {
-               result = rt::ArrayRuntime::appendDouble(rewriter, loc)({result, leftArrayType, adaptor.getRight()})[0];
-            }
-            rewriter.replaceOp(op, result);
-            return success(); 
-         } else if (auto stringType = rightType.dyn_cast_or_null<mlir::db::StringType>()) {
-            result = rt::ArrayRuntime::appendString(rewriter, loc)({result, leftArrayType, adaptor.getRight()})[0];
-            rewriter.replaceOp(op, result);
-            return success(); 
-         }        
-      }
-
-      if (!leftType.isa<mlir::db::ArrayType>() && rightType.isa<mlir::db::ArrayType>()) {
-         auto right = rightType.dyn_cast<mlir::db::ArrayType>();
-         int type = right.getType();
-         result = adaptor.getRight();
-         if (leftType.isa<mlir::db::NullableType>()) {
-            mlir::Value arrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), type));
-            result = rt::ArrayRuntime::appendNull(rewriter, loc)({result, arrayType})[0];
-            rewriter.replaceOp(op, result);
-            return success();
-         } else if (auto intType = leftType.dyn_cast_or_null<mlir::IntegerType>()) {
-            if (intType.getWidth() < 64) {
-               mlir::Value arrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), 0));
-               result = rt::ArrayRuntime::appendInt32(rewriter, loc)({result, arrayType, adaptor.getLeft()})[0];
-            } else {
-               mlir::Value arrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), 1));
-               result = rt::ArrayRuntime::appendInt64(rewriter, loc)({result, arrayType, adaptor.getLeft()})[0];
-            }
-            rewriter.replaceOp(op, result);
-            return success();
-         } else if (auto floatType = leftType.dyn_cast_or_null<mlir::FloatType>()) {
-            if (floatType.getWidth() < 64) {
-               mlir::Value arrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), 3));
-               result = rt::ArrayRuntime::appendFloat(rewriter, loc)({result, arrayType, adaptor.getLeft()})[0];
-            } else {
-               mlir::Value arrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), 4));
-               result = rt::ArrayRuntime::appendDouble(rewriter, loc)({result, arrayType, adaptor.getLeft()})[0];
-            }
-            rewriter.replaceOp(op, result);
-            return success();
-         } else if (auto stringType = leftType.dyn_cast_or_null<mlir::db::StringType>()) {
-            mlir::Value arrayType = rewriter.create<arith::ConstantOp>(loc, rewriter.getIntegerAttr(rewriter.getI32Type(), 5));
-            result = rt::ArrayRuntime::appendString(rewriter, loc)({result, arrayType, adaptor.getLeft()})[0];
-            rewriter.replaceOp(op, result);
-            return success();
          }
+         // If right could be NULL, create Unpack operation from GetNullableVal
+         // Is needed, because runtime functions expect specific types which are not wrapped within nullable
+         if (op.getRight().getType().isa<mlir::db::NullableType>()) {
+            auto unPackOp = rewriter.create<mlir::util::UnPackOp>(loc, right);
+            element = unPackOp.getVals()[1];
+         } 
+         
+         // Check if the array element type and the type of right are equal
+         // Otherwise call a cast operation for right
+         if (arrayLeft.getType() == runtime::Array::ArrayType::INTEGER32) {
+            auto intType = rightType.dyn_cast_or_null<mlir::IntegerType>();
+            if (!intType) {
+               element = rewriter.create<mlir::db::CastOp>(loc, mlir::IntegerType::get(rewriter.getContext(), 32), element);
+            } else if (intType.getWidth() > 32) {
+               element = rewriter.create<mlir::db::CastOp>(loc, mlir::IntegerType::get(rewriter.getContext(), 32), element);
+            }
+            appendElement = rt::ArrayRuntime::appendInt32(rewriter, loc)({left, arrayType, element, inFront})[0];
+         } else if (arrayLeft.getType() == runtime::Array::ArrayType::INTEGER64) {
+            auto intType = rightType.dyn_cast_or_null<mlir::IntegerType>();
+            if (!intType) {
+               element = rewriter.create<mlir::db::CastOp>(loc, mlir::IntegerType::get(rewriter.getContext(), 64), element);
+            } else if (intType.getWidth() < 64) {
+               element = rewriter.create<mlir::db::CastOp>(loc, mlir::IntegerType::get(rewriter.getContext(), 64), element);
+            }
+            appendElement = rt::ArrayRuntime::appendInt64(rewriter, loc)({left, arrayType, element, inFront})[0];
+         } else if (arrayLeft.getType() == runtime::Array::ArrayType::FLOAT) {
+            auto floatType = rightType.dyn_cast_or_null<mlir::FloatType>();
+            if (!floatType) {
+               element = rewriter.create<mlir::db::CastOp>(loc, mlir::FloatType::getF32(rewriter.getContext()), element);
+            } else if (floatType.getWidth() > 32) {
+               element = rewriter.create<mlir::db::CastOp>(loc, mlir::FloatType::getF32(rewriter.getContext()), element);
+            }
+            appendElement = rt::ArrayRuntime::appendFloat(rewriter, loc)({left, arrayType, element, inFront})[0];
+         } else if (arrayLeft.getType() == runtime::Array::ArrayType::DOUBLE) {
+            auto floatType = rightType.dyn_cast_or_null<mlir::FloatType>();
+            if (!floatType) {
+               element = rewriter.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(rewriter.getContext()), element);
+            } else if (floatType.getWidth() < 64) {
+               element = rewriter.create<mlir::db::CastOp>(loc, mlir::FloatType::getF64(rewriter.getContext()), element);
+            }
+            appendElement = rt::ArrayRuntime::appendDouble(rewriter, loc)({left, arrayType, element, inFront})[0];
+         } else {
+            auto stringType = rightType.dyn_cast_or_null<mlir::db::StringType>();
+            if (!stringType) {
+               element = rewriter.create<mlir::db::CastOp>(loc, mlir::db::StringType::get(rewriter.getContext()), element);
+            }
+            appendElement = rt::ArrayRuntime::appendString(rewriter, loc)({left, arrayType, element, inFront})[0];
+         }
+         // Right could be NULL, create a select operation which either appends NULL to the array or
+         // the actual element, based on the NULL check
+         if (op.getRight().getType().isa<mlir::db::NullableType>()) {
+            mlir::Value isNull = rewriter.create<mlir::db::IsNullOp>(loc, op.getRight());
+            result = rewriter.create<mlir::arith::SelectOp>(loc, isNull, appendNull, appendElement);
+         // Do not do this with values that are not nullable
+         } else {
+            result = appendElement;
+         }
+         rewriter.replaceOp(op, result);
+         return success();      
       }
       return failure();
    }

@@ -216,7 +216,9 @@ runtime::VarLen32 Array::append() {
     writeToBuffer(buffer, this->widths, widthSize-1);
     writeToBuffer(buffer, &lastWidth, 1);
     copyElements(buffer);
-    writeToBuffer(buffer, this->nulls, nullBytes);
+    if (totalElements-1 != 0) {
+        writeToBuffer(buffer, this->nulls, nullBytes);
+    }
     // Add new null bit
     if ((totalElements-1) % 8 != 0) {
         buffer--;
