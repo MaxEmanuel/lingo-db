@@ -48,6 +48,7 @@ namespace runtime {
         static VarLen32 matrixMul(VarLen32 left, VarLen32 right, int32_t leftType, int32_t rightType);
 
         static VarLen32 sum(VarLen32 left, VarLen32 right, int32_t leftType, int32_t rightType);
+        static VarLen32 agg(VarLen32 left, VarLen32 right, int32_t leftType, int32_t rightType);
 
         static VarLen32 fillInt32(int32_t value, VarLen32 array, int32_t type);
         static VarLen32 fillInt64(int64_t value, VarLen32 array, int32_t type);

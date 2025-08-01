@@ -1820,6 +1820,69 @@ class SumAggrFunc : public DistAggrFunc {
       }
    }
 };
+class ArrayAggAggrFunc : public DistAggrFunc {
+   public:
+   explicit ArrayAggAggrFunc(const mlir::tuples::ColumnDefAttr& destAttribute, const mlir::tuples::ColumnRefAttr& sourceColumn) : DistAggrFunc(destAttribute, sourceColumn) {}
+   mlir::Value createDefaultValue(mlir::OpBuilder& builder, mlir::Location loc) override {
+      auto baseType = getBaseType(stateType);
+      if (stateType.isa<mlir::db::NullableType>()) {
+         return builder.create<mlir::db::NullOp>(loc, stateType);
+      } else {
+         auto arrayType = baseType.dyn_cast_or_null<mlir::db::ArrayType>();
+         auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+         return builder.create<mlir::db::RuntimeCall>(loc, stateType, "EmptyArray", mlir::ValueRange({type})).getRes();
+      }
+   }
+   mlir::Value aggregate(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value state, mlir::ValueRange args) override {
+      auto leftType = getBaseType(stateType);
+      auto rightType = getBaseType(args[0].getType());
+      auto leftArrayType = leftType.dyn_cast_or_null<mlir::db::ArrayType>();
+      auto rightArrayType = rightType.dyn_cast_or_null<mlir::db::ArrayType>();
+      auto constantLeftType = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(leftArrayType.getType()));
+      auto constantRightType = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(rightArrayType.getType()));
+      if (stateType.isa<mlir::db::NullableType>() && args[0].getType().isa<mlir::db::NullableType>()) {
+         // state nullable, arg nullable
+         mlir::Value isStateNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), state);
+         mlir::Value isArgNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), args[0]);
+         mlir::Value agg = builder.create<mlir::db::RuntimeCall>(loc, stateType, "ArrayAgg", mlir::ValueRange({state, args[0], constantLeftType, constantRightType})).getRes();
+         agg = builder.create<mlir::arith::SelectOp>(loc, isArgNull, state, agg);
+         return builder.create<mlir::arith::SelectOp>(loc, isStateNull, args[0], agg);
+      } else if (stateType.isa<mlir::db::NullableType>()) {
+         // state nullable, arg not nullable
+         mlir::Value isStateNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), state);
+         mlir::Value empty = builder.create<mlir::db::RuntimeCall>(loc, getBaseType(stateType), "EmptyArray", mlir::ValueRange({constantLeftType})).getRes();
+         empty = builder.create<mlir::db::AsNullableOp>(loc, stateType, empty);
+         state = builder.create<mlir::arith::SelectOp>(loc, isStateNull, empty, state);
+         return builder.create<mlir::db::RuntimeCall>(loc, stateType, "ArrayAgg", mlir::ValueRange({state, args[0], constantLeftType, constantRightType})).getRes();
+      } else {
+         return builder.create<mlir::db::RuntimeCall>(loc, stateType, "ArrayAgg", mlir::ValueRange({state, args[0], constantLeftType, constantRightType})).getRes();
+      }
+   }
+   mlir::Value combine(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value left, mlir::Value right) override {
+      auto leftType = getBaseType(left.getType());
+      auto rightType = getBaseType(right.getType());
+      auto leftArrayType = leftType.dyn_cast_or_null<mlir::db::ArrayType>();
+      auto rightArrayType = rightType.dyn_cast_or_null<mlir::db::ArrayType>();
+      auto constantLeftType = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(leftArrayType.getType()));
+      auto constantRightType = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(rightArrayType.getType()));
+      if (stateType.isa<mlir::db::NullableType>()) {
+         // state nullable, arg not nullable
+         mlir::Value isLeftNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), left);
+         mlir::Value isRightNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), right);
+         mlir::Value empty = builder.create<mlir::db::RuntimeCall>(loc, getBaseType(stateType), "EmptyArray", mlir::ValueRange({constantLeftType})).getRes();
+         empty = builder.create<mlir::db::AsNullableOp>(loc, stateType, empty);
+         mlir::Value newLeft = builder.create<mlir::arith::SelectOp>(loc, isLeftNull, empty, left);
+         mlir::Value newRight = builder.create<mlir::arith::SelectOp>(loc, isRightNull, empty, right);
+         mlir::Value agg = builder.create<mlir::db::RuntimeCall>(loc, stateType, "ArrayAgg", mlir::ValueRange({left, right, constantLeftType, constantRightType})).getRes();
+         mlir::Value bothNull = builder.create<mlir::arith::AndIOp>(loc, isLeftNull, isRightNull);
+         return builder.create<mlir::arith::SelectOp>(loc, bothNull, left, agg);
+      } else {
+         //state non-nullable, arg not nullable
+         return builder.create<mlir::db::RuntimeCall>(loc, stateType, "ArrayAgg", mlir::ValueRange({left, right, constantLeftType, constantRightType})).getRes();
+      }
+   }
+};
+
 class OrderedWindowFunc {
    protected:
    mlir::tuples::ColumnDefAttr destAttribute;
@@ -2020,6 +2083,8 @@ class WindowLowering : public OpConversionPattern<mlir::relalg::WindowOp> {
                distAggrFunc = std::make_shared<AnyAggrFunc>(destColumnAttr, sourceColumnAttr);
             } else if (aggrFn.getFn() == mlir::relalg::AggrFunc::count) {
                distAggrFunc = std::make_shared<CountAggrFunc>(destColumnAttr, sourceColumnAttr);
+            }  else if (aggrFn.getFn() == mlir::relalg::AggrFunc::array_agg) {
+               distAggrFunc = std::make_shared<ArrayAggAggrFunc>(destColumnAttr, sourceColumnAttr);
             }
          }
          if (auto countOp = mlir::dyn_cast_or_null<mlir::relalg::CountRowsOp>(computedVal.getDefiningOp())) {
@@ -2361,6 +2426,8 @@ class AggregationLowering : public OpConversionPattern<mlir::relalg::Aggregation
                distAggrFunc = std::make_shared<AnyAggrFunc>(destColumnAttr, sourceColumnAttr);
             } else if (aggrFn.getFn() == mlir::relalg::AggrFunc::count) {
                distAggrFunc = std::make_shared<CountAggrFunc>(destColumnAttr, sourceColumnAttr);
+            }  else if (aggrFn.getFn() == mlir::relalg::AggrFunc::array_agg) {
+               distAggrFunc = std::make_shared<ArrayAggAggrFunc>(destColumnAttr, sourceColumnAttr);
             }
          }
          if (auto countOp = mlir::dyn_cast_or_null<mlir::relalg::CountRowsOp>(computedVal.getDefiningOp())) {
@@ -2449,6 +2516,8 @@ class GroupJoinLowering : public OpConversionPattern<mlir::relalg::GroupJoinOp> 
                distAggrFunc = std::make_shared<AnyAggrFunc>(destColumnAttr, sourceColumnAttr);
             } else if (aggrFn.getFn() == mlir::relalg::AggrFunc::count) {
                distAggrFunc = std::make_shared<CountAggrFunc>(destColumnAttr, sourceColumnAttr);
+            } else if (aggrFn.getFn() == mlir::relalg::AggrFunc::array_agg) {
+               distAggrFunc = std::make_shared<ArrayAggAggrFunc>(destColumnAttr, sourceColumnAttr);
             }
          }
          if (auto countOp = mlir::dyn_cast_or_null<mlir::relalg::CountRowsOp>(computedVal.getDefiningOp())) {

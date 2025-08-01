@@ -2338,7 +2338,7 @@ Node* frontend::sql::Parser::analyzeTargetExpression(Node* node, frontend::sql::
             replaceState.windowFunctions.insert({fakeNode, {funcName, exprNode, properties}});
             return fakeNode;
          } else {
-            if (funcName == "sum" || funcName == "avg" || funcName == "min" || funcName == "max" || funcName == "count" || funcName == "stddev_samp") {
+            if (funcName == "sum" || funcName == "avg" || funcName == "min" || funcName == "max" || funcName == "count" || funcName == "stddev_samp" || funcName == "array_agg") {
                Node* aggrExpr = nullptr;
                auto* fakeNode = createFakeNode(funcName, node);
                if (funcNode->agg_star_) {
@@ -2460,6 +2460,7 @@ std::tuple<mlir::Value, std::unordered_map<std::string, mlir::tuples::Column*>> 
                             .Case("max", mlir::relalg::AggrFunc::max)
                             .Case("count", mlir::relalg::AggrFunc::count)
                             .Case("stddev_samp", mlir::relalg::AggrFunc::stddev_samp)
+                            .Case("array_agg", mlir::relalg::AggrFunc::array_agg)
                             .Default(mlir::relalg::AggrFunc::count);
          if (aggrFunc == mlir::relalg::AggrFunc::count) {
             if (groupByAttrs.empty()) {
@@ -2514,6 +2515,34 @@ std::tuple<mlir::Value, std::unordered_map<std::string, mlir::tuples::Column*>> 
             }
             if (!aggrResultType.isa<mlir::db::NullableType>() && (groupByAttrs.empty())) {
                aggrResultType = mlir::db::NullableType::get(builder.getContext(), aggrResultType);
+            }
+            if (aggrFunc == mlir::relalg::AggrFunc::array_agg) {
+               // Identify type of the column and set return type of aggr function accordingly
+               auto columnType = refAttr.getColumn().type;
+               if (auto nullable = columnType.dyn_cast_or_null<mlir::db::NullableType>()) {
+                  columnType = nullable.getType();
+               }
+               if (auto integerType = columnType.dyn_cast_or_null<mlir::IntegerType>()) {
+                  auto intWidth = getIntegerWidth(integerType, false);
+                  if (intWidth < 64) {
+                     aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::INTEGER32);
+                  } else {
+                     aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::INTEGER64);
+                  }
+               } else if (auto floatType = columnType.dyn_cast_or_null<mlir::FloatType>()) {
+                  if (floatType.getWidth() == 32) {
+                     aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::FLOAT);
+                  } else {
+                     aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::DOUBLE);
+                  }
+               } else if (auto stringType = columnType.dyn_cast_or_null<mlir::db::StringType>()) {
+                  aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::STRING);
+               } else if (auto arrayType = columnType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+                  aggrResultType = mlir::db::ArrayType::get(builder.getContext(), arrayType.getType());
+               }
+               if (refAttr.getColumn().type.isa<mlir::db::NullableType>()) {
+                  aggrResultType = mlir::db::NullableType::get(builder.getContext(), aggrResultType);
+               }
             }
          }
          expr = aggrBuilder.create<mlir::relalg::AggrFuncOp>(builder.getUnknownLoc(), aggrResultType, aggrFunc, currRel, refAttr);
@@ -2880,6 +2909,7 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                                .Case("min", mlir::relalg::AggrFunc::min)
                                .Case("max", mlir::relalg::AggrFunc::max)
                                .Case("count", mlir::relalg::AggrFunc::count)
+                               .Case("array_agg", mlir::relalg::AggrFunc::array_agg)
                                .Default(mlir::relalg::AggrFunc::count);
             if (aggrFunc == mlir::relalg::AggrFunc::count) {
                if (groupByAttrs.empty()) {
@@ -2931,6 +2961,34 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                }
                if (!aggrResultType.isa<mlir::db::NullableType>() && (groupByAttrs.empty())) {
                   aggrResultType = mlir::db::NullableType::get(builder.getContext(), aggrResultType);
+               }
+               if (aggrFunc == mlir::relalg::AggrFunc::array_agg) {
+                  // Identify type of the column and set return type of aggr function accordingly
+                  auto columnType = refAttr.getColumn().type;
+                  if (auto nullable = columnType.dyn_cast_or_null<mlir::db::NullableType>()) {
+                     columnType = nullable.getType();
+                  }
+                  if (auto integerType = columnType.dyn_cast_or_null<mlir::IntegerType>()) {
+                     auto intWidth = getIntegerWidth(integerType, false);
+                     if (intWidth < 64) {
+                        aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::INTEGER32);
+                     } else {
+                        aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::INTEGER64);
+                     }
+                  } else if (auto floatType = columnType.dyn_cast_or_null<mlir::FloatType>()) {
+                     if (floatType.getWidth() == 32) {
+                        aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::FLOAT);
+                     } else {
+                        aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::DOUBLE);
+                     }
+                  } else if (auto stringType = columnType.dyn_cast_or_null<mlir::db::StringType>()) {
+                     aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::STRING);
+                  } else if (auto arrayType = columnType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+                     aggrResultType = mlir::db::ArrayType::get(builder.getContext(), arrayType.getType());
+                  }
+                  if (refAttr.getColumn().type.isa<mlir::db::NullableType>()) {
+                     aggrResultType = mlir::db::NullableType::get(builder.getContext(), aggrResultType);
+                  }
                }
             }
             expr = windowBuilder.create<mlir::relalg::AggrFuncOp>(builder.getUnknownLoc(), aggrResultType, aggrFunc, currRel, refAttr);

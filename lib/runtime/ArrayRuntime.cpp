@@ -313,6 +313,33 @@ runtime::VarLen32 ArrayRuntime::sum(
         return leftArray + rightArray;
 }
 
+runtime::VarLen32 ArrayRuntime::agg(
+    runtime::VarLen32 left,
+    runtime::VarLen32 right,
+    int32_t leftType,
+    int32_t rightType) {
+        std::string leftVal = left.str();
+        std::string rightVal = right.str();
+        Array leftArray(leftVal, leftType);
+        Array rightArray(rightVal, rightType);
+        // If right has more dimensions
+        if (rightArray.getDimension() > leftArray.getDimension()) {
+            throw std::runtime_error("Array-agg: Aggregation not possible, due to inconsistent dimension structures");
+        }
+        // Case if state will be set to the first not empty argument
+        if (leftArray.getDimension() == rightArray.getDimension()) {
+            left = leftArray.increment();
+            leftVal = left.str();
+            leftArray = Array(leftVal, leftType);
+            return leftArray.append(rightArray);
+        }
+        if (leftArray.isEmpty()) {
+            return rightArray.increment();
+        } else {
+            return leftArray.append(rightArray);
+        }
+}
+
 int32_t ArrayRuntime::getHighestPosition(runtime::VarLen32 array, int32_t type) {
     std::string arrayVal = array.str();
     Array arrayObj(arrayVal, type);
