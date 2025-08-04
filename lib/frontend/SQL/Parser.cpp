@@ -556,6 +556,24 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
             }
             auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+
+            // Cast scalar to array element type
+            mlir::Type valueToCast = mlir::db::StringType::get(builder.getContext());
+            if (arrayType.getType() == runtime::Array::ArrayType::INTEGER32) {
+               valueToCast = builder.getI32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
+               valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
+               valueToCast = builder.getF32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
+               valueToCast = builder.getF64Type();
+            }
+            if (right.getType().isa<mlir::db::NullableType>()) {
+               valueToCast = mlir::db::NullableType::get(builder.getContext(), valueToCast);
+            }
+            right = builder.create<mlir::db::CastOp>(loc, valueToCast, right);
+            rightType = getBaseType(right.getType());
+
             // Identify right argument type to select correct function
             std::string funcName = "";
             if (auto scalarType = rightType.dyn_cast_or_null<mlir::IntegerType>()) {
@@ -583,6 +601,24 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
             }
             auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+
+            // Cast scalar to array element type
+            mlir::Type valueToCast = mlir::db::StringType::get(builder.getContext());
+            if (arrayType.getType() == runtime::Array::ArrayType::INTEGER32) {
+               valueToCast = builder.getI32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
+               valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
+               valueToCast = builder.getF32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
+               valueToCast = builder.getF64Type();
+            }
+            if (left.getType().isa<mlir::db::NullableType>()) {
+               valueToCast = mlir::db::NullableType::get(builder.getContext(), valueToCast);
+            }
+            left = builder.create<mlir::db::CastOp>(loc, valueToCast, left);
+            leftType = getBaseType(left.getType());
+
             // Identify left argument type to select correct function
             std::string funcName = "";
             if (auto scalarType = leftType.dyn_cast_or_null<mlir::IntegerType>()) {
@@ -632,6 +668,24 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
             auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
             // Scalar is not the left argument
             auto parameter4 = builder.create<mlir::db::ConstantOp>(loc, builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), 0));
+
+            // Cast scalar to array element type
+            mlir::Type valueToCast = mlir::db::StringType::get(builder.getContext());
+            if (arrayType.getType() == runtime::Array::ArrayType::INTEGER32) {
+               valueToCast = builder.getI32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
+               valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
+               valueToCast = builder.getF32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
+               valueToCast = builder.getF64Type();
+            }
+            if (right.getType().isa<mlir::db::NullableType>()) {
+               valueToCast = mlir::db::NullableType::get(builder.getContext(), valueToCast);
+            }
+            right = builder.create<mlir::db::CastOp>(loc, valueToCast, right);
+            rightType = getBaseType(right.getType());
+
             // Identify right argument type to select correct function
             std::string funcName = "";
             if (auto scalarType = rightType.dyn_cast_or_null<mlir::IntegerType>()) {
@@ -661,6 +715,24 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
             auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
             // Scalar is the left argument
             auto parameter4 = builder.create<mlir::db::ConstantOp>(loc, builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), 1));
+
+            // Cast scalar to array element type
+            mlir::Type valueToCast = mlir::db::StringType::get(builder.getContext());
+            if (arrayType.getType() == runtime::Array::ArrayType::INTEGER32) {
+               valueToCast = builder.getI32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
+               valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
+               valueToCast = builder.getF32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
+               valueToCast = builder.getF64Type();
+            }
+            if (left.getType().isa<mlir::db::NullableType>()) {
+               valueToCast = mlir::db::NullableType::get(builder.getContext(), valueToCast);
+            }
+            left = builder.create<mlir::db::CastOp>(loc, valueToCast, left);
+            leftType = getBaseType(left.getType());
+
             // Identify left argument type to select correct function
             std::string funcName = "";
             if (auto scalarType = leftType.dyn_cast_or_null<mlir::IntegerType>()) {
@@ -704,6 +776,24 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
             }
             auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+
+            // Cast scalar to array element type
+            mlir::Type valueToCast = mlir::db::StringType::get(builder.getContext());
+            if (arrayType.getType() == runtime::Array::ArrayType::INTEGER32) {
+               valueToCast = builder.getI32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
+               valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
+               valueToCast = builder.getF32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
+               valueToCast = builder.getF64Type();
+            }
+            if (right.getType().isa<mlir::db::NullableType>()) {
+               valueToCast = mlir::db::NullableType::get(builder.getContext(), valueToCast);
+            }
+            right = builder.create<mlir::db::CastOp>(loc, valueToCast, right);
+            rightType = getBaseType(right.getType());
+
             // Identify right argument type to select correct function
             std::string funcName = "";
             if (auto scalarType = rightType.dyn_cast_or_null<mlir::IntegerType>()) {
@@ -731,6 +821,24 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                returnType = mlir::db::NullableType::get(builder.getContext(), returnType);
             }
             auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+
+            // Cast scalar to array element type
+            mlir::Type valueToCast = mlir::db::StringType::get(builder.getContext());
+            if (arrayType.getType() == runtime::Array::ArrayType::INTEGER32) {
+               valueToCast = builder.getI32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
+               valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
+               valueToCast = builder.getF32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
+               valueToCast = builder.getF64Type();
+            }
+            if (left.getType().isa<mlir::db::NullableType>()) {
+               valueToCast = mlir::db::NullableType::get(builder.getContext(), valueToCast);
+            }
+            left = builder.create<mlir::db::CastOp>(loc, valueToCast, left);
+            leftType = getBaseType(left.getType());
+
             // Identify left argument type to select correct function
             std::string funcName = "";
             if (auto scalarType = leftType.dyn_cast_or_null<mlir::IntegerType>()) {
@@ -776,6 +884,24 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
             auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
             // Scalar is not the left argument
             auto parameter4 = builder.create<mlir::db::ConstantOp>(loc, builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), 0));
+
+            // Cast scalar to array element type
+            mlir::Type valueToCast = mlir::db::StringType::get(builder.getContext());
+            if (arrayType.getType() == runtime::Array::ArrayType::INTEGER32) {
+               valueToCast = builder.getI32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
+               valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
+               valueToCast = builder.getF32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
+               valueToCast = builder.getF64Type();
+            }
+            if (right.getType().isa<mlir::db::NullableType>()) {
+               valueToCast = mlir::db::NullableType::get(builder.getContext(), valueToCast);
+            }
+            right = builder.create<mlir::db::CastOp>(loc, valueToCast, right);
+            rightType = getBaseType(right.getType());
+
             // Identify right argument type to select correct function
             std::string funcName = "";
             if (auto scalarType = rightType.dyn_cast_or_null<mlir::IntegerType>()) {
@@ -805,6 +931,24 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
             auto parameter2 = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
             // Scalar is the left argument
             auto parameter4 = builder.create<mlir::db::ConstantOp>(loc, builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), 1));
+
+            // Cast scalar to array element type
+            mlir::Type valueToCast = mlir::db::StringType::get(builder.getContext());
+            if (arrayType.getType() == runtime::Array::ArrayType::INTEGER32) {
+               valueToCast = builder.getI32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
+               valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
+               valueToCast = builder.getF32Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
+               valueToCast = builder.getF64Type();
+            }
+            if (left.getType().isa<mlir::db::NullableType>()) {
+               valueToCast = mlir::db::NullableType::get(builder.getContext(), valueToCast);
+            }
+            left = builder.create<mlir::db::CastOp>(loc, valueToCast, left);
+            leftType = getBaseType(left.getType());
+
             // Identify left argument type to select correct function
             std::string funcName = "";
             if (auto scalarType = leftType.dyn_cast_or_null<mlir::IntegerType>()) {
@@ -1598,8 +1742,7 @@ mlir::Value frontend::sql::Parser::translateExpression(mlir::OpBuilder& builder,
       }
       case T_A_ArrayExpr: {
          auto* array = reinterpret_cast<A_ArrayExpr*>(node);
-         mlir::Type type = mlir::NoneType::get(builder.getContext());
-         auto result = translateArrayExpression(builder, array, context, type);
+         auto result = translateArrayExpression(builder, array, context);
          return result;
       }
       default: {
@@ -1697,7 +1840,7 @@ mlir::Value frontend::sql::Parser::translateIndirectionExpression(mlir::OpBuilde
    return argument;
 }
 
-mlir::Value frontend::sql::Parser::translateArrayExpression(mlir::OpBuilder& builder, A_ArrayExpr* stmt, TranslationContext& context, mlir::Type& arrayType) {
+mlir::Value frontend::sql::Parser::translateArrayExpression(mlir::OpBuilder& builder, A_ArrayExpr* stmt, TranslationContext& context) {
    // This function executes a Depth-first search, calling this function recursively
    auto loc = builder.getUnknownLoc();
    auto mlirContext = builder.getContext();
@@ -1713,28 +1856,28 @@ mlir::Value frontend::sql::Parser::translateArrayExpression(mlir::OpBuilder& bui
    }
 
    auto *element = stmt->elements->head;
-   // Defines the actual array element type
-   mlir::Type finalType = arrayType;
    // Iterate over each element in expression
    while (element) {
       auto* elementNode = reinterpret_cast<Node*>(element->data.ptr_value);
+      auto value = translateExpression(builder, elementNode, context);
+      auto valueType = getBaseType(value.getType());
+      auto baseReturnType = getBaseType(result.getType());
+      auto returnArrayType = baseReturnType.dyn_cast_or_null<mlir::db::ArrayType>();
       // Array expression contains further array expressions
-      if (elementNode->type == T_A_ArrayExpr) {
-         auto *childExpr = reinterpret_cast<A_ArrayExpr*>(elementNode);
-         auto value = translateArrayExpression(builder, childExpr, context, finalType);
+      if (auto arrayType = valueType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+         if (returnArrayType.getType() == runtime::Array::ArrayType::INTEGER32 && arrayType.getType() != returnArrayType.getType()) {
+            result = builder.create<mlir::db::CastOp>(loc, value.getType(), result);
+            returnType = value.getType();
+         }
          // If first element, no operation is needed (only adjust array type)
          if (element == stmt->elements->head) {
-            returnType = value.getType();
             result = value;
-         } else {
-            // Change the type of the array if the first element is NULL or empty, but array does not contain only empty array os NULLs 
-            // Otherwise NULL or an empty array as first element would enforce int32 as type
-            if (!finalType.isa<mlir::NoneType>() && arrayType.isa<mlir::NoneType>()) {
-               // If type changed cast left array to the array type of right
-               result = builder.create<mlir::db::CastOp>(loc, value.getType(), result);
-               returnType = value.getType();
-               arrayType = finalType;           
+            // Only if element contains a single element (increase dimension through RuntimeCall)
+            if (!stmt->elements->head->next) {
+               mlir::Value type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+               result = builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayIncrement", mlir::ValueRange({value, type})).getRes();
             }
+         } else {
             // Boolean that will define, if the left array should be increased in its dimension (only if it is the first element)
             mlir::Value changeLeft;
             if (element == stmt->elements->head->next) {
@@ -1746,13 +1889,11 @@ mlir::Value frontend::sql::Parser::translateArrayExpression(mlir::OpBuilder& bui
          }
       // Array expression contains other expressions or constants
       } else {
-         auto value = translateExpression(builder, elementNode, context);
-         auto valueType = getBaseType(value.getType());
          mlir::Value changeLeft = builder.create<mlir::db::ConstantOp>(loc, builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), 0));
 
          // Identify the type of the array elements
          // Again, otherwise NULL or an empty array as first element would enforce int32 as type
-         if (!valueType.isa<mlir::NoneType>() && arrayType.isa<mlir::NoneType>()) {
+         if (returnArrayType.getType() == runtime::Array::ArrayType::INTEGER32) {
             if (auto intType = mlir::dyn_cast_or_null<mlir::IntegerType>(valueType)) {
                if (intType.getWidth() > 32) returnType = mlir::db::ArrayType::get(mlirContext, runtime::Array::ArrayType::INTEGER64);
             } else if (auto floatType = mlir::dyn_cast_or_null<mlir::FloatType>(valueType)) {
@@ -1761,8 +1902,7 @@ mlir::Value frontend::sql::Parser::translateArrayExpression(mlir::OpBuilder& bui
             } else if (auto stringType = mlir::dyn_cast_or_null<mlir::db::StringType>(valueType)) {
                returnType = mlir::db::ArrayType::get(mlirContext, runtime::Array::ArrayType::STRING);
             }
-            result = builder.create<mlir::db::CastOp>(loc, returnType, result);
-            arrayType = valueType;           
+            result = builder.create<mlir::db::CastOp>(loc, returnType, result);        
          }         
          result = builder.create<mlir::db::ConstructorOp>(loc, returnType, result, value, changeLeft);
       }

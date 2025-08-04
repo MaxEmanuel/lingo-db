@@ -411,3 +411,7 @@ bool ArrayRuntime::isNull(runtime::VarLen32 array) {
     std::string value = array.str();
     return value == "";
 }
+
+bool ArrayRuntime::equal(runtime::VarLen32 left, runtime::VarLen32 right) {
+    return left.str() == right.str();
+}

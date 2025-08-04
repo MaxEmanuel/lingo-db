@@ -74,6 +74,8 @@ namespace runtime {
 
         static bool isNull(VarLen32 array);
 
+        static bool equal(VarLen32 left, VarLen32 right);
+
     };
 
 }

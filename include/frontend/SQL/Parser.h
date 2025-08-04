@@ -325,7 +325,7 @@ struct Parser {
    mlir::Value translateIndirectionExpression(mlir::OpBuilder& builder, A_Indirection* stmt, TranslationContext& context);
 
    //translates an arrayexpr expression (array constructor) 
-   mlir::Value translateArrayExpression(mlir::OpBuilder& builder, A_ArrayExpr* stmt, TranslationContext& context, mlir::Type& arrayType);
+   mlir::Value translateArrayExpression(mlir::OpBuilder& builder, A_ArrayExpr* stmt, TranslationContext& context);
 
    //translate sub-query in from clause
    mlir::Value translateSubSelect(mlir::OpBuilder& builder, SelectStmt* stmt, std::string alias, std::vector<std::string> colAlias, TranslationContext& context, ResolverScope& scope);

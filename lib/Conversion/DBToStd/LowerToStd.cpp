@@ -321,7 +321,7 @@ class StringCmpOpLowering : public OpConversionPattern<mlir::db::CmpOp> {
    }
    LogicalResult matchAndRewrite(mlir::db::CmpOp cmpOp, OpAdaptor adaptor, ConversionPatternRewriter& rewriter) const override {
       auto type = cmpOp.getLeft().getType();
-      if (!type.isa<db::StringType>()) {
+      if (!type.isa<db::StringType>() && !type.isa<db::ArrayType>()) {
          return failure();
       }
       Value res;
