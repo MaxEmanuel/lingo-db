@@ -2675,6 +2675,8 @@ std::tuple<mlir::Value, std::unordered_map<std::string, mlir::tuples::Column*>> 
                   } else {
                      aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::DOUBLE);
                   }
+               } else if (auto decimalType = columnType.dyn_cast_or_null<mlir::db::DecimalType>()) {
+                  aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::DOUBLE);
                } else if (auto stringType = columnType.dyn_cast_or_null<mlir::db::StringType>()) {
                   aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::STRING);
                } else if (auto arrayType = columnType.dyn_cast_or_null<mlir::db::ArrayType>()) {
@@ -3121,6 +3123,8 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                      } else {
                         aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::DOUBLE);
                      }
+                  } else if (auto decimalType = columnType.dyn_cast_or_null<mlir::db::DecimalType>()) {
+                     aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::DOUBLE);
                   } else if (auto stringType = columnType.dyn_cast_or_null<mlir::db::StringType>()) {
                      aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::STRING);
                   } else if (auto arrayType = columnType.dyn_cast_or_null<mlir::db::ArrayType>()) {

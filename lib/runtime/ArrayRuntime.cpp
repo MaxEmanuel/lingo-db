@@ -328,16 +328,18 @@ runtime::VarLen32 ArrayRuntime::agg(
         }
         // Case if state will be set to the first not empty argument
         if (leftArray.getDimension() == rightArray.getDimension()) {
+            if (leftArray.isEmpty()) {
+                VarLen32 result = leftArray.append(rightArray);
+                leftVal = result.str();
+                leftArray = Array(leftVal);
+                return leftArray.increment();
+            }
             left = leftArray.increment();
             leftVal = left.str();
             leftArray = Array(leftVal, leftType);
             return leftArray.append(rightArray);
         }
-        if (leftArray.isEmpty()) {
-            return rightArray.increment();
-        } else {
-            return leftArray.append(rightArray);
-        }
+        return leftArray.append(rightArray);
 }
 
 int32_t ArrayRuntime::getHighestPosition(runtime::VarLen32 array, int32_t type) {
