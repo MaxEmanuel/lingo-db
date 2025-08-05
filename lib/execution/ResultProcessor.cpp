@@ -55,10 +55,10 @@ void printTable(const std::shared_ptr<arrow::Table>& table) {
       convertHex.push_back(table->schema()->field(positions.size())->type()->id() == arrow::Type::FIXED_SIZE_BINARY);
       rowSep += std::string(33, '-');
       std::stringstream sstr;
-      if (table->schema()->field(positions.size())->type()->id() != arrow::Type::HALF_FLOAT) {
+      if (table->schema()->field(positions.size())->type()->id() != arrow::Type::HALF_FLOAT && table->schema()->field(positions.size())->type()->id() != arrow::Type::STRING) {
          arrow::PrettyPrint(*c.get(), options, &sstr); //NOLINT (clang-diagnostic-unused-result)
       } else {
-         lingodb::execution::ExtensionPrinter printer;
+         execution::ExtensionPrinter printer;
          printer.PrettyPrint(*c.get(), options, &sstr);
       }
       columnReps.push_back(sstr.str());

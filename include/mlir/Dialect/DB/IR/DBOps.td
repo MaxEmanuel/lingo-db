@@ -128,6 +128,16 @@ def DB_StringType : DB_Type<"String","string"> {
     }];
 }
 
+def DB_ArrayType : DB_Type<"Array","array"> {
+    let summary = "array";
+    let description = [{
+        Variable-length array storing multiple elements of same type.
+    }];
+
+    let parameters = (ins "int":$type);
+    let assemblyFormat="`<`$type`>`";
+}
+
 def AnyBool: AnyTypeOf<[I1,NullableType]>;
 def NullableDBType: AnyTypeOf<[AnyType,NullableType]>;
 
@@ -376,6 +386,13 @@ def CastOp : DB_Op<"cast",[DB_NeedsNullWrap,DB_MaySupportInvalidValues,Pure]> {
     let results = (outs NullableDBType:$res);
     let assemblyFormat = "$val `:` type($val) `->` type($res) attr-dict";
     let hasFolder = 1;
+}
+
+def ConstructorOp : DB_Op<"constructor"> {
+    let summary = "Constructs an array through the array constructor";
+    let arguments = (ins NullableDBType:$left, NullableDBType:$right, AnyBool:$changeLeft);
+    let results = (outs NullableDBType:$result);
+    let assemblyFormat = "$left `:` type($left) `,` $right `:` type($right) `,` $changeLeft `:` type($changeLeft) `->` type($result) attr-dict";
 }
 
 #endif// OPS

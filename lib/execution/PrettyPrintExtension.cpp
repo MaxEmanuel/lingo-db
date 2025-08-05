@@ -1,6 +1,7 @@
 #include "execution/PrettyPrintExtension.h"
+#include "runtime/Array.h"
 
-arrow::Status lingodb::execution::ExtensionPrinter::PrettyPrint(const arrow::ChunkedArray& chunked_arr, arrow::PrettyPrintOptions options, std::ostream* sink) {
+arrow::Status execution::ExtensionPrinter::PrettyPrint(const arrow::ChunkedArray& chunked_arr, arrow::PrettyPrintOptions options, std::ostream* sink) {
     this->sink = sink;
     this->options = options;
     *(this->sink) << "[";
@@ -19,9 +20,9 @@ arrow::Status lingodb::execution::ExtensionPrinter::PrettyPrint(const arrow::Chu
     return arrow::Status::OK();
 }
 
-arrow::Status lingodb::execution::ExtensionPrinter::Visit(const arrow::HalfFloatArray& array) {
+arrow::Status execution::ExtensionPrinter::Visit(const arrow::HalfFloatArray& array) {
     unsigned index = 0;
-    union lingodb::execution::HalfFloatValue halfFloatValue;
+    union execution::HalfFloatValue halfFloatValue;
     bool setDots = false;
     for (std::optional<typename arrow::HalfFloatType::c_type> value : array) {
         if (value.has_value() && (index < options.window || index >= (array.length() - options.window))) {
@@ -43,6 +44,43 @@ arrow::Status lingodb::execution::ExtensionPrinter::Visit(const arrow::HalfFloat
     return arrow::Status::OK();
 }
 
-arrow::Status lingodb::execution::ExtensionPrinter::Visit(const arrow::Array& array) {
+arrow::Status execution::ExtensionPrinter::Visit(const arrow::StringArray& array) {
+    int index = 0;
+    bool setDots = false;
+    for (std::optional<std::string_view> value : array) {
+        if (index < options.window || index >= (array.length() - options.window)) {
+            *sink << "\n";
+            if (value.has_value()) {
+                std::string str(value.value());
+                if (str.length() < runtime::Array::ARRAYHEADER.length()) {
+                    *sink << str;
+                } else {
+                    std::string header = str.substr(0, runtime::Array::ARRAYHEADER.length());
+                    if (header == runtime::Array::ARRAYHEADER) {
+                        runtime::Array arrayObj(str);
+                        *sink << arrayObj.print();
+                    } else {
+                        *sink << str;
+                    }
+                }
+            } else {
+                *sink << "null";
+            }
+            if (index < array.length() - 1) {
+               *sink << ",";
+            } else {
+               *sink << "\n";
+            }
+        } else if (!setDots) {
+            *sink << "\n";
+            *sink << "...";
+            setDots = true;
+        }
+        ++index;
+    }
+    return arrow::Status::OK();
+}
+
+arrow::Status execution::ExtensionPrinter::Visit(const arrow::Array& array) {
     return arrow::Status::NotImplemented("Can not compute sum for array of type ", array.type()->ToString());
 }

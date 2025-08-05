@@ -27,6 +27,7 @@
 #include <llvm/ADT/TypeSwitch.h>
 #include <iostream>
 #include <mlir/Dialect/util/FunctionHelper.h>
+#include <runtime/Array.h>
 
 using namespace mlir;
 
@@ -1762,7 +1763,12 @@ class SumAggrFunc : public DistAggrFunc {
       if (stateType.isa<mlir::db::NullableType>()) {
          return builder.create<mlir::db::NullOp>(loc, stateType);
       } else {
-         return builder.create<mlir::db::ConstantOp>(loc, stateType, builder.getI64IntegerAttr(0));
+         if (auto arrayType = stateType.dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            return builder.create<mlir::db::RuntimeCall>(loc, stateType, "EmptyArray", mlir::ValueRange({type})).getRes();
+         } else {
+            return builder.create<mlir::db::ConstantOp>(loc, stateType, builder.getI64IntegerAttr(0));
+         }
       }
    }
    mlir::Value aggregate(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value state, mlir::ValueRange args) override {
@@ -1770,13 +1776,27 @@ class SumAggrFunc : public DistAggrFunc {
          // state nullable, arg nullable
          mlir::Value isStateNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), state);
          mlir::Value isArgNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), args[0]);
-         mlir::Value sum = builder.create<mlir::db::AddOp>(loc, state, args[0]);
-         sum = builder.create<mlir::arith::SelectOp>(loc, isArgNull, state, sum);
-         return builder.create<mlir::arith::SelectOp>(loc, isStateNull, args[0], sum);
+         mlir::Value zero;
+         if (auto arrayType = getBaseType(args[0].getType()).dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            zero = builder.create<mlir::db::RuntimeCall>(loc, getBaseType(stateType), "EmptyArray", mlir::ValueRange({type})).getRes();
+         } else {
+            zero = builder.create<mlir::db::ConstantOp>(loc, getBaseType(stateType), builder.getI64IntegerAttr(0));
+         }
+         zero = builder.create<mlir::db::AsNullableOp>(loc, stateType, zero);
+         mlir::Value newState = builder.create<mlir::arith::SelectOp>(loc, isStateNull, zero, state);
+         mlir::Value newArg = builder.create<mlir::arith::SelectOp>(loc, isArgNull, zero, args[0]);
+         return builder.create<mlir::db::AddOp>(loc, newState, newArg);
       } else if (stateType.isa<mlir::db::NullableType>()) {
          // state nullable, arg not nullable
          mlir::Value isStateNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), state);
-         mlir::Value zero = builder.create<mlir::db::ConstantOp>(loc, getBaseType(stateType), builder.getI64IntegerAttr(0));
+         mlir::Value zero;
+         if (auto arrayType = args[0].getType().dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            zero = builder.create<mlir::db::RuntimeCall>(loc, getBaseType(stateType), "EmptyArray", mlir::ValueRange({type})).getRes();
+         } else {
+            zero = builder.create<mlir::db::ConstantOp>(loc, getBaseType(stateType), builder.getI64IntegerAttr(0));
+         }
          zero = builder.create<mlir::db::AsNullableOp>(loc, stateType, zero);
          state = builder.create<mlir::arith::SelectOp>(loc, isStateNull, zero, state);
          return builder.create<mlir::db::AddOp>(loc, state, args[0]);
@@ -1790,7 +1810,13 @@ class SumAggrFunc : public DistAggrFunc {
          // state nullable, arg not nullable
          mlir::Value isLeftNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), left);
          mlir::Value isRightNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), right);
-         mlir::Value zero = builder.create<mlir::db::ConstantOp>(loc, getBaseType(stateType), builder.getI64IntegerAttr(0));
+         mlir::Value zero;
+         if (auto arrayType = getBaseType(left.getType()).dyn_cast_or_null<mlir::db::ArrayType>()) {
+            auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+            zero = builder.create<mlir::db::RuntimeCall>(loc, getBaseType(stateType), "EmptyArray", mlir::ValueRange({type})).getRes();
+         } else {
+            zero = builder.create<mlir::db::ConstantOp>(loc, getBaseType(stateType), builder.getI64IntegerAttr(0));
+         }
          zero = builder.create<mlir::db::AsNullableOp>(loc, stateType, zero);
          mlir::Value newLeft = builder.create<mlir::arith::SelectOp>(loc, isLeftNull, zero, left);
          mlir::Value newRight = builder.create<mlir::arith::SelectOp>(loc, isRightNull, zero, right);
@@ -1803,6 +1829,152 @@ class SumAggrFunc : public DistAggrFunc {
       }
    }
 };
+class ArrayAggAggrFunc : public DistAggrFunc {
+   public:
+   explicit ArrayAggAggrFunc(const mlir::tuples::ColumnDefAttr& destAttribute, const mlir::tuples::ColumnRefAttr& sourceColumn) : DistAggrFunc(destAttribute, sourceColumn) {}
+   mlir::Value createDefaultValue(mlir::OpBuilder& builder, mlir::Location loc) override {
+      auto baseType = getBaseType(stateType);
+      if (stateType.isa<mlir::db::NullableType>()) {
+         return builder.create<mlir::db::NullOp>(loc, stateType);
+      } else {
+         auto arrayType = baseType.dyn_cast_or_null<mlir::db::ArrayType>();
+         auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(arrayType.getType()));
+         return builder.create<mlir::db::RuntimeCall>(loc, stateType, "EmptyArray", mlir::ValueRange({type})).getRes();
+      }
+   }
+   mlir::Value aggregate(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value state, mlir::ValueRange args) override {
+      auto left = state;
+      auto right = args[0];
+      auto leftType = getBaseType(left.getType());
+      auto rightType = getBaseType(right.getType());
+      mlir::Type resultType = left.getType();
+      bool onlyAppend = false;
+
+      // Right / argument can also be another type
+      // Ensure that it will be transformed to an array
+      if (!rightType.isa<mlir::db::ArrayType>()) {
+         onlyAppend = true;
+      }
+
+      auto atFront = builder.create<mlir::db::ConstantOp>(loc, builder.getI1Type(), builder.getIntegerAttr(builder.getI1Type(), 0));
+      if (auto intType = rightType.dyn_cast_or_null<mlir::IntegerType>()) {
+         if (intType.getWidth() < 64) {
+            mlir::Type arrayType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::INTEGER32);
+            auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(runtime::Array::ArrayType::INTEGER32));
+            auto array = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "EmptyArray", mlir::ValueRange({type})).getRes();
+            arrayType = rightType.isa<mlir::db::NullableType>() ? mlir::db::NullableType::get(builder.getContext(), arrayType) : arrayType;
+            right = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "ArrayConcatI32", mlir::ValueRange({array, type, right, atFront})).getRes();
+         } else {
+            mlir::Type arrayType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::INTEGER64);
+            auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(runtime::Array::ArrayType::INTEGER64));
+            auto array = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "EmptyArray", mlir::ValueRange({type})).getRes();
+            arrayType = rightType.isa<mlir::db::NullableType>() ? mlir::db::NullableType::get(builder.getContext(), arrayType) : arrayType;
+            right = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "ArrayConcatI64", mlir::ValueRange({array, type, right, atFront})).getRes();
+         }
+      } else if (auto floatType = rightType.dyn_cast_or_null<mlir::FloatType>()) {
+         if (floatType.getWidth() < 64) {
+            mlir::Type arrayType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::FLOAT);
+            auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(runtime::Array::ArrayType::FLOAT));
+            auto array = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "EmptyArray", mlir::ValueRange({type})).getRes();
+            arrayType = rightType.isa<mlir::db::NullableType>() ? mlir::db::NullableType::get(builder.getContext(), arrayType) : arrayType;
+            right = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "ArrayConcatF32", mlir::ValueRange({array, type, right, atFront})).getRes();
+         } else {
+            mlir::Type arrayType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::DOUBLE);
+            auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(runtime::Array::ArrayType::DOUBLE));
+            auto array = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "EmptyArray", mlir::ValueRange({type})).getRes();
+            arrayType = rightType.isa<mlir::db::NullableType>() ? mlir::db::NullableType::get(builder.getContext(), arrayType) : arrayType;
+            right = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "ArrayConcatF64", mlir::ValueRange({array, type, right, atFront})).getRes();
+         }
+      } else if (rightType.isa<mlir::db::DecimalType>()) {
+         mlir::Type castType = builder.getF64Type();
+         castType = leftType.isa<mlir::db::NullableType>() ? mlir::db::NullableType::get(builder.getContext(), castType) : castType;
+         mlir::Type arrayType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::DOUBLE);
+         auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(runtime::Array::ArrayType::DOUBLE));
+         auto array = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "EmptyArray", mlir::ValueRange({type})).getRes();
+         arrayType = rightType.isa<mlir::db::NullableType>() ? mlir::db::NullableType::get(builder.getContext(), arrayType) : arrayType;
+         right = builder.create<mlir::db::CastOp>(loc, castType, right);
+         right = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "ArrayConcatF64", mlir::ValueRange({array, type, right, atFront})).getRes();
+      } else if (rightType.isa<mlir::db::StringType>()) {
+         mlir::Type arrayType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::STRING);
+         auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(runtime::Array::ArrayType::STRING));
+         auto array = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "EmptyArray", mlir::ValueRange({type})).getRes();
+         arrayType = rightType.isa<mlir::db::NullableType>() ? mlir::db::NullableType::get(builder.getContext(), arrayType) : arrayType;
+         right = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "ArrayConcatString", mlir::ValueRange({array, type, right, atFront})).getRes();
+      }
+
+      auto leftArrayType = getBaseType(left.getType()).dyn_cast_or_null<mlir::db::ArrayType>();
+      auto rightArrayType = getBaseType(right.getType()).dyn_cast_or_null<mlir::db::ArrayType>();
+      if (leftArrayType.getType() != rightArrayType.getType()) {
+         auto castType = left.getType();
+         if (!castType.isa<mlir::db::NullableType>() && rightType.isa<mlir::db::NullableType>()) {
+            castType = mlir::db::NullableType::get(builder.getContext(), castType);
+         } else if (castType.isa<mlir::db::NullableType>() && !rightType.isa<mlir::db::NullableType>()) {
+            auto type = castType.dyn_cast_or_null<mlir::db::NullableType>();
+            castType = type.getType();
+         }
+         right = builder.create<mlir::db::CastOp>(loc, castType, right);
+         rightArrayType = leftArrayType;
+      }
+      auto constantLeftType = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(leftArrayType.getType()));
+      auto constantRightType = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(rightArrayType.getType()));
+
+      // Either user concat or agg depending if a single element should be added (otherwise result dimension would be incorrect)
+      if (stateType.isa<mlir::db::NullableType>() && args[0].getType().isa<mlir::db::NullableType>()) {
+         // state nullable, arg nullable
+         mlir::Value isStateNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), left);
+         mlir::Value isArgNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), right);
+         mlir::Value aggregation;
+         if (onlyAppend) {
+            aggregation = builder.create<mlir::db::RuntimeCall>(loc, resultType, "ArrayConcat", mlir::ValueRange({left, right, constantLeftType, constantRightType})).getRes();
+         } else {
+            aggregation = builder.create<mlir::db::RuntimeCall>(loc, resultType, "ArrayAgg", mlir::ValueRange({left, right, constantLeftType, constantRightType})).getRes();
+         }
+         aggregation = builder.create<mlir::arith::SelectOp>(loc, isArgNull, left, aggregation);
+         return builder.create<mlir::arith::SelectOp>(loc, isStateNull, right, aggregation);
+      } else if (stateType.isa<mlir::db::NullableType>()) {
+         // state nullable, arg not nullable
+         mlir::Value isStateNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), left);
+         mlir::Value empty = builder.create<mlir::db::RuntimeCall>(loc, getBaseType(resultType), "EmptyArray", mlir::ValueRange({constantLeftType})).getRes();
+         empty = builder.create<mlir::db::AsNullableOp>(loc, empty.getType(), empty);
+         left = builder.create<mlir::arith::SelectOp>(loc, isStateNull, empty, left);
+         if (onlyAppend) {
+            return builder.create<mlir::db::RuntimeCall>(loc, resultType, "ArrayConcat", mlir::ValueRange({left, right, constantLeftType, constantRightType})).getRes();
+         } else {
+            return builder.create<mlir::db::RuntimeCall>(loc, resultType, "ArrayAgg", mlir::ValueRange({left, right, constantLeftType, constantRightType})).getRes();
+         }
+      } else {
+         if (onlyAppend) {
+            return builder.create<mlir::db::RuntimeCall>(loc, resultType, "ArrayConcat", mlir::ValueRange({left, right, constantLeftType, constantRightType})).getRes();
+         } else {
+            return builder.create<mlir::db::RuntimeCall>(loc, resultType, "ArrayAgg", mlir::ValueRange({left, right, constantLeftType, constantRightType})).getRes();
+         }
+      }
+   }
+   mlir::Value combine(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value left, mlir::Value right) override {
+      auto leftType = getBaseType(left.getType());
+      auto rightType = getBaseType(right.getType());
+      auto leftArrayType = leftType.dyn_cast_or_null<mlir::db::ArrayType>();
+      auto rightArrayType = rightType.dyn_cast_or_null<mlir::db::ArrayType>();
+      auto constantLeftType = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(leftArrayType.getType()));
+      auto constantRightType = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(rightArrayType.getType()));
+      if (stateType.isa<mlir::db::NullableType>()) {
+         // state nullable, arg not nullable
+         mlir::Value isLeftNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), left);
+         mlir::Value isRightNull = builder.create<mlir::db::IsNullOp>(loc, builder.getI1Type(), right);
+         mlir::Value empty = builder.create<mlir::db::RuntimeCall>(loc, getBaseType(stateType), "EmptyArray", mlir::ValueRange({constantLeftType})).getRes();
+         empty = builder.create<mlir::db::AsNullableOp>(loc, stateType, empty);
+         mlir::Value newLeft = builder.create<mlir::arith::SelectOp>(loc, isLeftNull, empty, left);
+         mlir::Value newRight = builder.create<mlir::arith::SelectOp>(loc, isRightNull, empty, right);
+         mlir::Value agg = builder.create<mlir::db::RuntimeCall>(loc, stateType, "ArrayAgg", mlir::ValueRange({left, right, constantLeftType, constantRightType})).getRes();
+         mlir::Value bothNull = builder.create<mlir::arith::AndIOp>(loc, isLeftNull, isRightNull);
+         return builder.create<mlir::arith::SelectOp>(loc, bothNull, left, agg);
+      } else {
+         //state non-nullable, arg not nullable
+         return builder.create<mlir::db::RuntimeCall>(loc, stateType, "ArrayAgg", mlir::ValueRange({left, right, constantLeftType, constantRightType})).getRes();
+      }
+   }
+};
+
 class OrderedWindowFunc {
    protected:
    mlir::tuples::ColumnDefAttr destAttribute;
@@ -2003,6 +2175,8 @@ class WindowLowering : public OpConversionPattern<mlir::relalg::WindowOp> {
                distAggrFunc = std::make_shared<AnyAggrFunc>(destColumnAttr, sourceColumnAttr);
             } else if (aggrFn.getFn() == mlir::relalg::AggrFunc::count) {
                distAggrFunc = std::make_shared<CountAggrFunc>(destColumnAttr, sourceColumnAttr);
+            }  else if (aggrFn.getFn() == mlir::relalg::AggrFunc::array_agg) {
+               distAggrFunc = std::make_shared<ArrayAggAggrFunc>(destColumnAttr, sourceColumnAttr);
             }
          }
          if (auto countOp = mlir::dyn_cast_or_null<mlir::relalg::CountRowsOp>(computedVal.getDefiningOp())) {
@@ -2344,6 +2518,8 @@ class AggregationLowering : public OpConversionPattern<mlir::relalg::Aggregation
                distAggrFunc = std::make_shared<AnyAggrFunc>(destColumnAttr, sourceColumnAttr);
             } else if (aggrFn.getFn() == mlir::relalg::AggrFunc::count) {
                distAggrFunc = std::make_shared<CountAggrFunc>(destColumnAttr, sourceColumnAttr);
+            }  else if (aggrFn.getFn() == mlir::relalg::AggrFunc::array_agg) {
+               distAggrFunc = std::make_shared<ArrayAggAggrFunc>(destColumnAttr, sourceColumnAttr);
             }
          }
          if (auto countOp = mlir::dyn_cast_or_null<mlir::relalg::CountRowsOp>(computedVal.getDefiningOp())) {
@@ -2432,6 +2608,8 @@ class GroupJoinLowering : public OpConversionPattern<mlir::relalg::GroupJoinOp> 
                distAggrFunc = std::make_shared<AnyAggrFunc>(destColumnAttr, sourceColumnAttr);
             } else if (aggrFn.getFn() == mlir::relalg::AggrFunc::count) {
                distAggrFunc = std::make_shared<CountAggrFunc>(destColumnAttr, sourceColumnAttr);
+            } else if (aggrFn.getFn() == mlir::relalg::AggrFunc::array_agg) {
+               distAggrFunc = std::make_shared<ArrayAggAggrFunc>(destColumnAttr, sourceColumnAttr);
             }
          }
          if (auto countOp = mlir::dyn_cast_or_null<mlir::relalg::CountRowsOp>(computedVal.getDefiningOp())) {

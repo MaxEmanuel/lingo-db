@@ -1,3 +1,4 @@
+message("Hello" ${OPENBLAS_LIB})
 add_executable(sql sql.cpp)
 target_link_libraries(sql runner utility runtime mlir-support)
 target_link_options(sql PUBLIC -Wl,--export-dynamic)

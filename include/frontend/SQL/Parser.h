@@ -59,6 +59,7 @@ enum class ExpressionType {
    OPERATOR_MINUS,
    OPERATOR_MULTIPLY,
    OPERATOR_DIVIDE,
+   OPERATOR_POW,
    OPERATOR_CONCAT,
    OPERATOR_MOD,
    OPERATOR_CAST,
@@ -282,7 +283,7 @@ struct Parser {
    void translateInsertStmt(mlir::OpBuilder& builder, InsertStmt* stmt);
 
    //creates a column type from the given information
-   runtime::ColumnType createColumnType(std::string datatypeName, bool isNull, std::vector<std::variant<size_t, std::string>> typeModifiers);
+   runtime::ColumnType createColumnType(std::string datatypeName, bool isNull, bool isArray, std::vector<std::variant<size_t, std::string>> typeModifiers);
 
    //translate a column definition in a create statment
    std::pair<std::string, std::shared_ptr<runtime::ColumnMetaData>> translateColumnDef(ColumnDef* columnDef);
@@ -319,6 +320,12 @@ struct Parser {
 
    //translates a rangevar expression inside a from clause, i.e. a table scan
    mlir::Value translateRangeVar(mlir::OpBuilder& builder, RangeVar* stmt, TranslationContext& context, ResolverScope& scope);
+
+   //translates an indirection expression (slice and subscript operators for arrays)
+   mlir::Value translateIndirectionExpression(mlir::OpBuilder& builder, A_Indirection* stmt, TranslationContext& context);
+
+   //translates an arrayexpr expression (array constructor) 
+   mlir::Value translateArrayExpression(mlir::OpBuilder& builder, A_ArrayExpr* stmt, TranslationContext& context);
 
    //translate sub-query in from clause
    mlir::Value translateSubSelect(mlir::OpBuilder& builder, SelectStmt* stmt, std::string alias, std::vector<std::string> colAlias, TranslationContext& context, ResolverScope& scope);

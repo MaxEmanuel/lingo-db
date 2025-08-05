@@ -69,6 +69,9 @@ std::tuple<arrow::Type::type, uint32_t, uint32_t> convertTypeToArrow(mlir::Type 
          case 32: typeConstant = arrow::Type::type::FLOAT; break;
          case 64: typeConstant = arrow::Type::type::DOUBLE; break;
       }
+   } else if (auto arrayType = type.dyn_cast_or_null<mlir::db::ArrayType>()) {
+      typeConstant = arrow::Type::type::STRING;
+      param1 = arrayType.getType();
    } else if (auto stringType = type.dyn_cast_or_null<mlir::db::StringType>()) {
       typeConstant = arrow::Type::type::STRING;
    } else if (auto dateType = type.dyn_cast_or_null<mlir::db::DateType>()) {

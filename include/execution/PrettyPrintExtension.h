@@ -10,8 +10,9 @@
  * so that 16-bit floating point values can be printed as floating point values. Thereby stored uint16_t
  * values of Apache Arrow are converted to float values (32-bit). 
  * Can be removed if Apache Arrow library is updated to support this.
+ * Futhermore this file also ensures that arrays are printed correctly.
  */
-namespace lingodb::execution {
+namespace execution {
 
 class ExtensionPrinter : public arrow::ArrayVisitor {
     private:
@@ -22,6 +23,8 @@ class ExtensionPrinter : public arrow::ArrayVisitor {
     arrow::Status PrettyPrint(const arrow::ChunkedArray& chunked_arr, arrow::PrettyPrintOptions options, std::ostream* sink);
 
     arrow::Status Visit(const arrow::HalfFloatArray& array) override;
+
+    arrow::Status Visit(const arrow::StringArray& array) override;
 
     arrow::Status Visit(const arrow::Array& array);
 };
