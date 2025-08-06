@@ -851,6 +851,8 @@ class CreateTableLowering : public SubOpConversionPattern<mlir::subop::CreateRes
          // TODO: actually handle cases where 128 bits are insufficient.
          auto prec = std::min(decimalType.getP(), 38);
          return "decimal[" + std::to_string(prec) + "," + std::to_string(decimalType.getS()) + "]";
+      } else if (auto bfloatType = type.dyn_cast_or_null<mlir::BFloat16Type>()) {
+         return "bfloat";
       } else if (auto floatType = type.dyn_cast_or_null<mlir::FloatType>()) {
          return "float[" + std::to_string(floatType.getWidth()) + "]";
       } else if (auto stringType = type.dyn_cast_or_null<mlir::db::StringType>()) {
