@@ -354,6 +354,9 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       auto packed = builder.create<mlir::util::PackOp>(loc, values);
       return builder.create<mlir::db::Hash>(loc, builder.getIndexType(), packed);
    }
+   if (funcName == "random") {
+      return builder.create<mlir::db::RuntimeCall>(loc, builder.getF64Type(), "Random", mlir::ValueRange({})).getRes();
+   }
    if (funcName == "array_fill") {
       // Transform tree of first parameter into mlir operations
       auto parameter1 = translateExpression(builder, reinterpret_cast<Node*>(funcCall->args_->head->data.ptr_value), context);
