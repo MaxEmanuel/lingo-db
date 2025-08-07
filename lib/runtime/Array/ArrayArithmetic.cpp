@@ -167,6 +167,14 @@ runtime::VarLen32 Array::scalarAdd(int64_t value) {
 }
 
 template<>
+runtime::VarLen32 Array::scalarAdd(__bf16 value) {
+    if (type != ArrayType::BFLOAT) {
+        throw std::runtime_error("Array-Add: Array elements are not of type bfloat");
+    }
+    return executeScalarOperation<__bf16, ArrayAddOperator>(value, true);
+}
+
+template<>
 runtime::VarLen32 Array::scalarAdd(float value) {
     if (type != ArrayType::FLOAT) {
         throw std::runtime_error("Array-Add: Array elements are not of type float");
@@ -196,6 +204,14 @@ runtime::VarLen32 Array::scalarSub(int64_t value, bool isLeft) {
         throw std::runtime_error("Array-Add: Array elements are not of type integer (64-bit)");
     }
     return executeScalarOperation<int64_t, ArraySubOperator>(value, isLeft);
+}
+
+template<>
+runtime::VarLen32 Array::scalarSub(__bf16 value, bool isLeft) {
+    if (type != ArrayType::BFLOAT) {
+        throw std::runtime_error("Array-Add: Array elements are not of type bfloat");
+    }
+    return executeScalarOperation<__bf16, ArraySubOperator>(value, isLeft);
 }
 
 template<>
@@ -231,6 +247,14 @@ runtime::VarLen32 Array::scalarMul(int64_t value) {
 }
 
 template<>
+runtime::VarLen32 Array::scalarMul(__bf16 value) {
+    if (type != ArrayType::BFLOAT) {
+        throw std::runtime_error("Array-Add: Array elements are not of type bfloat");
+    }
+    return executeScalarOperation<__bf16, ArrayMulOperator>(value, true);
+}
+
+template<>
 runtime::VarLen32 Array::scalarMul(float value) {
     if (type != ArrayType::FLOAT) {
         throw std::runtime_error("Array-Add: Array elements are not of type float");
@@ -263,6 +287,14 @@ runtime::VarLen32 Array::scalarDiv(int64_t value, bool isLeft) {
 }
 
 template<>
+runtime::VarLen32 Array::scalarDiv(__bf16 value, bool isLeft) {
+    if (type != ArrayType::BFLOAT) {
+        throw std::runtime_error("Array-Add: Array elements are not of type bfloat");
+    }
+    return executeScalarOperation<__bf16, ArrayDivOperator>(value, isLeft);
+}
+
+template<>
 runtime::VarLen32 Array::scalarDiv(float value, bool isLeft) {
     if (type != ArrayType::FLOAT) {
         throw std::runtime_error("Array-Add: Array elements are not of type float");
@@ -276,6 +308,21 @@ runtime::VarLen32 Array::scalarDiv(double value, bool isLeft) {
         throw std::runtime_error("Array-Add: Array elements are not of type double");
     }
     return executeScalarOperation<double, ArrayDivOperator>(value, isLeft);
+}
+
+template<>
+void runtime::MatrixMultiplicationOperator::Operator<__bf16>(const __bf16 *left, const __bf16 *right, uint32_t rowsA, uint32_t rowsB, uint32_t columnsB, char *&buffer) {
+    size_t sizeC = rowsA * columnsB;
+	std::vector<float> result;
+	result.reserve(sizeC);
+
+	runtime::Gemm<uint16_t, float>(rowsA, columnsB, rowsB, reinterpret_cast<const uint16_t *>(left), reinterpret_cast<const uint16_t *>(right), result.data());
+
+    for (size_t idx = 0; idx < sizeC; idx++) {
+        auto value = static_cast<__bf16>(result[idx]);
+        memcpy(buffer, &value, sizeof(__bf16));
+        buffer += sizeof(__bf16);
+    }
 }
 
 runtime::VarLen32 Array::matrixMul(Array &other) {
@@ -333,7 +380,11 @@ runtime::VarLen32 Array::matrixMul(Array &other) {
         writeToBuffer(buffer, &colsB, 1);
     }
 
-    if (this->type == ArrayType::FLOAT) {
+    if (this->type == ArrayType::BFLOAT) {
+        auto *leftVal = reinterpret_cast<const __bf16*>(this->elements);
+        auto *rightVal = reinterpret_cast<const __bf16*>(other.getElements());
+        MatrixMultiplicationOperator::Operator(leftVal, rightVal, rowsA, rowsB, colsB, buffer);
+    } else if (this->type == ArrayType::FLOAT) {
         auto *leftVal = reinterpret_cast<const float*>(this->elements);
         auto *rightVal = reinterpret_cast<const float*>(other.getElements());
         MatrixMultiplicationOperator::Operator(leftVal, rightVal, rowsA, rowsB, colsB, buffer);

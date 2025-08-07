@@ -37,6 +37,13 @@ runtime::VarLen32 ArrayRuntime::appendInt64(runtime::VarLen32 array, int32_t typ
     else return arrayObj.append(value);
 }
 
+runtime::VarLen32 ArrayRuntime::appendBFloat(runtime::VarLen32 array, int32_t type, __bf16 value, bool isFront) {
+    std::string arrayVal = array.str();
+    Array arrayObj(arrayVal, type);
+    if (isFront) return arrayObj.appendFront(value);
+    else return arrayObj.append(value);
+}
+
 runtime::VarLen32 ArrayRuntime::appendFloat(runtime::VarLen32 array, int32_t type, float value, bool isFront) {
     std::string arrayVal = array.str();
     Array arrayObj(arrayVal, type);
@@ -142,6 +149,12 @@ runtime::VarLen32 ArrayRuntime::scalarAddInt64(runtime::VarLen32 array, int32_t 
     return arrayObj.scalarAdd(value);
 }
 
+runtime::VarLen32 ArrayRuntime::scalarAddBFloat(runtime::VarLen32 array, int32_t type, __bf16 value) {
+    std::string arrayVal = array.str();
+    Array arrayObj(arrayVal, type);
+    return arrayObj.scalarAdd(value);
+}
+
 runtime::VarLen32 ArrayRuntime::scalarAddFloat(runtime::VarLen32 array, int32_t type, float value) {
     std::string arrayVal = array.str();
     Array arrayObj(arrayVal, type);
@@ -161,6 +174,12 @@ runtime::VarLen32 ArrayRuntime::scalarSubInt32(runtime::VarLen32 array, int32_t 
 }
 
 runtime::VarLen32 ArrayRuntime::scalarSubInt64(runtime::VarLen32 array, int32_t type, int64_t value, bool isleft) {
+    std::string arrayVal = array.str();
+    Array arrayObj(arrayVal, type);
+    return arrayObj.scalarSub(value, isleft);
+}
+
+runtime::VarLen32 ArrayRuntime::scalarSubBFloat(runtime::VarLen32 array, int32_t type, __bf16 value, bool isleft) {
     std::string arrayVal = array.str();
     Array arrayObj(arrayVal, type);
     return arrayObj.scalarSub(value, isleft);
@@ -190,6 +209,12 @@ runtime::VarLen32 ArrayRuntime::scalarMulInt64(runtime::VarLen32 array, int32_t 
     return arrayObj.scalarMul(value);
 }
 
+runtime::VarLen32 ArrayRuntime::scalarMulBFloat(runtime::VarLen32 array, int32_t type, __bf16 value) {
+    std::string arrayVal = array.str();
+    Array arrayObj(arrayVal, type);
+    return arrayObj.scalarMul(value);
+}
+
 runtime::VarLen32 ArrayRuntime::scalarMulFloat(runtime::VarLen32 array, int32_t type, float value) {
     std::string arrayVal = array.str();
     Array arrayObj(arrayVal, type);
@@ -214,6 +239,12 @@ runtime::VarLen32 ArrayRuntime::scalarDivInt64(runtime::VarLen32 array, int32_t 
     return arrayObj.scalarDiv(value, isleft);
 }
 
+runtime::VarLen32 ArrayRuntime::scalarDivBFloat(runtime::VarLen32 array, int32_t type, __bf16 value, bool isleft) {
+    std::string arrayVal = array.str();
+    Array arrayObj(arrayVal, type);
+    return arrayObj.scalarDiv(value, isleft);
+}
+
 runtime::VarLen32 ArrayRuntime::scalarDivFloat(runtime::VarLen32 array, int32_t type, float value, bool isleft) {
     std::string arrayVal = array.str();
     Array arrayObj(arrayVal, type);
@@ -233,6 +264,12 @@ runtime::VarLen32 ArrayRuntime::fillInt32(int32_t value, runtime::VarLen32 array
 }
 
 runtime::VarLen32 ArrayRuntime::fillInt64(int64_t value, runtime::VarLen32 array, int32_t type) {
+    std::string arrayVal = array.str();
+    Array arrayObj(arrayVal, type);
+    return Array::fill(value, arrayObj);
+}
+
+runtime::VarLen32 ArrayRuntime::fillBFloat(__bf16 value, runtime::VarLen32 array, int32_t type) {
     std::string arrayVal = array.str();
     Array arrayObj(arrayVal, type);
     return Array::fill(value, arrayObj);
@@ -371,6 +408,17 @@ int64_t ArrayRuntime::toInt64(runtime::VarLen32 array) {
         throw std::runtime_error(array.str() + " is not of type INTEGER");
     } catch (std::out_of_range &exc) {
         throw std::runtime_error(array.str() + " is out of range of 64-Bit INTEGER");
+    }
+}
+
+__bf16 ArrayRuntime::toBFloat(runtime::VarLen32 array) {
+    try {
+        float value = std::stof(array.str());
+        return static_cast<__bf16>(value);
+    } catch (std::invalid_argument &exc) {
+        throw std::runtime_error(array.str() + " is not of type FLOAT");
+    } catch (std::out_of_range &exc) {
+        throw std::runtime_error(array.str() + " is out of range of FLOAT");
     }
 }
 

@@ -212,6 +212,8 @@ runtime::VarLen32 Array::fromString(std::string &source, int32_t type) {
                 castAndCopyElement<int32_t>(buffer, element);
             } else if (typeId == ArrayType::INTEGER64) {
                 castAndCopyElement<int64_t>(buffer, element);
+            } else if (typeId == ArrayType::BFLOAT) {
+                castAndCopyElement<__bf16>(buffer, element);
             } else if (typeId == ArrayType::FLOAT) {
                 castAndCopyElement<float>(buffer, element);
             } else {

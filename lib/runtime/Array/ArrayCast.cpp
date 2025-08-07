@@ -37,6 +37,9 @@ runtime::VarLen32 Array::castToNumeric(uint8_t type) {
             case ArrayType::INTEGER64:
                 castAndCopyElement<int64_t>(buffer, i, type);
                 break;
+            case ArrayType::BFLOAT:
+                castAndCopyElement<__bf16>(buffer, i, type);
+                break;
             case ArrayType::FLOAT:
                 castAndCopyElement<float>(buffer, i, type);
                 break;
@@ -70,6 +73,11 @@ runtime::VarLen32 Array::castToString() {
             case ArrayType::INTEGER64: {
                 auto *values = reinterpret_cast<int64_t *>(this->elements);
                 elements.push_back(std::to_string(values[i]));
+                break;
+            }
+            case ArrayType::BFLOAT: {
+                auto *values = reinterpret_cast<__bf16 *>(this->elements);
+                elements.push_back(std::to_string(static_cast<float>(values[i])));
                 break;
             }
             case ArrayType::FLOAT: {

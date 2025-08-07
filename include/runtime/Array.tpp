@@ -65,6 +65,10 @@ void Array::executeBinaryOperation(const uint8_t *left, const uint8_t *right, ui
         auto *leftVal = reinterpret_cast<const int64_t*>(left);
         auto *rightVal = reinterpret_cast<const int64_t*>(right);
         OP::Operator(leftVal, rightVal, size, buffer, scalarLeft, scalarRight);
+    } else if (type == ArrayType::BFLOAT) {
+        auto *leftVal = reinterpret_cast<const __bf16*>(left);
+        auto *rightVal = reinterpret_cast<const __bf16*>(right);
+        OP::Operator(leftVal, rightVal, size, buffer, scalarLeft, scalarRight);
     } else if (type == ArrayType::FLOAT) {
         auto *leftVal = reinterpret_cast<const float*>(left);
         auto *rightVal = reinterpret_cast<const float*>(right);
@@ -85,6 +89,9 @@ void Array::executeUnaryOperation(const uint8_t *data, uint32_t size, char *&buf
         OP::Operator(values, size, buffer);
     } else if (type == ArrayType::INTEGER64) {
         auto *values = reinterpret_cast<const int64_t*>(data);
+        OP::Operator(values, size, buffer);
+    } else if (type == ArrayType::BFLOAT) {
+        auto *values = reinterpret_cast<const __bf16*>(data);
         OP::Operator(values, size, buffer);
     } else if (type == ArrayType::FLOAT) {
         auto *values = reinterpret_cast<const float*>(data);
@@ -324,6 +331,9 @@ void Array::castAndCopyElement(char *&buffer, uint32_t position, uint8_t type) {
             case ArrayType::INTEGER64:
                 castAndCopyElement<int64_t>(buffer, value);
                 break;
+            case ArrayType::BFLOAT:
+                castAndCopyElement<__bf16>(buffer, value);
+                break;
             case ArrayType::FLOAT:
                 castAndCopyElement<float>(buffer, value);
                 break;
@@ -353,6 +363,11 @@ void Array::castAndCopyElement(char *&buffer, uint32_t position, uint8_t type) {
             writeToBuffer(buffer, &value, 1);
             break;
         }
+        case ArrayType::BFLOAT: {
+            auto value = static_cast<__bf16>(element);
+            writeToBuffer(buffer, &value, 1);
+            break;
+        }
         case ArrayType::FLOAT: {
             auto value = static_cast<float>(element);
             writeToBuffer(buffer, &value, 1);
@@ -364,7 +379,8 @@ void Array::castAndCopyElement(char *&buffer, uint32_t position, uint8_t type) {
             break;
         }
         case ArrayType::STRING: {
-            auto value = std::to_string(element);
+            std::string value;
+            toString<TYPE>(position, value);
             uint32_t length = value.length();
             writeToBuffer(buffer, &length, 1);
             break;

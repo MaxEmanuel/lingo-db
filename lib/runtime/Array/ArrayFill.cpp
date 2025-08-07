@@ -31,6 +31,20 @@ runtime::VarLen32 Array::fill(int64_t &value, Array &structure) {
 }
 
 template<>
+runtime::VarLen32 Array::fill(__bf16 &value, Array &structure) {
+    if (structure.getSize() == 0) {
+        throw std::runtime_error("Array-Fill: Array argument should contain elements");
+    }
+    if (structure.getType() == ArrayType::INTEGER32) {
+        return generate<__bf16, int32_t>(&value, structure, ArrayType::BFLOAT);
+    } else if (structure.getType() == ArrayType::INTEGER64) {
+        return generate<__bf16, int64_t>(&value, structure, ArrayType::BFLOAT);
+    } else {
+        throw std::runtime_error("Array-Fill: Function supports only integer arrays");
+    }
+}
+
+template<>
 runtime::VarLen32 Array::fill(float &value, Array &structure) {
     if (structure.getSize() == 0) {
         throw std::runtime_error("Array-Fill: Array argument should contain elements");

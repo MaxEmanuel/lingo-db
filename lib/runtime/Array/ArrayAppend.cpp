@@ -248,6 +248,14 @@ runtime::VarLen32 Array::append(int64_t &toAppend) {
 }
 
 template<>
+runtime::VarLen32 Array::append(__bf16 &toAppend) {
+    if (type != ArrayType::BFLOAT) {
+        throw std::runtime_error("Array-Append: Array elements are not of type bfloat");
+    }
+    return appendElement(toAppend);
+}
+
+template<>
 runtime::VarLen32 Array::append(float &toAppend) {
     if (type != ArrayType::FLOAT) {
         throw std::runtime_error("Array-Append: Array elements are not of type float");
@@ -283,6 +291,14 @@ template<>
 runtime::VarLen32 Array::appendFront(int64_t &toAppend) {
     if (type != ArrayType::INTEGER64) {
         throw std::runtime_error("Array-Append: Array elements are not of type integer (64-bit)");
+    }
+    return appendElementFront(toAppend);
+}
+
+template<>
+runtime::VarLen32 Array::appendFront(__bf16 &toAppend) {
+    if (type != ArrayType::BFLOAT) {
+        throw std::runtime_error("Array-Append: Array elements are not of type bfloat");
     }
     return appendElementFront(toAppend);
 }

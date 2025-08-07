@@ -1872,7 +1872,13 @@ class ArrayAggAggrFunc : public DistAggrFunc {
             right = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "ArrayConcatI64", mlir::ValueRange({array, type, right, atFront})).getRes();
          }
       } else if (auto floatType = rightType.dyn_cast_or_null<mlir::FloatType>()) {
-         if (floatType.getWidth() < 64) {
+         if (floatType.getWidth() < 32) {
+            mlir::Type arrayType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::BFLOAT);
+            auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(runtime::Array::ArrayType::BFLOAT));
+            auto array = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "EmptyArray", mlir::ValueRange({type})).getRes();
+            arrayType = rightType.isa<mlir::db::NullableType>() ? mlir::db::NullableType::get(builder.getContext(), arrayType) : arrayType;
+            right = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "ArrayConcatBF16", mlir::ValueRange({array, type, right, atFront})).getRes();
+         } else if (floatType.getWidth() < 64) {
             mlir::Type arrayType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::FLOAT);
             auto type = builder.create<mlir::db::ConstantOp>(loc, builder.getI32Type(), builder.getI32IntegerAttr(runtime::Array::ArrayType::FLOAT));
             auto array = builder.create<mlir::db::RuntimeCall>(loc, arrayType, "EmptyArray", mlir::ValueRange({type})).getRes();

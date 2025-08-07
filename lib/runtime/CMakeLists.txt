@@ -47,5 +47,10 @@ add_library(runtime OBJECT
         Array/ArrayCast.cpp
         Array/ArrayPrint.cpp
         ArrayRuntime.cpp)
-target_link_libraries(runtime PRIVATE tbb arrow BLAS::BLAS)
+find_library(OPENBLAS_LIB NAMES openblas HINTS "${PROJECT_SOURCE_DIR}/vendored/openblas/lib")
+
+if(NOT OPENBLAS_LIB)
+  message(FATAL_ERROR "OpenBLAS library not found. Please check the path.")
+endif()
+target_link_libraries(runtime PRIVATE tbb arrow ${OPENBLAS_LIB})
 

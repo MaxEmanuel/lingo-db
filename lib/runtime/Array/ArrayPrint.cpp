@@ -29,6 +29,9 @@ void Array::printArray(std::string &target, const uint32_t *width, uint32_t dime
                 case ArrayType::INTEGER64:
                     toString<int64_t>(getElementPosition(i), target);
                     break;
+                case ArrayType::BFLOAT:
+                    toString<__bf16>(getElementPosition(i), target);
+                    break;
                 case ArrayType::FLOAT:
                     toString<float>(getElementPosition(i), target);
                     break;

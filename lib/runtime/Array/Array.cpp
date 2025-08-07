@@ -193,6 +193,8 @@ size_t Array::getTypeSize(uint8_t type) {
         return sizeof(int32_t);
     case ArrayType::INTEGER64:
         return sizeof(int64_t);
+    case ArrayType::BFLOAT:
+        return sizeof(__bf16);
     case ArrayType::FLOAT:
         return sizeof(float);
     case ArrayType::DOUBLE:

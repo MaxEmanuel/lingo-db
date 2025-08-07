@@ -40,6 +40,8 @@ runtime::VarLen32 Array::operator[](uint32_t position) {
             toString<int32_t>(position, result);
         } else if (type == ArrayType::INTEGER64) {
             toString<int64_t>(position, result);
+        } else if (type == ArrayType::BFLOAT) {
+            toString<__bf16>(position, result);
         } else if (type == ArrayType::FLOAT) {
             toString<float>(position, result);
         } else if (type == ArrayType::DOUBLE) {

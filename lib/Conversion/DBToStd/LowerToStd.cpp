@@ -577,6 +577,14 @@ class ConstructorOpLowering : public OpConversionPattern<mlir::db::ConstructorOp
                element = rewriter.create<mlir::db::CastOp>(loc, mlir::IntegerType::get(rewriter.getContext(), 64), element);
             }
             appendElement = rt::ArrayRuntime::appendInt64(rewriter, loc)({left, arrayType, element, inFront})[0];
+         } else if (arrayLeft.getType() == runtime::Array::ArrayType::BFLOAT) {
+            auto floatType = rightType.dyn_cast_or_null<mlir::FloatType>();
+            if (!floatType) {
+               element = rewriter.create<mlir::db::CastOp>(loc, mlir::FloatType::getBF16(rewriter.getContext()), element);
+            } else if (floatType.getWidth() > 16) {
+               element = rewriter.create<mlir::db::CastOp>(loc, mlir::FloatType::getBF16(rewriter.getContext()), element);
+            }
+            appendElement = rt::ArrayRuntime::appendBFloat(rewriter, loc)({left, arrayType, element, inFront})[0];
          } else if (arrayLeft.getType() == runtime::Array::ArrayType::FLOAT) {
             auto floatType = rightType.dyn_cast_or_null<mlir::FloatType>();
             if (!floatType) {

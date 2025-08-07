@@ -382,7 +382,10 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
                return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayFillInt64", mlir::ValueRange{parameter1, parameter2, parameter3}).getRes();
             }
          } else if (auto floatType = param1Type.dyn_cast_or_null<mlir::FloatType>()) {
-            if (floatType.getWidth() < 64) {
+            if (floatType.getWidth() < 32) {
+               mlir::Type returnType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::BFLOAT);
+               return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayFillBFloat", mlir::ValueRange{parameter1, parameter2, parameter3}).getRes();
+            } else if (floatType.getWidth() < 64) {
                mlir::Type returnType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::FLOAT);
                return builder.create<mlir::db::RuntimeCall>(loc, returnType, "ArrayFillFloat", mlir::ValueRange{parameter1, parameter2, parameter3}).getRes();
             } else {
@@ -563,6 +566,8 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                valueToCast = builder.getI32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
                valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::BFLOAT) {
+               valueToCast = builder.getBF16Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
                valueToCast = builder.getF32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
@@ -583,7 +588,9 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                   funcName = "ArrayScalarAddI64";
                }
             } else if (auto scalarType = rightType.dyn_cast_or_null<mlir::FloatType>()) {
-               if (scalarType.getWidth() < 64) {
+               if (scalarType.getWidth() < 32) {
+                  funcName = "ArrayScalarAddBF16";
+               } else if (scalarType.getWidth() < 64) {
                   funcName = "ArrayScalarAddF32";
                } else {
                   funcName = "ArrayScalarAddF64";
@@ -608,6 +615,8 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                valueToCast = builder.getI32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
                valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::BFLOAT) {
+               valueToCast = builder.getBF16Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
                valueToCast = builder.getF32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
@@ -628,7 +637,9 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                   funcName = "ArrayScalarAddI64";
                }
             } else if (auto scalarType = leftType.dyn_cast_or_null<mlir::FloatType>()) {
-               if (scalarType.getWidth() < 64) {
+               if (scalarType.getWidth() < 32) {
+                  funcName = "ArrayScalarAddBF16";
+               } else if (scalarType.getWidth() < 64) {
                   funcName = "ArrayScalarAddF32";
                } else {
                   funcName = "ArrayScalarAddF64";
@@ -675,6 +686,8 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                valueToCast = builder.getI32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
                valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::BFLOAT) {
+               valueToCast = builder.getBF16Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
                valueToCast = builder.getF32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
@@ -689,7 +702,9 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
             // Identify right argument type to select correct function
             std::string funcName = "";
             if (auto scalarType = rightType.dyn_cast_or_null<mlir::IntegerType>()) {
-               if (scalarType.getWidth() < 64) {
+               if (scalarType.getWidth() < 32) {
+                  funcName = "ArrayScalarSubBF16";
+               } else if (scalarType.getWidth() < 64) {
                   funcName = "ArrayScalarSubI32";
                } else {
                   funcName = "ArrayScalarSubI64";
@@ -722,6 +737,8 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                valueToCast = builder.getI32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
                valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::BFLOAT) {
+               valueToCast = builder.getBF16Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
                valueToCast = builder.getF32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
@@ -742,7 +759,9 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                   funcName = "ArrayScalarSubI64";
                }
             } else if (auto scalarType = leftType.dyn_cast_or_null<mlir::FloatType>()) {
-               if (scalarType.getWidth() < 64) {
+               if (scalarType.getWidth() < 32) {
+                  funcName = "ArrayScalarSubBF16";
+               } else if (scalarType.getWidth() < 64) {
                   funcName = "ArrayScalarSubF32";
                } else {
                   funcName = "ArrayScalarSubF64";
@@ -783,6 +802,8 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                valueToCast = builder.getI32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
                valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::BFLOAT) {
+               valueToCast = builder.getBF16Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
                valueToCast = builder.getF32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
@@ -803,7 +824,9 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                   funcName = "ArrayScalarMulI64";
                }
             } else if (auto scalarType = rightType.dyn_cast_or_null<mlir::FloatType>()) {
-               if (scalarType.getWidth() < 64) {
+               if (scalarType.getWidth() < 32) {
+                  funcName = "ArrayScalarMulBF16";
+               } else if (scalarType.getWidth() < 64) {
                   funcName = "ArrayScalarMulF32";
                } else {
                   funcName = "ArrayScalarMulF64";
@@ -828,6 +851,8 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                valueToCast = builder.getI32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
                valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::BFLOAT) {
+               valueToCast = builder.getBF16Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
                valueToCast = builder.getF32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
@@ -848,7 +873,9 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                   funcName = "ArrayScalarMulI64";
                }
             } else if (auto scalarType = leftType.dyn_cast_or_null<mlir::FloatType>()) {
-               if (scalarType.getWidth() < 64) {
+               if (scalarType.getWidth() < 32) {
+                  funcName = "ArrayScalarMulBF16";
+               } else if (scalarType.getWidth() < 64) {
                   funcName = "ArrayScalarMulF32";
                } else {
                   funcName = "ArrayScalarMulF64";
@@ -891,6 +918,8 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                valueToCast = builder.getI32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
                valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::BFLOAT) {
+               valueToCast = builder.getBF16Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
                valueToCast = builder.getF32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
@@ -911,7 +940,9 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                   funcName = "ArrayScalarDivI64";
                }
             } else if (auto scalarType = rightType.dyn_cast_or_null<mlir::FloatType>()) {
-               if (scalarType.getWidth() < 64) {
+               if (scalarType.getWidth() < 32) {
+                  funcName = "ArrayScalarDivBF16";
+               } else if (scalarType.getWidth() < 64) {
                   funcName = "ArrayScalarDivF32";
                } else {
                   funcName = "ArrayScalarDivF64";
@@ -938,6 +969,8 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                valueToCast = builder.getI32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::INTEGER64) {
                valueToCast = builder.getI64Type();
+            } else if (arrayType.getType() == runtime::Array::ArrayType::BFLOAT) {
+               valueToCast = builder.getBF16Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::FLOAT) {
                valueToCast = builder.getF32Type();
             } else if (arrayType.getType() == runtime::Array::ArrayType::DOUBLE) {
@@ -958,7 +991,9 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                   funcName = "ArrayScalarDivI64";
                }
             } else if (auto scalarType = leftType.dyn_cast_or_null<mlir::FloatType>()) {
-               if (scalarType.getWidth() < 64) {
+               if (scalarType.getWidth() < 32) {
+                  funcName = "ArrayScalarDivBF16";
+               } else if (scalarType.getWidth() < 64) {
                   funcName = "ArrayScalarDivF32";
                } else {
                   funcName = "ArrayScalarDivF64";
@@ -1047,7 +1082,9 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                   funcName = "ArrayConcatI64";
                }
             } else if (auto scalarType = rightType.dyn_cast_or_null<mlir::FloatType>()) {
-               if (scalarType.getWidth() < 64) {
+               if (scalarType.getWidth() < 32) {
+                  funcName = "ArrayConcatBF16";
+               } else if (scalarType.getWidth() < 64) {
                   funcName = "ArrayConcatF32";
                } else {
                   funcName = "ArrayConcatF64";
@@ -1078,7 +1115,9 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                   funcName = "ArrayConcatI64";
                }
             } else if (auto scalarType = leftType.dyn_cast_or_null<mlir::FloatType>()) {
-               if (scalarType.getWidth() < 64) {
+               if (scalarType.getWidth() < 32) {
+                  funcName = "ArrayConcatBF16";
+               } else if (scalarType.getWidth() < 64) {
                   funcName = "ArrayConcatF32";
                } else {
                   funcName = "ArrayConcatF64";
@@ -1934,7 +1973,8 @@ mlir::Value frontend::sql::Parser::translateArrayExpression(mlir::OpBuilder& bui
             if (auto intType = mlir::dyn_cast_or_null<mlir::IntegerType>(valueType)) {
                if (intType.getWidth() > 32) returnType = mlir::db::ArrayType::get(mlirContext, runtime::Array::ArrayType::INTEGER64);
             } else if (auto floatType = mlir::dyn_cast_or_null<mlir::FloatType>(valueType)) {
-               if (floatType.getWidth() < 64) returnType = mlir::db::ArrayType::get(mlirContext, runtime::Array::ArrayType::FLOAT);
+               if (floatType.getWidth() < 32) returnType = mlir::db::ArrayType::get(mlirContext, runtime::Array::ArrayType::BFLOAT);
+               else if (floatType.getWidth() < 64) returnType = mlir::db::ArrayType::get(mlirContext, runtime::Array::ArrayType::FLOAT);
                else returnType = mlir::db::ArrayType::get(mlirContext, runtime::Array::ArrayType::DOUBLE);
             } else if (auto stringType = mlir::dyn_cast_or_null<mlir::db::StringType>(valueType)) {
                returnType = mlir::db::ArrayType::get(mlirContext, runtime::Array::ArrayType::STRING);
@@ -2185,7 +2225,12 @@ runtime::ColumnType frontend::sql::Parser::createColumnType(std::string datatype
       }
    }
    if (datatypeName == "bfloat") {
-      typeModifiers.push_back(16ull);
+      if (isArray) {
+         datatypeName = "bfloat[]";
+         typeModifiers.push_back(2ull);
+      } else {
+         typeModifiers.push_back(16ull);
+      }
    }
    if (datatypeName == "float4") {
       if (isArray) {
@@ -2714,7 +2759,9 @@ std::tuple<mlir::Value, std::unordered_map<std::string, mlir::tuples::Column*>> 
                      aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::INTEGER64);
                   }
                } else if (auto floatType = columnType.dyn_cast_or_null<mlir::FloatType>()) {
-                  if (floatType.getWidth() == 32) {
+                  if (floatType.getWidth() == 16) {
+                     aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::BFLOAT);
+                  } else if (floatType.getWidth() == 32) {
                      aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::FLOAT);
                   } else {
                      aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::DOUBLE);
@@ -3162,7 +3209,9 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                         aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::INTEGER64);
                      }
                   } else if (auto floatType = columnType.dyn_cast_or_null<mlir::FloatType>()) {
-                     if (floatType.getWidth() == 32) {
+                     if (floatType.getWidth() == 16) {
+                        aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::BFLOAT);
+                     } else if (floatType.getWidth() == 32) {
                         aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::FLOAT);
                      } else {
                         aggrResultType = mlir::db::ArrayType::get(builder.getContext(), runtime::Array::ArrayType::DOUBLE);

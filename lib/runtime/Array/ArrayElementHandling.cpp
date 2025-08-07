@@ -61,6 +61,8 @@ int32_t Array::getHighestPosition() {
         return getMaxIndex<int32_t>();
     case ArrayType::INTEGER64:
         return getMaxIndex<int64_t>();
+    case ArrayType::BFLOAT:
+        return getMaxIndex<__bf16>();
     case ArrayType::FLOAT:
         return getMaxIndex<float>();
     case ArrayType::DOUBLE:
@@ -80,6 +82,9 @@ void Array::copyElements(char *&buffer) {
         break;
     case ArrayType::INTEGER64:
         writeToBuffer(buffer, reinterpret_cast<int64_t*>(this->elements), this->size);
+        break;
+    case ArrayType::BFLOAT:
+        writeToBuffer(buffer, reinterpret_cast<__bf16*>(this->elements), this->size);
         break;
     case ArrayType::FLOAT:
         writeToBuffer(buffer, reinterpret_cast<float*>(this->elements), this->size);
@@ -109,6 +114,12 @@ void Array::copyElement(char *&buffer, uint32_t position) {
     case ArrayType::INTEGER64: 
     {
         int64_t *value = reinterpret_cast<int64_t*>(this->elements) + position;
+        writeToBuffer(buffer, value, 1);
+        break;
+    }
+    case ArrayType::BFLOAT:
+    {
+        __bf16 *value = reinterpret_cast<__bf16*>(this->elements) + position;
         writeToBuffer(buffer, value, 1);
         break;
     }
@@ -179,6 +190,19 @@ void Array::castAndCopyElement<int64_t>(char *&buffer, std::string &value) {
 }
 
 template<>
+void Array::castAndCopyElement<__bf16>(char *&buffer, std::string &value) {
+    try {
+        float floatVal = std::stof(value);
+        __bf16 castValue = static_cast<__bf16>(floatVal);
+        writeToBuffer(buffer, &castValue, 1);
+    } catch (std::invalid_argument &exc) {
+        throw std::runtime_error(value + " is not of type FLOAT");
+    } catch (std::out_of_range &exc) {
+        throw std::runtime_error(value + " is out of range of FLOAT");
+    }
+}
+
+template<>
 void Array::castAndCopyElement<float>(char *&buffer, std::string &value) {
     try {
         float castValue = std::stof(value);
@@ -230,6 +254,24 @@ void Array::toString<int64_t>(uint32_t position, std::string &target) {
         throw std::runtime_error("Requested array element does not exist");
     }
     int64_t value = *reinterpret_cast<int64_t*>(this->elements + position * sizeof(int64_t));
+    target.append(std::to_string(value));
+}
+
+template<>
+void Array::toString<__bf16>(uint32_t position, std::string &target) {
+    if (this->size <= position) {
+        throw std::runtime_error("Requested array element does not exist");
+    }
+    __bf16 value = *reinterpret_cast<__bf16*>(this->elements + position * sizeof(__bf16));
+    target.append(std::to_string(static_cast<float>(value)));
+}
+
+template<>
+void Array::toString<uint32_t>(uint32_t position, std::string &target) {
+    if (this->size <= position) {
+        throw std::runtime_error("Requested array element does not exist");
+    }
+    uint32_t value = *reinterpret_cast<uint32_t*>(this->elements + position * sizeof(uint32_t));
     target.append(std::to_string(value));
 }
 

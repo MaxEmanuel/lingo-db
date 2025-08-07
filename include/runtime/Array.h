@@ -53,6 +53,17 @@ class Array {
  *##########################################################################################################################################################*/    
  
     /**
+     * This method casts an element at the given position to a string (only if value
+     * is not of type string) and append it to the end of the target string.
+     * 
+     * @param position The position of the array element. Possible value range 
+     * `[0:numberElements-1]`.
+     * @throws `std::runtime_error`: If the given position is out of range.
+     */
+    template<class TYPE>
+    void toString(uint32_t position, std::string &target);
+    
+    /**
      * This function copies the specified data into the provided target.
      * 
      * @param buffer A reference to a char pointer which points to the string
@@ -168,17 +179,6 @@ class Array {
         uint32_t sliceDimension, 
         uint32_t dimension,
         const uint32_t *&entry);
-
-    /**
-     * This method casts an element at the given position to a string (only if value
-     * is not of type string) and append it to the end of the target string.
-     * 
-     * @param position The position of the array element. Possible value range 
-     * `[0:numberElements-1]`.
-     * @throws `std::runtime_error`: If the given position is out of range.
-     */
-    template<class TYPE>
-    void toString(uint32_t position, std::string &target);
 
     /**
      * This method appends a single element of type `TYPE` to the last array structure
