@@ -938,3 +938,29 @@ struct A_Indices
 	Node	   *lidx;			/* NULL if it's a single subscript */
 	Node	   *uidx;
 };
+
+/*
+ * RangeFunction - function call appearing in a FROM clause
+ *
+ * functions is a List because we use this to represent the construct
+ * ROWS FROM(func1(...), func2(...), ...).  Each element of this list is a
+ * two-element sublist, the first element being the untransformed function
+ * call tree, and the second element being a possibly-empty list of ColumnDef
+ * nodes representing any columndef list attached to that function within the
+ * ROWS FROM() syntax.
+ *
+ * alias and coldeflist represent any alias and/or columndef list attached
+ * at the top level.  (We disallow coldeflist appearing both here and
+ * per-function, but that's checked in parse analysis, not by the grammar.)
+ */
+struct RangeFunction
+{
+	NodeTag		type;
+	bool		lateral;		/* does it have LATERAL prefix? */
+	bool		ordinality;		/* does it have WITH ORDINALITY suffix? */
+	bool		is_rowsfrom;	/* is result of ROWS FROM() syntax? */
+	List	   *functions;		/* per-function information, see above */
+	Alias	   *alias;			/* table alias & optional column aliases */
+	List	   *coldeflist;		/* list of ColumnDef nodes to describe result
+								 * of function returning RECORD */
+};

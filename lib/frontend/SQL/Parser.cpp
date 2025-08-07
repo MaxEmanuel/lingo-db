@@ -1422,6 +1422,52 @@ mlir::Value frontend::sql::Parser::translateFromClausePart(mlir::OpBuilder& buil
          std::vector<std::string> colAlias = listToStringVec(stmt->alias_->colnames_);
          return translateSubSelect(builder, reinterpret_cast<SelectStmt*>(stmt->subquery_), alias, colAlias, context, scope);
       }
+      case T_RangeFunction: {
+         // Parse the given statement structure and extract necessary values
+         auto* stmt = reinterpret_cast<RangeFunction*>(node);
+         auto* function = reinterpret_cast<List*>(stmt->functions->head->data.ptr_value);
+         auto* functionCall = reinterpret_cast<FuncCall*>(function->head->data.ptr_value);
+         std::string funcName = reinterpret_cast<value*>(functionCall->funcname_->head->data.ptr_value)->val_.str_;
+         // This part is necessary for renaming tables in FROM clause
+         std::string alias = funcName;
+         if (stmt->alias && stmt->alias->type_ == T_Alias && stmt->alias->aliasname_) {
+            alias = stmt->alias->aliasname_;
+         }
+
+         if (funcName == "generate_series") {
+            // Get lower and upper bound of the resulting value list (function parameters)
+            auto lowerBound = reinterpret_cast<A_Const*>(functionCall->args_->head->data.ptr_value)->val_;
+            auto upperBound = reinterpret_cast<A_Const*>(functionCall->args_->head->next->data.ptr_value)->val_;
+
+            // Look which step parameter should be used
+            int32_t step = 1;
+            if (functionCall->args_->length == 3) {
+               auto stepSize = reinterpret_cast<A_Const*>(functionCall->args_->tail->data.ptr_value)->val_;
+               step = stepSize.val_.ival_;
+            }
+            // Create rows for the table
+            std::vector<mlir::Attribute> rows;
+            for (int32_t value = lowerBound.val_.ival_; value <= upperBound.val_.ival_; value += step) {
+               mlir::ArrayAttr row = builder.getI32ArrayAttr(value);
+               rows.push_back(row);
+            }
+
+            std::string columnScope = attrManager.getUniqueScope("rangeFunction");
+            // Create a new column with fixed type (integer 32-Bit)
+            auto columnMetaData = std::make_shared<runtime::ColumnMetaData>();
+            columnMetaData->setColumnType(createColumnType("int4", false, false, std::vector<std::variant<size_t, std::string>>()));
+            // Create a new temporary table (single column)
+            auto tableMetaData = std::make_shared<runtime::TableMetaData>();
+            tableMetaData->addColumn(funcName, columnMetaData);
+            auto attrDef = attrManager.createDef(columnScope, tableMetaData->getOrderedColumns()[0]);
+            attrDef.getColumn().type = createTypeFromColumnType(builder.getContext(), tableMetaData->getColumnMetaData(funcName)->getColumnType());
+            std::vector<mlir::Attribute> columns{attrDef};
+            // Important: Defines how to access the values of the table
+            context.mapAttribute(scope, funcName, &attrDef.getColumn());
+            context.mapAttribute(scope, alias + "." + funcName, &attrDef.getColumn());
+            return builder.create<mlir::relalg::ConstRelationOp>(builder.getUnknownLoc(), builder.getArrayAttr(columns), builder.getArrayAttr(rows));
+         }
+      }
 
       case T_JoinExpr: {
          JoinExpr* joinExpr = reinterpret_cast<JoinExpr*>(node);
