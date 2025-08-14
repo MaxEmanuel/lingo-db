@@ -48,7 +48,7 @@ runtime::VarLen32 Array::transpose() {
     // If one dimensional it will get further width entries, because it will change to two dimensional
     if (this->dimensions == 1) writeToBuffer(buffer, &width, 1);
     // If two dimensional, override the width size with the new value
-    else *widthToChange = this->widths[1];
+    else writeToBuffer(widthToChange, &this->widths[1], 1);
 
     if (this->dimensions == 1) {
         // Create new width and copy old one
