@@ -1976,7 +1976,7 @@ class ArrayAggAggrFunc : public DistAggrFunc {
          return builder.create<mlir::arith::SelectOp>(loc, bothNull, left, agg);
       } else {
          //state non-nullable, arg not nullable
-         return builder.create<mlir::db::RuntimeCall>(loc, stateType, "ArrayAgg", mlir::ValueRange({left, right, constantLeftType, constantRightType})).getRes();
+         return builder.create<mlir::db::RuntimeCall>(loc, stateType, "ArrayConcat", mlir::ValueRange({left, right, constantLeftType, constantRightType})).getRes();
       }
    }
 };

@@ -9,7 +9,7 @@ runtime::VarLen32 Array::operator+(Array &other) {
     if (type != other.getType()) {
         throw std::runtime_error("Array-Add: Arrays have different types");
     }
-    if (hasNullValue() || other.hasNullValue()) {
+    /* if (hasNullValue() || other.hasNullValue()) {
         throw std::runtime_error("Array-Add: NULL values are not allowed");
     }
     if (hasEmptyValue() || other.hasEmptyValue()) {
@@ -17,7 +17,7 @@ runtime::VarLen32 Array::operator+(Array &other) {
     }
     if (!equalWidths(other.getWidths())) {
         throw std::runtime_error("Array-Add: Given arrays have different structures");
-    }
+    } */
 
     std::string result;
     auto size = getStringSize(this->dimensions, this->size, getWidthSize(), getNullBytes(this->size), 0, type);
@@ -46,7 +46,7 @@ runtime::VarLen32 Array::operator-(Array &other) {
     if (type != other.getType()) {
         throw std::runtime_error("Array-Sub: Arrays have different types");
     }
-    if (hasNullValue() || other.hasNullValue()) {
+    /* if (hasNullValue() || other.hasNullValue()) {
         throw std::runtime_error("Array-Sub: NULL values are not allowed");
     }
     if (hasEmptyValue() || other.hasEmptyValue()) {
@@ -54,7 +54,7 @@ runtime::VarLen32 Array::operator-(Array &other) {
     }
     if (!equalWidths(other.getWidths())) {
         throw std::runtime_error("Array-Sub: Given arrays have different structures");
-    }
+    } */
 
     std::string result;
     auto size = getStringSize(this->dimensions, this->size, getWidthSize(), getNullBytes(this->size), 0, type);
@@ -83,7 +83,7 @@ runtime::VarLen32 Array::operator*(Array &other) {
     if (type != other.getType()) {
         throw std::runtime_error("Array-Mul: Arrays have different types");
     }
-    if (hasNullValue() || other.hasNullValue()) {
+    /* if (hasNullValue() || other.hasNullValue()) {
         throw std::runtime_error("Array-Mul: NULL values are not allowed");
     }
     if (hasEmptyValue() || other.hasEmptyValue()) {
@@ -91,7 +91,7 @@ runtime::VarLen32 Array::operator*(Array &other) {
     }
     if (!equalWidths(other.getWidths())) {
         throw std::runtime_error("Array-Mul: Given arrays have different structures");
-    }
+    } */
 
     std::string result;
     auto size = getStringSize(this->dimensions, this->size, getWidthSize(), getNullBytes(this->size), 0, type);
@@ -332,7 +332,7 @@ runtime::VarLen32 Array::matrixMul(Array &other) {
     if (this->type != other.getType()) {
         throw std::runtime_error("Array-MatrixMul: Arrays have different types");
     }
-    if (hasNullValue() || other.hasNullValue()) {
+    /* if (hasNullValue() || other.hasNullValue()) {
         throw std::runtime_error("Array-MatrixMul: NULL values are not allowed");
     }
     if (hasEmptyValue() || other.hasEmptyValue()) {
@@ -340,7 +340,7 @@ runtime::VarLen32 Array::matrixMul(Array &other) {
     }
     if (!isSymmetric() || !other.isSymmetric()) {
         throw std::runtime_error("Array-MatrixMul: This function allows only symmetric arrays");
-    }
+    } */
     auto otherDimension = other.getDimension();
     auto *otherWidths = other.getWidths();
     if (this->dimensions > 2 || otherDimension > 2) {

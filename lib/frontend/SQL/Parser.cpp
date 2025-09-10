@@ -1194,7 +1194,7 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
          mlir::Value subQuery;
          TargetInfo targetInfo;
          {
-            uint maxIterations = 10;
+            uint maxIterations = 20;
             auto subQueryScope = context.createResolverScope();
             auto subQueryDefineScope = context.createDefineScope();
             auto* substmt = reinterpret_cast<SelectStmt*>(cte->ctequery_);

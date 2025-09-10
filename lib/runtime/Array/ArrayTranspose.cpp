@@ -6,12 +6,15 @@ runtime::VarLen32 Array::transpose() {
     if (!isNumericType(this->type)) {
         throw std::runtime_error("Array-Tranypose: This function is only supported with numeric element types");
     }
+    /* if (hasNullValue()) {
+        throw std::runtime_error("Array-Transpose: This function does not allow any NULL values");
+    }
     if (hasEmptyValue()) {
         throw std::runtime_error("Array-Transpose: This function does not allow any empty array structures");
     }
     if (!isSymmetric()) {
         throw std::runtime_error("Array-Transpose: This function allows only symmetric arrays");
-    }
+    } */
 
     // One dimensional arrays will increase their dimension, otherwise it remains
     auto dimension = this->dimensions == 1 ? 2 : this->dimensions;
@@ -97,7 +100,7 @@ runtime::VarLen32 Array::transpose() {
                     if (isNull(k)) {
                         nulls.push_back(true);  
                     } else {
-                        copyElement(buffer, getElementPosition(k));
+                        copyElement(buffer, k);
                         nulls.push_back(false);
                     } 
                 }
