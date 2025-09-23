@@ -208,16 +208,6 @@ using RowExpr = struct RowExpr {
    int location_; /* token location, or -1 if unknown */
 };
 
-using RangeFunction = struct RangeFunction {
-   NodeTag type_;
-   bool lateral_;
-   bool ordinality_;
-   bool is_rowsfrom_;
-   List* functions_;
-   Alias* alias_;
-   List* coldeflist;
-};
-
 using CaseWhen = struct CaseWhen {
    Expr xpr_;
    Expr* expr_; /* condition expression */

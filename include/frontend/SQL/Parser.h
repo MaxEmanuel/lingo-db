@@ -376,7 +376,7 @@ struct Parser {
 
    mlir::Value ValueTypeToStringValue(mlir::OpBuilder& builder, mlir::Value val);
 
-   mlir::Value translateArrayArithmetic(mlir::OpBuilder& builder, mlir::Value left, mlir::Value right, ExpressionType operator);
+   mlir::Value translateArrayArithmetic(mlir::OpBuilder& builder, mlir::Value left, mlir::Value right, ExpressionType opType);
 };
 } // end namespace frontend::sql
 #endif // FRONTEND_SQL_PARSER_H

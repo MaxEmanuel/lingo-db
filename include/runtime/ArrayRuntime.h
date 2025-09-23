@@ -82,23 +82,6 @@ namespace runtime {
         static bool isNull(VarLen32 array);
 
         static bool equal(VarLen32 left, VarLen32 right);
-
-        /**
-         * This function casts a ```null``` value into an array stored as ```runtime::VarLen32```. It will add automatically
-         * the '{}' brackets depending on the given dimension number.
-         * @param dim       The dimension of the final array
-         * @returns         The array as ```runtime::VarLen32``` object.
-         */
-        static runtime::VarLen32 nullToArray(uint64_t dim);
-
-        /**
-         * This function creates a new array that has the same dimensions as the given array and fills it with the given value
-         * @param str       The array defining the resulting dimension structure
-         * @param dim       The amount of dimension of the given array
-         * @param value     The value which should be used to fill the resulting array (currently only double is allowed)
-         * @param valueType The type of the value
-         */
-        static runtime::VarLen32 fillLike(runtime::VarLen32 str, uint64_t dim, double value, runtime::VarLen32 valueType);
     };
 
 }
