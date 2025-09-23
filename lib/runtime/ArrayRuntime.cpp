@@ -467,7 +467,7 @@ bool ArrayRuntime::equal(runtime::VarLen32 left, runtime::VarLen32 right) {
 }
 
 // AUTO-DIFF
-runtime::VarLen32 runtime::ArrayRuntime::transpose(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type) {
+/* runtime::VarLen32 runtime::ArrayRuntime::transpose(runtime::VarLen32 str, uint64_t dim, runtime::VarLen32 type) {
     if (type.str() == "int32[]") {
         runtime::Array<int32_t> array(str, dim, &runtime::TypeCasts::stringToInt32, &runtime::TypeCasts::numericToString<int32_t>);
         array.transpose();
@@ -646,4 +646,4 @@ runtime::VarLen32 runtime::ArrayRuntime::matrixMul(runtime::VarLen32 str1, uint6
     } else {
         throw std::runtime_error("The matrix multiplication operator is only supported for numeric arrays");
     }
-}
+} */

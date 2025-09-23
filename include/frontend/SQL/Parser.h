@@ -375,6 +375,8 @@ struct Parser {
    std::pair<mlir::Value, std::vector<std::pair<std::string, mlir::tuples::ColumnRefAttr>>> mapDerivatesToAttributes(TranslationContext& context, mlir::OpBuilder& builder, ResolverScope& scope, Node* node, mlir::Value inputTable, bool backwardMode);
 
    mlir::Value ValueTypeToStringValue(mlir::OpBuilder& builder, mlir::Value val);
+
+   mlir::Value translateArrayArithmetic(mlir::OpBuilder& builder, mlir::Value left, mlir::Value right, ExpressionType operator);
 };
 } // end namespace frontend::sql
 #endif // FRONTEND_SQL_PARSER_H
