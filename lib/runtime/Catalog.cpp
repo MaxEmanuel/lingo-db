@@ -19,6 +19,9 @@ class EmptyCatalog : public Catalog {
          throw std::runtime_error("can not persist");
       }
    }
+   std::vector<std::string> getTableNames() const override {
+      return {};
+   }
 };
 
 std::shared_ptr<Relation> LocalCatalog::findRelation(std::string name) {
@@ -40,6 +43,13 @@ void LocalCatalog::setPersist(bool value) {
    if (value) {
       throw std::runtime_error("can not persist");
    }
+}
+std::vector<std::string> LocalCatalog::getTableNames() const {
+   auto names = nested->getTableNames();
+   for (const auto& [name, _] : relations) {
+      names.push_back(name);
+   }
+   return names;
 }
 std::shared_ptr<Catalog> Catalog::createEmpty() {
    return std::make_shared<EmptyCatalog>();
@@ -76,5 +86,12 @@ void DBCatalog::setPersist(bool value) {
    for (auto rel : relations) {
       rel.second->setPersist(value);
    }
+}
+std::vector<std::string> DBCatalog::getTableNames() const {
+   auto names = nested->getTableNames();
+   for (const auto& [name, _] : relations) {
+      names.push_back(name);
+   }
+   return names;
 }
 } // end namespace runtime

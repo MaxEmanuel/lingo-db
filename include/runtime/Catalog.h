@@ -7,6 +7,7 @@ class Catalog {
    virtual std::shared_ptr<Relation> findRelation(std::string name) = 0;
    virtual void addTable(std::string tableName, std::shared_ptr<TableMetaData> mD)=0;
    virtual void setPersist(bool value)=0;
+   virtual std::vector<std::string> getTableNames() const = 0;
    virtual ~Catalog() {}
    static std::shared_ptr<Catalog> createEmpty();
 };
@@ -20,6 +21,7 @@ class LocalCatalog : public Catalog {
    std::shared_ptr<Relation> findRelation(std::string name) override;
    void addTable(std::string tableName, std::shared_ptr<TableMetaData> mD) override;
    void setPersist(bool value) override;
+   std::vector<std::string> getTableNames() const override;
 };
 class DBCatalog : public Catalog {
    bool persist=false;
@@ -33,6 +35,7 @@ class DBCatalog : public Catalog {
    static std::shared_ptr<DBCatalog> create(std::shared_ptr<Catalog> nested, std::string dbDir,bool eagerLoading);
    void addTable(std::string tableName, std::shared_ptr<TableMetaData> mD) override;
    void setPersist(bool value) override;
+   std::vector<std::string> getTableNames() const override;
 };
 
 } // end namespace runtime
