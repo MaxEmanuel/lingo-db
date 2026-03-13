@@ -67,6 +67,7 @@ struct QueryExecutionConfig {
    std::unique_ptr<TimingProcessor> timingProcessor;
    bool trackTupleCount = false;
    bool parallel=true;
+   bool exitOnError = true;
 };
 
 enum class ExecutionMode {

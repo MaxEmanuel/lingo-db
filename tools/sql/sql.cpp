@@ -1,50 +1,281 @@
+#include <csignal>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 
+#include <readline/readline.h>
+#include <readline/history.h>
+
 #include "execution/Execution.h"
+#include "execution/Frontend.h"
+#include "frontend/SQL/Parser.h"
 #include "mlir-support/eval.h"
-void check(bool b, std::string message) {
-   if (!b) {
-      std::cerr << "ERROR: " << message << std::endl;
-      exit(1);
-   }
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/SubOperator/SubOperatorDialect.h"
+#include "mlir/Dialect/SubOperator/SubOperatorOps.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "runtime/Session.h"
+
+static volatile sig_atomic_t interrupted = 0;
+
+static void sigintHandler(int) {
+   interrupted = 1;
 }
-void handleQuery(runtime::Session& session, std::string sqlQuery) {
+
+void handleQuery(runtime::Session& session, const std::string& sqlQuery) {
    auto queryExecutionConfig = execution::createQueryExecutionConfig(execution::ExecutionMode::DEFAULT, true);
+   queryExecutionConfig->exitOnError = false;
    auto executer = execution::QueryExecuter::createDefaultExecuter(std::move(queryExecutionConfig), session);
    executer->fromData(sqlQuery);
    executer->execute();
 }
+
+std::string getMLIR(const std::string& sql, runtime::Catalog& catalog) {
+   mlir::MLIRContext context;
+   execution::initializeContext(context);
+   mlir::OpBuilder builder(&context);
+   mlir::ModuleOp moduleOp = builder.create<mlir::ModuleOp>(builder.getUnknownLoc());
+   try {
+      frontend::sql::Parser translator(sql, catalog, moduleOp);
+      builder.setInsertionPointToStart(moduleOp.getBody());
+      auto* queryBlock = new mlir::Block;
+      {
+         mlir::OpBuilder::InsertionGuard guard(builder);
+         builder.setInsertionPointToStart(queryBlock);
+         auto val = translator.translate(builder);
+         if (val.has_value()) {
+            builder.create<mlir::subop::SetResultOp>(builder.getUnknownLoc(), 0, val.value());
+         }
+         builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
+      }
+      mlir::func::FuncOp funcOp = builder.create<mlir::func::FuncOp>(builder.getUnknownLoc(), "main", builder.getFunctionType({}, {}));
+      funcOp.getBody().push_back(queryBlock);
+      std::string result;
+      llvm::raw_string_ostream os(result);
+      mlir::OpPrintingFlags flags;
+      flags.assumeVerified();
+      moduleOp->print(os, flags);
+      return result;
+   } catch (std::exception& e) {
+      return std::string("Error: ") + e.what();
+   }
+}
+
+void printHelp() {
+   std::cout << "Backslash commands:\n"
+             << "  \\q        Quit\n"
+             << "  \\?        Show this help\n"
+             << "  \\i FILE   Execute SQL from file\n"
+             << "  \\d        List tables\n"
+             << "  \\d TABLE  Describe table\n"
+             << "  \\timing   Toggle timing display\n"
+             << "  \\mlir QUERY  Show MLIR for query\n";
+}
+
+void executeFile(runtime::Session& session, const std::string& filename) {
+   std::ifstream infile(filename);
+   if (!infile.is_open()) {
+      std::cerr << "Could not open file: " << filename << std::endl;
+      return;
+   }
+   std::stringstream buffer;
+   buffer << infile.rdbuf();
+   std::string content = buffer.str();
+
+   // Split on semicolons and execute each statement
+   std::stringstream ss(content);
+   std::string line;
+   std::stringstream query;
+   while (std::getline(ss, line)) {
+      query << line << "\n";
+      if (!line.empty() && line.back() == ';') {
+         std::string q = query.str();
+         if (!q.empty()) {
+            handleQuery(session, q);
+         }
+         query.str("");
+         query.clear();
+      }
+   }
+   // Execute any remaining query
+   std::string remaining = query.str();
+   if (!remaining.empty() && remaining.find_first_not_of(" \t\n\r") != std::string::npos) {
+      handleQuery(session, remaining);
+   }
+}
+
+void listTables(runtime::Session& session) {
+   auto names = session.getCatalog()->getTableNames();
+   if (names.empty()) {
+      std::cout << "No tables." << std::endl;
+      return;
+   }
+   std::cout << "Tables:" << std::endl;
+   for (const auto& name : names) {
+      std::cout << "  " << name << std::endl;
+   }
+}
+
+void describeTable(runtime::Session& session, const std::string& tableName) {
+   auto relation = session.getCatalog()->findRelation(tableName);
+   if (!relation) {
+      std::cerr << "Table not found: " << tableName << std::endl;
+      return;
+   }
+   auto metaData = relation->getMetaData();
+   if (!metaData) {
+      std::cerr << "No metadata for table: " << tableName << std::endl;
+      return;
+   }
+   auto& columns = metaData->getOrderedColumns();
+   std::cout << "Table: " << tableName << std::endl;
+   for (const auto& col : columns) {
+      auto colMD = metaData->getColumnMetaData(col);
+      auto& colType = colMD->getColumnType();
+      std::cout << "  " << col << " : " << colType.base
+                << (colType.nullable ? " (nullable)" : "") << std::endl;
+   }
+}
+
+bool handleBackslash(runtime::Session& session, const std::string& cmd, bool& showTiming) {
+   if (cmd == "\\q") {
+      return true; // signal quit
+   } else if (cmd == "\\?") {
+      printHelp();
+   } else if (cmd.substr(0, 2) == "\\i") {
+      std::string filename = cmd.substr(2);
+      // trim leading whitespace
+      auto pos = filename.find_first_not_of(" \t");
+      if (pos != std::string::npos) {
+         filename = filename.substr(pos);
+      }
+      if (filename.empty()) {
+         std::cerr << "Usage: \\i FILE" << std::endl;
+      } else {
+         executeFile(session, filename);
+      }
+   } else if (cmd == "\\d") {
+      listTables(session);
+   } else if (cmd.substr(0, 2) == "\\d" && cmd.size() > 2) {
+      std::string tableName = cmd.substr(2);
+      auto pos = tableName.find_first_not_of(" \t");
+      if (pos != std::string::npos) {
+         tableName = tableName.substr(pos);
+      }
+      // trim trailing whitespace
+      auto endPos = tableName.find_last_not_of(" \t");
+      if (endPos != std::string::npos) {
+         tableName = tableName.substr(0, endPos + 1);
+      }
+      describeTable(session, tableName);
+   } else if (cmd == "\\timing") {
+      showTiming = !showTiming;
+      std::cout << "Timing is " << (showTiming ? "on" : "off") << "." << std::endl;
+   } else if (cmd.substr(0, 5) == "\\mlir") {
+      std::string query = cmd.substr(5);
+      auto pos = query.find_first_not_of(" \t");
+      if (pos != std::string::npos) {
+         query = query.substr(pos);
+      }
+      if (query.empty()) {
+         std::cerr << "Usage: \\mlir QUERY" << std::endl;
+      } else {
+         std::cout << getMLIR(query, *session.getCatalog()) << std::endl;
+      }
+   } else {
+      std::cerr << "Unknown command: " << cmd << std::endl;
+      std::cerr << "Type \\? for help." << std::endl;
+   }
+   return false;
+}
+
 int main(int argc, char** argv) {
    if (argc <= 1) {
       std::cerr << "USAGE: sql database" << std::endl;
       return 1;
    }
-   auto session = runtime::Session::createSession(std::string(argv[1]),true);
-
+   auto session = runtime::Session::createSession(std::string(argv[1]), true);
    support::eval::init();
+
+   // Set up signal handler
+   struct sigaction sa;
+   sa.sa_handler = sigintHandler;
+   sigemptyset(&sa.sa_mask);
+   sa.sa_flags = 0;
+   sigaction(SIGINT, &sa, nullptr);
+
+   bool showTiming = false;
+
+   // Check if we have additional file arguments to execute
+   if (argc > 2) {
+      for (int i = 2; i < argc; i++) {
+         executeFile(*session, std::string(argv[i]));
+      }
+      return 0;
+   }
+
+   // Interactive REPL
+   using_history();
+
+   std::string historyFile;
+   if (const char* home = std::getenv("HOME")) {
+      historyFile = std::string(home) + "/.lingodb_history";
+      read_history(historyFile.c_str());
+   }
+
    while (true) {
-      //print prompt
-      std::cout << "sql>";
-      //read query from stdin until semicolon appears
-      std::stringstream query;
-      std::string line;
-      std::getline(std::cin, line);
-      if (line == "exit" || std::cin.eof()) {
-         //exit from repl loop
+      interrupted = 0;
+      char* line = readline("sql> ");
+      if (!line) {
+         // EOF
+         std::cout << std::endl;
          break;
       }
-      while (std::cin.good()) {
-         query << line << std::endl;
-         if (!line.empty() && line.find(';') == line.size() - 1) {
+      std::string input(line);
+      free(line);
+
+      // Skip empty lines
+      if (input.empty()) continue;
+
+      // Handle backslash commands
+      if (input[0] == '\\') {
+         add_history(input.c_str());
+         if (handleBackslash(*session, input, showTiming)) {
             break;
          }
-         std::getline(std::cin, line);
+         continue;
       }
-      handleQuery(*session, query.str());
+
+      // Read multi-line query until semicolon
+      std::stringstream query;
+      query << input;
+      while (!input.empty() && input.back() != ';') {
+         char* cont = readline("  -> ");
+         if (!cont) break;
+         input = std::string(cont);
+         free(cont);
+         query << "\n" << input;
+      }
+
+      std::string fullQuery = query.str();
+      if (!fullQuery.empty()) {
+         add_history(fullQuery.c_str());
+
+         auto start = std::chrono::high_resolution_clock::now();
+         handleQuery(*session, fullQuery);
+         auto end = std::chrono::high_resolution_clock::now();
+
+         if (showTiming) {
+            auto ms = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
+            std::cout << "Time: " << ms << " ms" << std::endl;
+         }
+      }
+   }
+
+   if (!historyFile.empty()) {
+      write_history(historyFile.c_str());
    }
 
    return 0;
 }
-

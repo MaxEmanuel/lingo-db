@@ -182,11 +182,19 @@ ExecutionMode getExecutionMode() {
 
 class DefaultQueryExecuter : public QueryExecuter {
    size_t snapShotCounter = 0;
-   void handleError(std::string phase, Error& e) {
+   std::string errorMessage;
+   bool handleError(std::string phase, Error& e) {
       if (e) {
-         std::cerr << phase << ": " << e.getMessage() << std::endl;
-         exit(1);
+         if (queryExecutionConfig->exitOnError) {
+            std::cerr << phase << ": " << e.getMessage() << std::endl;
+            exit(1);
+         } else {
+            errorMessage = phase + ": " + e.getMessage();
+            std::cerr << errorMessage << std::endl;
+            return true;
+         }
       }
+      return false;
    }
    void handleTiming(const std::unordered_map<std::string, double>& timing) {
       if (queryExecutionConfig->timingProcessor) {
@@ -207,19 +215,28 @@ class DefaultQueryExecuter : public QueryExecuter {
    public:
    using QueryExecuter::QueryExecuter;
    void execute() override {
+      auto fail = [this](const std::string& msg) {
+         if (queryExecutionConfig->exitOnError) {
+            std::cerr << msg << std::endl;
+            exit(1);
+         } else {
+            errorMessage = msg;
+            std::cerr << msg << std::endl;
+         }
+      };
       if (!executionContext) {
-         std::cerr << "Execution Context is missing" << std::endl;
-         exit(1);
+         fail("Execution Context is missing");
+         return;
       }
       auto* catalog = executionContext->getSession().getCatalog().get();
 
       if (!queryExecutionConfig->frontend) {
-         std::cerr << "Frontend is missing" << std::endl;
-         exit(1);
+         fail("Frontend is missing");
+         return;
       }
       if (!queryExecutionConfig->executionBackend) {
-         std::cerr << "Execution Backend is missing" << std::endl;
-         exit(1);
+         fail("Execution Backend is missing");
+         return;
       }
       auto& frontend = *queryExecutionConfig->frontend;
 
@@ -229,17 +246,17 @@ class DefaultQueryExecuter : public QueryExecuter {
       } else if (file) {
          frontend.loadFromFile(file.value());
       } else {
-         std::cerr << "Must provide file or string!" << std::endl;
-         exit(1);
+         fail("Must provide file or string!");
+         return;
       }
-      handleError("FRONTEND", frontend.getError());
+      if (handleError("FRONTEND", frontend.getError())) return;
       mlir::ModuleOp& moduleOp = *queryExecutionConfig->frontend->getModule();
       performSnapShot(moduleOp, "input.mlir");
       if (queryExecutionConfig->queryOptimizer) {
          auto& queryOptimizer = *queryExecutionConfig->queryOptimizer;
          queryOptimizer.setCatalog(catalog);
          queryOptimizer.optimize(moduleOp);
-         handleError("OPTIMIZER", queryOptimizer.getError());
+         if (handleError("OPTIMIZER", queryOptimizer.getError())) return;
          handleTiming(queryOptimizer.getTiming());
          if (queryExecutionConfig->trackTupleCount) {
             mlir::PassManager pm(moduleOp.getContext());
@@ -247,7 +264,7 @@ class DefaultQueryExecuter : public QueryExecuter {
             if (pm.run(moduleOp).failed()) {
                Error e;
                e.emit() << "createTrackTuplesPass failed";
-               handleError("TUPLE_TRACKING", e);
+               if (handleError("TUPLE_TRACKING", e)) return;
             }
          }
          performSnapShot(moduleOp);
@@ -269,7 +286,7 @@ class DefaultQueryExecuter : public QueryExecuter {
          auto& loweringStep = *loweringStepPtr;
          loweringStep.setCatalog(catalog);
          loweringStep.implement(moduleOp);
-         handleError("LOWERING", loweringStep.getError());
+         if (handleError("LOWERING", loweringStep.getError())) return;
          handleTiming(loweringStep.getTiming());
          performSnapShot(moduleOp);
       }
@@ -294,7 +311,7 @@ class DefaultQueryExecuter : public QueryExecuter {
 #ifdef TRACER
       utility::Tracer::dump();
 #endif
-      handleError("BACKEND", executionBackend.getError());
+      if (handleError("BACKEND", executionBackend.getError())) return;
       handleTiming(executionBackend.getTiming());
       if (queryExecutionConfig->resultProcessor) {
          auto& resultProcessor = *queryExecutionConfig->resultProcessor;
