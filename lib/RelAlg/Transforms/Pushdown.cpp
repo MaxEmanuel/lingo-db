@@ -157,6 +157,10 @@ class Pushdown : public mlir::PassWrapper<Pushdown, mlir::OperationPass<mlir::fu
                     .Case<UnaryOperator>([&](UnaryOperator unaryOperator) {
                        Operator asOp = mlir::dyn_cast_or_null<Operator>(unaryOperator.getOperation());
                        auto child = mlir::dyn_cast_or_null<Operator>(unaryOperator.child());
+                       if (!child) {
+                          topush.setChildren({asOp});
+                          return topush;
+                       }
                        bool allColumnsAvailable = true;
                        for (const auto* c : usedAttributes) {
                           allColumnsAvailable &= columnCreatorAnalysis.getCreator(c).canColumnReach(Operator{}, child, c);

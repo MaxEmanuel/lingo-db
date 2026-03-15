@@ -847,15 +847,14 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
          mlir::Value subQuery;
          TargetInfo targetInfo;
          {
-            uint maxIterations = 20;
             auto subQueryScope = context.createResolverScope();
             auto subQueryDefineScope = context.createDefineScope();
             auto* substmt = reinterpret_cast<SelectStmt*>(cte->ctequery_);
             if (substmt->op_ == SETOP_UNION && stmt->with_clause_->recursive_) {
-               // This is a recursive CTE, start by evaluating the base case
-               auto [subQuery_, targetInfo_] = translateSelectStmt(builder, reinterpret_cast<SelectStmt*>(substmt->larg_), context, subQueryScope);
-               subQuery = subQuery_;
-               targetInfo = targetInfo_;
+               // Recursive CTE: translate base case
+               auto [baseResult, baseTargetInfo] = translateSelectStmt(builder, reinterpret_cast<SelectStmt*>(substmt->larg_), context, subQueryScope);
+               subQuery = baseResult;
+               targetInfo = baseTargetInfo;
                if (cte->aliascolnames_) {
                   size_t i = 0;
                   for (auto* el = cte->aliascolnames_->head; el != nullptr; el = el->next) {
@@ -864,23 +863,87 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                   }
                }
 
-               ctes.insert({cte->ctename_, {subQuery, targetInfo}});
+               // Determine max iterations (default 100)
+               int maxIterations = 100;
+               // Try to extract from WHERE clause of recursive step (pattern: col < N or col <= N)
+               auto* recursiveStmt = reinterpret_cast<SelectStmt*>(substmt->rarg_);
+               if (recursiveStmt && recursiveStmt->where_clause_) {
+                  auto* where = recursiveStmt->where_clause_;
+                  if (where->type == T_A_Expr) {
+                     auto* aExpr = reinterpret_cast<A_Expr*>(where);
+                     if (aExpr->kind_ == AEXPR_OP && aExpr->name_ && aExpr->name_->head) {
+                        auto* opName = reinterpret_cast<value*>(aExpr->name_->head->data.ptr_value);
+                        std::string op = opName->val_.str_;
+                        Node* constNode = nullptr;
+                        if (op == "<" || op == "<=") {
+                           constNode = aExpr->rexpr_;
+                        }
+                        if (constNode && constNode->type == T_A_Const) {
+                           int val = reinterpret_cast<A_Const*>(constNode)->val_.val_.ival_;
+                           maxIterations = (op == "<") ? val : val + 1;
+                        }
+                     }
+                  }
+               }
 
-               // Then do the recursive part
-               for (int i = 0; i < maxIterations; ++i) {
-                  auto [subQuery_, targetInfo_] = translateSelectStmt(builder, substmt, context, subQueryScope);
-                  subQuery = subQuery_;
-                  targetInfo = targetInfo_;
+               // Compile-time unrolling: translate recursive step maxIterations times
+               auto loc = builder.getUnknownLoc();
+
+               // Accumulated result starts as base case
+               mlir::Value accumulated = subQuery;
+               TargetInfo accInfo = targetInfo;
+
+               // Working table for feeding into next iteration
+               mlir::Value working = subQuery;
+               TargetInfo workingInfo = targetInfo;
+
+               for (int iter = 0; iter < maxIterations; iter++) {
+                  // Set CTE to reference current working table
+                  ctes[cte->ctename_] = {working, workingInfo};
+
+                  // Translate recursive step in a fresh scope
+                  auto iterScope = context.createResolverScope();
+                  auto iterDefineScope = context.createDefineScope();
+                  auto [stepResult, stepTargetInfo] = translateSelectStmt(builder,
+                     reinterpret_cast<SelectStmt*>(substmt->rarg_), context, iterScope);
+
+                  // Apply alias column names
                   if (cte->aliascolnames_) {
                      size_t i = 0;
                      for (auto* el = cte->aliascolnames_->head; el != nullptr; el = el->next) {
                         auto* val = reinterpret_cast<value*>(el->data.ptr_value);
-                        targetInfo.namedResults.at(i++).first = val->val_.str_;
+                        stepTargetInfo.namedResults.at(i++).first = val->val_.str_;
                      }
                   }
 
-                  ctes[cte->ctename_] = {subQuery, targetInfo};
+                  // Create UNION ALL: accumulated = accumulated UNION ALL stepResult
+                  auto unionScope = attrManager.getUniqueScope("setop");
+                  std::vector<mlir::Attribute> unionCols;
+                  TargetInfo unionTargetInfo;
+                  for (size_t i = 0; i < accInfo.namedResults.size(); i++) {
+                     auto& name = accInfo.namedResults[i].first;
+                     auto* leftCol = accInfo.namedResults[i].second;
+                     auto* rightCol = stepTargetInfo.namedResults[i].second;
+                     auto newColDef = attrManager.createDef(unionScope, name,
+                        builder.getArrayAttr({attrManager.createRef(leftCol), attrManager.createRef(rightCol)}));
+                     newColDef.getColumn().type = leftCol->type;
+                     unionCols.push_back(newColDef);
+                     unionTargetInfo.map(name, &newColDef.getColumn());
+                  }
+                  accumulated = builder.create<mlir::relalg::UnionOp>(loc,
+                     mlir::relalg::SetSemanticAttr::get(builder.getContext(), mlir::relalg::SetSemantic::all),
+                     accumulated, stepResult,
+                     builder.getArrayAttr(unionCols));
+                  accInfo = unionTargetInfo;
+
+                  // Update working table for next iteration
+                  working = stepResult;
+                  workingInfo = stepTargetInfo;
                }
+
+               subQuery = accumulated;
+               targetInfo = accInfo;
+               ctes[cte->ctename_] = {subQuery, targetInfo};
 
             } else {
                auto [subQuery_, targetInfo_] = translateSelectStmt(builder, substmt, context, subQueryScope);

@@ -718,4 +718,35 @@ bool mlir::relalg::NestedOp::canColumnReach(Operator source, Operator target, co
    }
    return false;
 }
+ColumnSet mlir::relalg::FixpointOp::getCreatedColumns() {
+   return mlir::relalg::ColumnSet::fromArrayAttr(getResultColumns());
+}
+ColumnSet mlir::relalg::FixpointOp::getUsedColumns() {
+   // The fixpoint uses the columns from the initial input
+   ColumnSet used;
+   for (auto attr : getResultColumns()) {
+      if (auto colDef = attr.dyn_cast<mlir::tuples::ColumnDefAttr>()) {
+         auto fromExisting = colDef.getFromExisting();
+         if (fromExisting) {
+            if (auto arrAttr = fromExisting.dyn_cast<mlir::ArrayAttr>()) {
+               for (auto ref : arrAttr) {
+                  if (auto colRef = ref.dyn_cast<mlir::tuples::ColumnRefAttr>()) {
+                     used.insert(&colRef.getColumn());
+                  }
+               }
+            }
+         }
+      }
+   }
+   return used;
+}
+ColumnSet mlir::relalg::FixpointOp::getAvailableColumns() {
+   return getCreatedColumns();
+}
+bool mlir::relalg::FixpointOp::canColumnReach(Operator source, Operator target, const mlir::tuples::Column* col) {
+   if (!source) {
+      return mlir::relalg::detail::canColumnReach(this->getOperation(), source, target, col);
+   }
+   return false;
+}
 #include "mlir/Dialect/RelAlg/IR/RelAlgOpsInterfaces.cpp.inc"

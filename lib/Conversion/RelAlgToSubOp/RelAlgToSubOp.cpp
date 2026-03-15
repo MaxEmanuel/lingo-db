@@ -2887,6 +2887,131 @@ class TrackTuplesLowering : public OpConversionPattern<mlir::relalg::TrackTuples
       return mlir::success();
    }
 };
+class FixpointLowering : public OpConversionPattern<mlir::relalg::FixpointOp> {
+   public:
+   using OpConversionPattern<mlir::relalg::FixpointOp>::OpConversionPattern;
+
+   LogicalResult matchAndRewrite(mlir::relalg::FixpointOp fixpointOp, OpAdaptor adaptor, ConversionPatternRewriter& rewriter) const override {
+      auto loc = fixpointOp->getLoc();
+      auto& colManager = getContext()->getLoadedDialect<mlir::tuples::TupleStreamDialect>()->getColumnManager();
+
+      // Determine columns from the result_columns attribute
+      auto resultColumns = fixpointOp.getResultColumns();
+      MaterializationHelper helper(resultColumns, rewriter.getContext());
+
+      auto bufType = mlir::subop::BufferType::get(rewriter.getContext(), helper.createStateMembersAttr());
+
+      // Build initial materialization mapping: source columns -> buffer members
+      std::vector<mlir::NamedAttribute> initialMapping;
+      for (size_t i = 0; i < resultColumns.size(); i++) {
+         auto colDef = resultColumns[i].cast<mlir::tuples::ColumnDefAttr>();
+         auto fromExisting = colDef.getFromExisting();
+         if (fromExisting) {
+            auto arrAttr = fromExisting.dyn_cast<mlir::ArrayAttr>();
+            auto sourceRef = arrAttr ? arrAttr[0].cast<mlir::tuples::ColumnRefAttr>() : fromExisting.cast<mlir::tuples::ColumnRefAttr>();
+            auto memberName = helper.lookupStateMemberForMaterializedColumn(&colDef.getColumn());
+            initialMapping.push_back(rewriter.getNamedAttr(memberName, sourceRef));
+         }
+      }
+
+      // Build custom scan mapping that produces SOURCE columns (what the step body expects)
+      std::vector<mlir::NamedAttribute> sourceScanMapping;
+      for (size_t i = 0; i < resultColumns.size(); i++) {
+         auto colDef = resultColumns[i].cast<mlir::tuples::ColumnDefAttr>();
+         auto fromExisting = colDef.getFromExisting();
+         if (fromExisting) {
+            auto arrAttr = fromExisting.dyn_cast<mlir::ArrayAttr>();
+            auto sourceRef = arrAttr ? arrAttr[0].cast<mlir::tuples::ColumnRefAttr>() : fromExisting.cast<mlir::tuples::ColumnRefAttr>();
+            auto memberName = helper.lookupStateMemberForMaterializedColumn(&colDef.getColumn());
+            auto sourceDef = colManager.createDef(&sourceRef.getColumn());
+            sourceScanMapping.push_back(rewriter.getNamedAttr(memberName, sourceDef));
+         }
+      }
+
+      // Determine step output columns BEFORE inlining
+      auto& stepRegion = fixpointOp.getStep();
+      auto* stepBlock = &stepRegion.front();
+      auto* stepTerminator = stepBlock->getTerminator();
+      auto returnOp = mlir::cast<mlir::tuples::ReturnOp>(stepTerminator);
+      mlir::Value stepReturnValue = returnOp.getResults()[0];
+
+      // Build step materialization mapping by examining the step output's projection columns
+      std::vector<mlir::NamedAttribute> stepMapping;
+      if (auto projOp = stepReturnValue.getDefiningOp<mlir::relalg::ProjectionOp>()) {
+         auto stepCols = projOp.getCols();
+         for (size_t i = 0; i < resultColumns.size() && i < stepCols.size(); i++) {
+            auto colDef = resultColumns[i].cast<mlir::tuples::ColumnDefAttr>();
+            auto memberName = helper.lookupStateMemberForMaterializedColumn(&colDef.getColumn());
+            stepMapping.push_back(rewriter.getNamedAttr(memberName, stepCols[i]));
+         }
+      } else {
+         stepMapping = initialMapping;
+      }
+
+      // Create result buffer and materialize base case into it
+      mlir::Value resultBuf = rewriter.create<mlir::subop::GenericCreateOp>(loc, bufType);
+      rewriter.create<mlir::subop::MaterializeOp>(loc, adaptor.getInitial(), resultBuf, rewriter.getDictionaryAttr(initialMapping));
+
+      // Create working buffer from base case
+      mlir::Value workingBuf = rewriter.create<mlir::subop::GenericCreateOp>(loc, bufType);
+      rewriter.create<mlir::subop::MaterializeOp>(loc, adaptor.getInitial(), workingBuf, rewriter.getDictionaryAttr(initialMapping));
+
+      // Create scf.for loop
+      int maxIter = fixpointOp.getMaxIterations();
+      auto c0 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 0);
+      auto cN = rewriter.create<mlir::arith::ConstantIndexOp>(loc, maxIter);
+      auto c1 = rewriter.create<mlir::arith::ConstantIndexOp>(loc, 1);
+
+      auto forOp = rewriter.create<mlir::scf::ForOp>(loc, c0, cN, c1, mlir::ValueRange{workingBuf});
+      auto* forBody = forOp.getBody();
+      auto loopWorkingBuf = forOp.getRegionIterArg(0);
+
+      rewriter.setInsertionPointToStart(forBody);
+
+      // Scan working buffer with source column mapping (no relalg renaming needed)
+      auto workingStream = rewriter.create<mlir::subop::ScanOp>(loc, loopWorkingBuf, rewriter.getDictionaryAttr(sourceScanMapping));
+
+      // Inline the step body, replacing block argument with scan result
+      // (like NestedLowering does)
+      rewriter.inlineBlockBefore(stepBlock, &*rewriter.getInsertionPoint(), {workingStream});
+
+      // Add a dummy block to the now-empty step region (required since it's SizedRegion<1>)
+      {
+         auto* dummyBlock = new mlir::Block;
+         dummyBlock->addArgument(mlir::tuples::TupleStreamType::get(rewriter.getContext()), loc);
+         mlir::OpBuilder::InsertionGuard guard(rewriter);
+         rewriter.setInsertionPointToStart(dummyBlock);
+         rewriter.create<mlir::tuples::ReturnOp>(loc);
+         stepRegion.push_back(dummyBlock);
+      }
+
+      // Get the step result from the return op (still valid after inlining)
+      mlir::Value stepResult = returnOp.getResults()[0];
+
+      // Create new working buffer and materialize step result
+      mlir::Value newWorkingBuf = rewriter.create<mlir::subop::GenericCreateOp>(loc, bufType);
+      rewriter.create<mlir::subop::MaterializeOp>(loc, stepResult, newWorkingBuf, rewriter.getDictionaryAttr(stepMapping));
+
+      // Also append step result to the accumulated result buffer
+      rewriter.create<mlir::subop::MaterializeOp>(loc, stepResult, resultBuf, rewriter.getDictionaryAttr(stepMapping));
+
+      // Erase the step return op (now in forBody)
+      rewriter.eraseOp(stepTerminator);
+
+      // Replace the existing yield with one that passes the new working buffer
+      auto* existingYield = forBody->getTerminator();
+      rewriter.setInsertionPoint(existingYield);
+      rewriter.create<mlir::scf::YieldOp>(loc, mlir::ValueRange{newWorkingBuf});
+      rewriter.eraseOp(existingYield);
+
+      // After the loop, scan the result buffer
+      rewriter.setInsertionPointAfter(forOp);
+      auto resultStream = rewriter.create<mlir::subop::ScanOp>(loc, resultBuf, helper.createStateColumnMapping());
+
+      rewriter.replaceOp(fixpointOp, resultStream.getResult());
+      return success();
+   }
+};
 void RelalgToSubOpLoweringPass::runOnOperation() {
    auto module = getOperation();
    getContext().getLoadedDialect<mlir::util::UtilDialect>()->getFunctionHelper().setParentModule(module);
@@ -2944,17 +3069,158 @@ void RelalgToSubOpLoweringPass::runOnOperation() {
    patterns.insert<CountingSetOperationLowering>(ctxt);
    patterns.insert<GroupJoinLowering>(ctxt);
    patterns.insert<NestedLowering>(ctxt);
+   // FixpointLowering not used - recursive CTEs are unrolled at the parser level
+   // patterns.insert<FixpointLowering>(typeConverter, ctxt);
    patterns.insert<TrackTuplesLowering>(ctxt);
 
    if (failed(applyFullConversion(module, target, std::move(patterns))))
       signalPassFailure();
 }
 } //namespace
+
+// Pass that expands FixpointOp into scf::ForOp with SubOp buffers,
+// keeping the relalg step body for later conversion by the full lowering pass.
+class ExpandFixpointPass : public mlir::PassWrapper<ExpandFixpointPass, mlir::OperationPass<mlir::ModuleOp>> {
+   virtual llvm::StringRef getArgument() const override { return "expand-fixpoint"; }
+   public:
+   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ExpandFixpointPass)
+   void runOnOperation() override {
+      auto moduleOp = getOperation();
+      llvm::SmallVector<mlir::relalg::FixpointOp> fixpointOps;
+      moduleOp.walk([&](mlir::relalg::FixpointOp op) { fixpointOps.push_back(op); });
+
+      for (auto fixpointOp : fixpointOps) {
+         mlir::OpBuilder builder(fixpointOp);
+         auto loc = fixpointOp->getLoc();
+         auto& colManager = getContext().getLoadedDialect<mlir::tuples::TupleStreamDialect>()->getColumnManager();
+
+         auto resultColumns = fixpointOp.getResultColumns();
+         MaterializationHelper helper(resultColumns, &getContext());
+         auto bufType = mlir::subop::BufferType::get(&getContext(), helper.createStateMembersAttr());
+
+         // Build initial materialization mapping: source columns -> buffer members
+         std::vector<mlir::NamedAttribute> initialMapping;
+         for (size_t i = 0; i < resultColumns.size(); i++) {
+            auto colDef = resultColumns[i].cast<mlir::tuples::ColumnDefAttr>();
+            auto fromExisting = colDef.getFromExisting();
+            if (fromExisting) {
+               auto arrAttr = fromExisting.dyn_cast<mlir::ArrayAttr>();
+               auto sourceRef = arrAttr ? arrAttr[0].cast<mlir::tuples::ColumnRefAttr>() : fromExisting.cast<mlir::tuples::ColumnRefAttr>();
+               auto memberName = helper.lookupStateMemberForMaterializedColumn(&colDef.getColumn());
+               initialMapping.push_back(builder.getNamedAttr(memberName, sourceRef));
+            }
+         }
+
+         // Build scan mapping that produces source columns (what the step body expects)
+         std::vector<mlir::NamedAttribute> sourceScanMapping;
+         for (size_t i = 0; i < resultColumns.size(); i++) {
+            auto colDef = resultColumns[i].cast<mlir::tuples::ColumnDefAttr>();
+            auto fromExisting = colDef.getFromExisting();
+            if (fromExisting) {
+               auto arrAttr = fromExisting.dyn_cast<mlir::ArrayAttr>();
+               auto sourceRef = arrAttr ? arrAttr[0].cast<mlir::tuples::ColumnRefAttr>() : fromExisting.cast<mlir::tuples::ColumnRefAttr>();
+               auto memberName = helper.lookupStateMemberForMaterializedColumn(&colDef.getColumn());
+               auto sourceDef = colManager.createDef(&sourceRef.getColumn());
+               sourceScanMapping.push_back(builder.getNamedAttr(memberName, sourceDef));
+            }
+         }
+
+         // Determine step output columns from the ProjectionOp at the end of the step body
+         auto* stepBlock = &fixpointOp.getStep().front();
+         auto* stepTerminator = stepBlock->getTerminator();
+         auto returnOp = mlir::cast<mlir::tuples::ReturnOp>(stepTerminator);
+         mlir::Value stepReturnValue = returnOp.getResults()[0];
+
+         std::vector<mlir::NamedAttribute> stepMapping;
+         if (auto projOp = stepReturnValue.getDefiningOp<mlir::relalg::ProjectionOp>()) {
+            auto stepCols = projOp.getCols();
+            for (size_t i = 0; i < resultColumns.size() && i < stepCols.size(); i++) {
+               auto colDef = resultColumns[i].cast<mlir::tuples::ColumnDefAttr>();
+               auto memberName = helper.lookupStateMemberForMaterializedColumn(&colDef.getColumn());
+               stepMapping.push_back(builder.getNamedAttr(memberName, stepCols[i]));
+            }
+         } else {
+            stepMapping = initialMapping;
+         }
+
+         // Create result buffer and materialize base case
+         mlir::Value resultBuf = builder.create<mlir::subop::GenericCreateOp>(loc, bufType);
+         builder.create<mlir::subop::MaterializeOp>(loc, fixpointOp.getInitial(), resultBuf, builder.getDictionaryAttr(initialMapping));
+
+         // Create working buffer
+         mlir::Value workingBuf = builder.create<mlir::subop::GenericCreateOp>(loc, bufType);
+         builder.create<mlir::subop::MaterializeOp>(loc, fixpointOp.getInitial(), workingBuf, builder.getDictionaryAttr(initialMapping));
+
+         // Create scf.for loop
+         int maxIter = fixpointOp.getMaxIterations();
+         auto c0 = builder.create<mlir::arith::ConstantIndexOp>(loc, 0);
+         auto cN = builder.create<mlir::arith::ConstantIndexOp>(loc, maxIter);
+         auto c1 = builder.create<mlir::arith::ConstantIndexOp>(loc, 1);
+
+         auto forOp = builder.create<mlir::scf::ForOp>(loc, c0, cN, c1, mlir::ValueRange{workingBuf});
+         auto* forBody = forOp.getBody();
+         auto loopWorkingBuf = forOp.getRegionIterArg(0);
+
+         // Ensure the ForOp body has a yield terminator
+         {
+            builder.setInsertionPointToEnd(forBody);
+            if (forBody->empty() || !forBody->back().hasTrait<mlir::OpTrait::IsTerminator>()) {
+               builder.create<mlir::scf::YieldOp>(loc, mlir::ValueRange{loopWorkingBuf});
+            }
+         }
+
+         // Create ScanOp at the start of forBody (before the yield)
+         builder.setInsertionPointToStart(forBody);
+         auto workingStream = builder.create<mlir::subop::ScanOp>(loc, loopWorkingBuf, builder.getDictionaryAttr(sourceScanMapping));
+
+         // Replace the step block argument with the scan result BEFORE moving
+         stepBlock->getArgument(0).replaceAllUsesWith(workingStream);
+
+         // Move all operations from stepBlock (except terminator) into forBody before the yield
+         auto& stepOps = stepBlock->getOperations();
+         auto insertIt = mlir::Block::iterator(forBody->getTerminator());
+         while (!stepOps.empty()) {
+            auto& op = stepOps.front();
+            if (&op == stepTerminator) break;
+            op.moveBefore(forBody, insertIt);
+         }
+
+         // Now insert materialization before the yield
+         builder.setInsertionPoint(forBody->getTerminator());
+
+         // stepReturnValue is the step result (from the ProjectionOp/returned value)
+         mlir::Value stepResult = stepReturnValue;
+
+         // Create new working buffer and materialize step result
+         mlir::Value newWorkingBuf = builder.create<mlir::subop::GenericCreateOp>(loc, bufType);
+         builder.create<mlir::subop::MaterializeOp>(loc, stepResult, newWorkingBuf, builder.getDictionaryAttr(stepMapping));
+         builder.create<mlir::subop::MaterializeOp>(loc, stepResult, resultBuf, builder.getDictionaryAttr(stepMapping));
+
+         // Replace the yield to pass new working buffer
+         auto* existingYield = forBody->getTerminator();
+         builder.setInsertionPoint(existingYield);
+         builder.create<mlir::scf::YieldOp>(loc, mlir::ValueRange{newWorkingBuf});
+         existingYield->erase();
+
+         // Erase the step terminator (ReturnOp)
+         stepTerminator->erase();
+
+         // After the loop, scan the result buffer
+         builder.setInsertionPointAfter(forOp);
+         auto resultStream = builder.create<mlir::subop::ScanOp>(loc, resultBuf, helper.createStateColumnMapping());
+
+         fixpointOp.getResult().replaceAllUsesWith(resultStream.getResult());
+         fixpointOp.erase();
+      }
+   }
+};
+
 std::unique_ptr<mlir::Pass>
 mlir::relalg::createLowerToSubOpPass() {
    return std::make_unique<RelalgToSubOpLoweringPass>();
 }
 void mlir::relalg::createLowerRelAlgToSubOpPipeline(mlir::OpPassManager& pm) {
+   pm.addPass(std::make_unique<ExpandFixpointPass>());
    pm.addPass(mlir::relalg::createLowerToSubOpPass());
 }
 void mlir::relalg::registerRelAlgToSubOpConversionPasses() {

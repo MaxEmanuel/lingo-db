@@ -446,6 +446,19 @@ def ExceptOp : RelAlg_BinarySetOp<"except"> {
     let summary = "except operation";
 }
 
+def FixpointOp : RelAlg_Op<"fixpoint", [Pure, Operator]> {
+    let summary = "recursive fixpoint computation for recursive CTEs";
+    let arguments = (ins TupleStream:$initial, I32Attr:$max_iterations, ArrayAttr:$result_columns);
+    let results = (outs TupleStream:$result);
+    let regions = (region SizedRegion<1>:$step);
+    let extraClassDeclaration = [{
+        ColumnSet getCreatedColumns();
+        ColumnSet getUsedColumns();
+        ColumnSet getAvailableColumns();
+        bool canColumnReach(Operator source, Operator target, const mlir::tuples::Column* col);
+    }];
+}
+
 def NestedOp : RelAlg_Op<"nested", [Pure,Operator]> {
     let summary = "nested";
     let arguments = (ins Variadic<TupleStream>:$inputs,ArrayAttr:$used_cols,ArrayAttr:$available_cols);

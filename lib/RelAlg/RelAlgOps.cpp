@@ -381,6 +381,47 @@ void mlir::relalg::NestedOp::print(::mlir::OpAsmPrinter& p) {
    p << ") ";
    p.printRegion(getNestedFn(), false, true);
 }
+
+::mlir::ParseResult mlir::relalg::FixpointOp::parse(::mlir::OpAsmParser& parser, ::mlir::OperationState& result) {
+   mlir::OpAsmParser::UnresolvedOperand initialOperand;
+   auto tupleStreamType = mlir::tuples::TupleStreamType::get(parser.getContext());
+   if (parser.parseOperand(initialOperand) || parser.resolveOperand(initialOperand, tupleStreamType, result.operands)) {
+      return mlir::failure();
+   }
+   mlir::IntegerAttr maxIterAttr;
+   if (parser.parseKeyword("max_iterations") || parser.parseLParen() ||
+       parser.parseAttribute(maxIterAttr, parser.getBuilder().getI32Type(), "max_iterations", result.attributes) ||
+       parser.parseRParen()) {
+      return mlir::failure();
+   }
+   mlir::ArrayAttr resultCols;
+   if (parseCustDefArr(parser, resultCols).failed()) {
+      return mlir::failure();
+   }
+   result.addAttribute("result_columns", resultCols);
+   llvm::SmallVector<mlir::OpAsmParser::Argument> regionArgs;
+   if (parser.parseArgumentList(regionArgs, mlir::OpAsmParser::Delimiter::Paren)) {
+      return mlir::failure();
+   }
+   for (auto& arg : regionArgs) {
+      arg.type = tupleStreamType;
+   }
+   if (parser.parseRegion(*result.addRegion(), regionArgs)) return failure();
+   result.addTypes(tupleStreamType);
+   return mlir::success();
+}
+
+void mlir::relalg::FixpointOp::print(::mlir::OpAsmPrinter& p) {
+   p << " ";
+   p.printOperand(getInitial());
+   p << " max_iterations(" << getMaxIterations() << ") ";
+   printCustDefArr(p, this->getOperation(), getResultColumns());
+   p << " (";
+   p.printOperands(getStep().front().getArguments());
+   p << ") ";
+   p.printRegion(getStep(), false, true);
+}
+
 #define GET_OP_CLASSES
 #include "mlir/Dialect/RelAlg/IR/RelAlgOps.cpp.inc"
 #define GET_TYPEDEF_CLASSES

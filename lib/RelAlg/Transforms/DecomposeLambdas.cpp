@@ -216,12 +216,20 @@ class DecomposeLambdas : public mlir::PassWrapper<DecomposeLambdas, mlir::Operat
       }
    }
    void runOnOperation() override {
-      mlir::RewritePatternSet patterns(&getContext());
-      patterns.insert<DecomposeInnerJoin>(&getContext());
-      if (mlir::applyPatternsAndFoldGreedily(getOperation().getRegion(), std::move(patterns)).failed()) {
-         signalPassFailure();
+      // Only run greedy rewrite if there are no FixpointOps (their step regions
+      // can be incorrectly modified by the folding/DCE in the greedy driver)
+      bool hasFixpoint = false;
+      getOperation().walk([&](mlir::relalg::FixpointOp) { hasFixpoint = true; });
+      if (!hasFixpoint) {
+         mlir::RewritePatternSet patterns(&getContext());
+         patterns.insert<DecomposeInnerJoin>(&getContext());
+         if (mlir::applyPatternsAndFoldGreedily(getOperation().getRegion(), std::move(patterns)).failed()) {
+            signalPassFailure();
+         }
       }
       getOperation().walk([&](mlir::relalg::SelectionOp op) {
+         // Skip ops inside FixpointOp step regions
+         if (op->getParentOfType<mlir::relalg::FixpointOp>()) return;
          auto* terminator = op.getRegion().front().getTerminator();
          mlir::Value val = op.getRel();
          if(terminator->getNumOperands()>0){
@@ -231,6 +239,8 @@ class DecomposeLambdas : public mlir::PassWrapper<DecomposeLambdas, mlir::Operat
          op->erase();
       });
       getOperation().walk([&](mlir::relalg::MapOp op) {
+         // Skip MapOps inside FixpointOp step regions - they must be preserved
+         if (op->getParentOfType<mlir::relalg::FixpointOp>()) return;
          mlir::Value val = op.getRel();
          decomposeMap(op, val);
          op.replaceAllUsesWith(val);
