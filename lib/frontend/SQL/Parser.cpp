@@ -465,7 +465,7 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       return builder.create<mlir::db::RuntimeCall>(loc, val.getType(), "Cos", val).getRes();
    }
 
-  throw std::runtime_error("could not translate func call");
+  throw std::runtime_error("could not translate func call: " + funcName);
    return mlir::Value();
 }
 std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser::translateConstRelation(List* valuesLists, mlir::OpBuilder& builder) {
@@ -561,8 +561,8 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
 }
 mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& builder, frontend::sql::ExpressionType opType, mlir::Value left, mlir::Value right) {
    auto loc = builder.getUnknownLoc();
-   auto leftType = getBaseType(left.getType());
-   auto rightType = getBaseType(right.getType());
+   auto leftType = left ? getBaseType(left.getType()) : mlir::Type();
+   auto rightType = right ? getBaseType(right.getType()) : mlir::Type();
    switch (opType) {
       case ExpressionType::OPERATOR_PLUS: {
          if (leftType.isa<mlir::db::DateType>() && rightType.isa<mlir::db::IntervalType>()) {
@@ -866,21 +866,37 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                // Determine max iterations (default 100)
                int maxIterations = 100;
                // Try to extract from WHERE clause of recursive step (pattern: col < N or col <= N)
+               // For nested UNIONs, drill down to the last (rightmost) leaf SelectStmt
                auto* recursiveStmt = reinterpret_cast<SelectStmt*>(substmt->rarg_);
+               while (recursiveStmt && recursiveStmt->op_ != SETOP_NONE && recursiveStmt->rarg_) {
+                  recursiveStmt = reinterpret_cast<SelectStmt*>(recursiveStmt->rarg_);
+               }
                if (recursiveStmt && recursiveStmt->where_clause_) {
+                  // Helper to extract iteration limit from a comparison expression
+                  auto tryExtractLimit = [&](Node* node) -> bool {
+                     if (node->type != T_A_Expr) return false;
+                     auto* aExpr = reinterpret_cast<A_Expr*>(node);
+                     if (aExpr->kind_ != AEXPR_OP || !aExpr->name_ || !aExpr->name_->head) return false;
+                     auto* opName = reinterpret_cast<value*>(aExpr->name_->head->data.ptr_value);
+                     std::string op = opName->val_.str_;
+                     Node* constNode = nullptr;
+                     if (op == "<" || op == "<=") {
+                        constNode = aExpr->rexpr_;
+                     }
+                     if (constNode && constNode->type == T_A_Const) {
+                        int val = reinterpret_cast<A_Const*>(constNode)->val_.val_.ival_;
+                        maxIterations = (op == "<") ? val : val + 1;
+                        return true;
+                     }
+                     return false;
+                  };
                   auto* where = recursiveStmt->where_clause_;
-                  if (where->type == T_A_Expr) {
-                     auto* aExpr = reinterpret_cast<A_Expr*>(where);
-                     if (aExpr->kind_ == AEXPR_OP && aExpr->name_ && aExpr->name_->head) {
-                        auto* opName = reinterpret_cast<value*>(aExpr->name_->head->data.ptr_value);
-                        std::string op = opName->val_.str_;
-                        Node* constNode = nullptr;
-                        if (op == "<" || op == "<=") {
-                           constNode = aExpr->rexpr_;
-                        }
-                        if (constNode && constNode->type == T_A_Const) {
-                           int val = reinterpret_cast<A_Const*>(constNode)->val_.val_.ival_;
-                           maxIterations = (op == "<") ? val : val + 1;
+                  if (!tryExtractLimit(where) && where->type == T_BoolExpr) {
+                     // Search AND clauses for iteration limit
+                     auto* boolExpr = reinterpret_cast<BoolExpr*>(where);
+                     if (boolExpr->boolop_ == AND_EXPR) {
+                        for (auto* cell = boolExpr->args_->head; cell != nullptr; cell = cell->next) {
+                           if (tryExtractLimit(reinterpret_cast<Node*>(cell->data.ptr_value))) break;
                         }
                      }
                   }
@@ -1987,6 +2003,10 @@ std::optional<mlir::Value> frontend::sql::Parser::translate(mlir::OpBuilder& bui
             translateCreateStatement(builder, reinterpret_cast<CreateStmt*>(statement));
             break;
          }
+         case T_DropStmt: {
+            // DROP TABLE: silently ignore (tables are transient)
+            break;
+         }
          case T_CopyStmt: {
             auto* copyStatement = reinterpret_cast<CopyStmt*>(statement);
             translateCopyStatement(builder, copyStatement);
@@ -2453,6 +2473,13 @@ Node* frontend::sql::Parser::analyzeTargetExpression(Node* node, frontend::sql::
                replaceState.aggrs.insert({fakeNode, {funcName, aggrExpr, funcNode->agg_distinct_}});
                return fakeNode;
             }
+            // Not an aggregate: recurse into function arguments
+            if (funcNode->args_) {
+               for (auto* cell = funcNode->args_->head; cell != nullptr; cell = cell->next) {
+                  auto* nodePtr = reinterpret_cast<Node**>(&cell->data.ptr_value);
+                  *nodePtr = analyzeTargetExpression(*nodePtr, replaceState);
+               }
+            }
             return node;
          }
       }
@@ -2467,8 +2494,10 @@ Node* frontend::sql::Parser::analyzeTargetExpression(Node* node, frontend::sql::
          if (expr->kind_ == AEXPR_OP) {
             if (node->type == T_TypeCast) {
             } else {
-               expr->lexpr_ = analyzeTargetExpression(expr->lexpr_, replaceState);
-               expr->rexpr_ = analyzeTargetExpression(expr->rexpr_, replaceState);
+               if (expr->lexpr_)
+                  expr->lexpr_ = analyzeTargetExpression(expr->lexpr_, replaceState);
+               if (expr->rexpr_)
+                  expr->rexpr_ = analyzeTargetExpression(expr->rexpr_, replaceState);
             }
             return node;
          }
@@ -2516,7 +2545,29 @@ std::pair<mlir::Value, mlir::tuples::ColumnRefAttr> frontend::sql::Parser::mapEx
    mapBuilder.create<mlir::tuples::ReturnOp>(builder.getUnknownLoc(), createdValue);
    return {mapOp.getResult(), attrManager.createRef(&attrDef.getColumn())};
 }
+bool containsFakeNode(Node* n) {
+   if (!n) return false;
+   if (n->type == T_FakeNode) return true;
+   if (n->type == T_A_Expr) {
+      auto* expr = reinterpret_cast<A_Expr*>(n);
+      return containsFakeNode(expr->lexpr_) || containsFakeNode(expr->rexpr_);
+   }
+   if (n->type == T_FuncCall) {
+      auto* func = reinterpret_cast<FuncCall*>(n);
+      if (func->args_) {
+         for (auto* cell = func->args_->head; cell != nullptr; cell = cell->next) {
+            if (containsFakeNode(reinterpret_cast<Node*>(cell->data.ptr_value))) return true;
+         }
+      }
+   }
+   if (n->type == T_TypeCast) {
+      auto* cast = reinterpret_cast<TypeCast*>(n);
+      return containsFakeNode(cast->arg_);
+   }
+   return false;
+}
 std::string fingerprint(Node* n) {
+   if (containsFakeNode(n)) return ""; // Can't serialize modified AST with fake nodes
    std::regex r(",\\s*\"location\":\\s*\\d+");
    std::string json = pg_query_nodes_to_json(n);
    return std::regex_replace(json, r, "");
@@ -3151,7 +3202,23 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
 
                switch (colRefFirst->type) {
                   case T_String: {
-                     //todo: handle a.*
+                     // Check for qualified star (e.g., i.*)
+                     if (colRef->fields_->length >= 2) {
+                        auto* secondNode = reinterpret_cast<Node*>(colRef->fields_->head->next->data.ptr_value);
+                        if (secondNode->type == T_A_Star) {
+                           std::string tableAlias = reinterpret_cast<value*>(colRefFirst)->val_.str_;
+                           std::string prefix = tableAlias + ".";
+                           std::unordered_set<const mlir::tuples::Column*> handledAttrs;
+                           for (auto p : context.getAllDefinedColumns()) {
+                              if (!handledAttrs.contains(p.second) && p.first.substr(0, prefix.size()) == prefix) {
+                                 std::string colName = p.first.substr(prefix.size());
+                                 targets.push_back({colName, p.second});
+                                 handledAttrs.insert(p.second);
+                              }
+                           }
+                           continue;
+                        }
+                     }
 
                      name = fieldsToString(colRef->fields_);
                      auto p = name.find(".");
@@ -3165,7 +3232,7 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                      std::unordered_set<const mlir::tuples::Column*> handledAttrs;
                      for (auto p : context.getAllDefinedColumns()) {
                         if (!handledAttrs.contains(p.second)) {
-                           targetInfo.namedResults.push_back({p.first, p.second});
+                           targets.push_back({p.first, p.second});
                            handledAttrs.insert(p.second);
                         }
                      }
@@ -3535,7 +3602,7 @@ mlir::Value frontend::sql::Parser::translateTableFunction(Node* node, mlir::OpBu
       }
       return results.first;
    }
-  throw std::runtime_error("could not translate func call");
+  throw std::runtime_error("could not translate func call: " + funcName);
    return mlir::Value();
 }
 

@@ -270,7 +270,19 @@ LogicalResult inferRemReturnType(MLIRContext* context, std::optional<Location> l
    mlir::db::RuntimeCall& runtimeCall = *this;
    auto reg = runtimeCall.getContext()->getLoadedDialect<mlir::db::DBDialect>()->getRuntimeFunctionRegistry();
    if (!reg->verify(runtimeCall.getFn().str(), runtimeCall.getArgs().getTypes(), runtimeCall.getNumResults() == 1 ? runtimeCall.getResultTypes()[0] : mlir::Type())) {
-      runtimeCall->emitError("could not find matching runtime function");
+      std::string argTypes;
+      for (auto t : runtimeCall.getArgs().getTypes()) {
+         std::string ts;
+         llvm::raw_string_ostream os(ts);
+         t.print(os);
+         argTypes += ts + ", ";
+      }
+      std::string resType;
+      if (runtimeCall.getNumResults() == 1) {
+         llvm::raw_string_ostream os(resType);
+         runtimeCall.getResultTypes()[0].print(os);
+      }
+      runtimeCall->emitError("could not find matching runtime function: '" + runtimeCall.getFn().str() + "' args=(" + argTypes + ") result=" + resType);
       return failure();
    }
    return success();
