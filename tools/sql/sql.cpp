@@ -24,11 +24,15 @@ static void sigintHandler(int) {
 }
 
 void handleQuery(runtime::Session& session, const std::string& sqlQuery) {
-   auto queryExecutionConfig = execution::createQueryExecutionConfig(execution::ExecutionMode::DEFAULT, true);
-   queryExecutionConfig->exitOnError = false;
-   auto executer = execution::QueryExecuter::createDefaultExecuter(std::move(queryExecutionConfig), session);
-   executer->fromData(sqlQuery);
-   executer->execute();
+   try {
+      auto queryExecutionConfig = execution::createQueryExecutionConfig(execution::ExecutionMode::DEFAULT, true);
+      queryExecutionConfig->exitOnError = false;
+      auto executer = execution::QueryExecuter::createDefaultExecuter(std::move(queryExecutionConfig), session);
+      executer->fromData(sqlQuery);
+      executer->execute();
+   } catch (const std::exception& e) {
+      std::cerr << "Error: " << e.what() << std::endl;
+   }
 }
 
 std::string getMLIR(const std::string& sql, runtime::Catalog& catalog) {
