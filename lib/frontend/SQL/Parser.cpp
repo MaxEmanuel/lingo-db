@@ -916,19 +916,71 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                      }
                   }
 
-                  // Create UNION ALL: accumulated = accumulated UNION ALL stepResult
+                  // Create UNION ALL with type casting (like translateSetOperation)
                   auto unionScope = attrManager.getUniqueScope("setop");
+                  auto leftMapScope = attrManager.getUniqueScope("map");
+                  auto rightMapScope = attrManager.getUniqueScope("map");
+                  mlir::Block* leftMapBlock = new mlir::Block;
+                  mlir::Block* rightMapBlock = new mlir::Block;
+                  mlir::OpBuilder leftMapBuilder(builder.getContext());
+                  mlir::OpBuilder rightMapBuilder(builder.getContext());
+                  leftMapBuilder.setInsertionPointToStart(leftMapBlock);
+                  rightMapBuilder.setInsertionPointToStart(rightMapBlock);
+                  leftMapBlock->addArgument(mlir::tuples::TupleType::get(builder.getContext()), loc);
+                  rightMapBlock->addArgument(mlir::tuples::TupleType::get(builder.getContext()), loc);
+                  mlir::Value leftTuple = leftMapBlock->getArgument(0);
+                  mlir::Value rightTuple = rightMapBlock->getArgument(0);
+                  std::vector<mlir::Attribute> createdColsLeft, createdColsRight;
+                  std::vector<mlir::Value> leftMapResults, rightMapResults;
+
                   std::vector<mlir::Attribute> unionCols;
                   TargetInfo unionTargetInfo;
                   for (size_t i = 0; i < accInfo.namedResults.size(); i++) {
                      auto& name = accInfo.namedResults[i].first;
-                     auto* leftCol = accInfo.namedResults[i].second;
-                     auto* rightCol = stepTargetInfo.namedResults[i].second;
+                     const auto* leftCol = accInfo.namedResults[i].second;
+                     const auto* rightCol = stepTargetInfo.namedResults[i].second;
+                     auto leftType = leftCol->type;
+                     auto rightType = rightCol->type;
+                     auto commonType = SQLTypeInference::getCommonType(leftType, rightType);
+                     if (leftType != commonType) {
+                        auto attrDef = attrManager.createDef(leftMapScope, std::string("set_op") + std::to_string(i));
+                        attrDef.getColumn().type = commonType;
+                        auto attrRef = attrManager.createRef(leftCol);
+                        createdColsLeft.push_back(attrDef);
+                        mlir::Value expr = leftMapBuilder.create<mlir::tuples::GetColumnOp>(loc, attrRef.getColumn().type, attrRef, leftTuple);
+                        leftCol = &attrDef.getColumn();
+                        leftMapResults.push_back(SQLTypeInference::castValueToType(leftMapBuilder, expr, commonType));
+                     }
+                     if (rightType != commonType) {
+                        auto attrDef = attrManager.createDef(rightMapScope, std::string("set_op") + std::to_string(i));
+                        auto attrRef = attrManager.createRef(rightCol);
+                        attrDef.getColumn().type = commonType;
+                        createdColsRight.push_back(attrDef);
+                        mlir::Value expr = rightMapBuilder.create<mlir::tuples::GetColumnOp>(loc, attrRef.getColumn().type, attrRef, rightTuple);
+                        rightCol = &attrDef.getColumn();
+                        rightMapResults.push_back(SQLTypeInference::castValueToType(rightMapBuilder, expr, commonType));
+                     }
                      auto newColDef = attrManager.createDef(unionScope, name,
                         builder.getArrayAttr({attrManager.createRef(leftCol), attrManager.createRef(rightCol)}));
-                     newColDef.getColumn().type = leftCol->type;
+                     newColDef.getColumn().type = commonType;
                      unionCols.push_back(newColDef);
                      unionTargetInfo.map(name, &newColDef.getColumn());
+                  }
+                  if (!leftMapResults.empty()) {
+                     auto mapOp = builder.create<mlir::relalg::MapOp>(loc, mlir::tuples::TupleStreamType::get(builder.getContext()), accumulated, builder.getArrayAttr(createdColsLeft));
+                     mapOp.getPredicate().push_back(leftMapBlock);
+                     leftMapBuilder.create<mlir::tuples::ReturnOp>(loc, leftMapResults);
+                     accumulated = mapOp.getResult();
+                  } else {
+                     delete leftMapBlock;
+                  }
+                  if (!rightMapResults.empty()) {
+                     auto mapOp = builder.create<mlir::relalg::MapOp>(loc, mlir::tuples::TupleStreamType::get(builder.getContext()), stepResult, builder.getArrayAttr(createdColsRight));
+                     mapOp.getPredicate().push_back(rightMapBlock);
+                     rightMapBuilder.create<mlir::tuples::ReturnOp>(loc, rightMapResults);
+                     stepResult = mapOp.getResult();
+                  } else {
+                     delete rightMapBlock;
                   }
                   accumulated = builder.create<mlir::relalg::UnionOp>(loc,
                      mlir::relalg::SetSemanticAttr::get(builder.getContext(), mlir::relalg::SetSemantic::all),
