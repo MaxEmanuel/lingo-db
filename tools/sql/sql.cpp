@@ -1,4 +1,5 @@
 #include <csignal>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -92,8 +93,35 @@ void executeFile(runtime::Session& session, const std::string& filename) {
    std::string line;
    std::stringstream query;
    while (std::getline(ss, line)) {
+      // Handle \i directive for file inclusion
+      auto trimPos = line.find_first_not_of(" \t");
+      if (trimPos != std::string::npos && line.substr(trimPos, 2) == "\\i") {
+         // Execute any pending query first
+         std::string q = query.str();
+         if (!q.empty() && q.find_first_not_of(" \t\n\r") != std::string::npos) {
+            handleQuery(session, q);
+         }
+         query.str("");
+         query.clear();
+         // Extract filename and execute it
+         std::string incFile = line.substr(trimPos + 2);
+         auto fpos = incFile.find_first_not_of(" \t");
+         if (fpos != std::string::npos) {
+            incFile = incFile.substr(fpos);
+            // Resolve relative to the directory of the current file
+            std::filesystem::path incPath(incFile);
+            if (incPath.is_relative()) {
+               incPath = std::filesystem::path(filename).parent_path() / incPath;
+            }
+            executeFile(session, incPath.string());
+         }
+         continue;
+      }
       query << line << "\n";
-      if (!line.empty() && line.back() == ';') {
+      // Check if line ends with ';' but not inside a comment
+      auto commentPos = line.find("--");
+      auto semiPos = line.rfind(';');
+      if (semiPos != std::string::npos && (commentPos == std::string::npos || semiPos < commentPos)) {
          std::string q = query.str();
          if (!q.empty()) {
             handleQuery(session, q);
