@@ -3090,91 +3090,235 @@ class ExpandFixpointPass : public mlir::PassWrapper<ExpandFixpointPass, mlir::Op
       moduleOp.walk([&](mlir::relalg::FixpointOp op) { fixpointOps.push_back(op); });
 
       for (auto fixpointOp : fixpointOps) {
+         // Disable parallelization — the scf::ForOp introduces a sequential dependency.
+         moduleOp->setAttr("subop.sequential", mlir::UnitAttr::get(&getContext()));
          mlir::OpBuilder builder(fixpointOp);
          auto loc = fixpointOp->getLoc();
          auto& colManager = getContext().getLoadedDialect<mlir::tuples::TupleStreamDialect>()->getColumnManager();
+         auto* ctx = &getContext();
 
          auto resultColumns = fixpointOp.getResultColumns();
-         MaterializationHelper helper(resultColumns, &getContext());
-         auto bufType = mlir::subop::BufferType::get(&getContext(), helper.createStateMembersAttr());
 
-         // Build initial materialization mapping: source columns -> buffer members
-         std::vector<mlir::NamedAttribute> initialMapping;
-         for (size_t i = 0; i < resultColumns.size(); i++) {
-            auto colDef = resultColumns[i].cast<mlir::tuples::ColumnDefAttr>();
-            auto fromExisting = colDef.getFromExisting();
-            if (fromExisting) {
-               auto arrAttr = fromExisting.dyn_cast<mlir::ArrayAttr>();
-               auto sourceRef = arrAttr ? arrAttr[0].cast<mlir::tuples::ColumnRefAttr>() : fromExisting.cast<mlir::tuples::ColumnRefAttr>();
-               auto memberName = helper.lookupStateMemberForMaterializedColumn(&colDef.getColumn());
-               initialMapping.push_back(builder.getNamedAttr(memberName, sourceRef));
-            }
-         }
+         // Working buffer helper (still needed as ForOp iter arg for data dependency)
+         MaterializationHelper workingHelper(resultColumns, ctx);
+         auto workingBufType = mlir::subop::BufferType::get(ctx, workingHelper.createStateMembersAttr());
 
-         // Build scan mapping that produces source columns (what the step body expects)
-         std::vector<mlir::NamedAttribute> sourceScanMapping;
-         for (size_t i = 0; i < resultColumns.size(); i++) {
-            auto colDef = resultColumns[i].cast<mlir::tuples::ColumnDefAttr>();
-            auto fromExisting = colDef.getFromExisting();
-            if (fromExisting) {
-               auto arrAttr = fromExisting.dyn_cast<mlir::ArrayAttr>();
-               auto sourceRef = arrAttr ? arrAttr[0].cast<mlir::tuples::ColumnRefAttr>() : fromExisting.cast<mlir::tuples::ColumnRefAttr>();
-               auto memberName = helper.lookupStateMemberForMaterializedColumn(&colDef.getColumn());
-               auto sourceDef = colManager.createDef(&sourceRef.getColumn());
-               sourceScanMapping.push_back(builder.getNamedAttr(memberName, sourceDef));
-            }
-         }
+         // Build MapType for dedup result accumulation
+         // Key columns: non-float columns (used for dedup identity)
+         // Value columns: float columns (stored but not used for dedup)
+         // This prevents cross-epoch contamination where the same (iter,id,i,j) gets
+         // multiple v values from different computation paths.
 
-         // Determine step output columns from the ProjectionOp at the end of the step body
+         // Get step body's terminator and return value
          auto* stepBlock = &fixpointOp.getStep().front();
          auto* stepTerminator = stepBlock->getTerminator();
          auto returnOp = mlir::cast<mlir::tuples::ReturnOp>(stepTerminator);
          mlir::Value stepReturnValue = returnOp.getResults()[0];
 
-         std::vector<mlir::NamedAttribute> stepMapping;
+         std::vector<mlir::Attribute> mapKeyNames, mapKeyTypes;
+         std::vector<mlir::Attribute> mapValNames, mapValTypes;
+         std::vector<mlir::Type> keyTypesForCompare;
+         std::vector<mlir::NamedAttribute> mapScanMapping; // outer: member → result column def
+         std::vector<mlir::NamedAttribute> innerScanMapping; // inner: member → source column def
+         std::vector<mlir::Attribute> baseKeyRefs; // column refs for keys in base case stream
+         std::vector<mlir::Attribute> baseValRefs; // column refs for values in base case stream
+         std::vector<mlir::NamedAttribute> initialMappingWorking;
+         std::vector<mlir::NamedAttribute> workingScanMapping;
+
+         for (size_t i = 0; i < resultColumns.size(); i++) {
+            auto colDef = resultColumns[i].cast<mlir::tuples::ColumnDefAttr>();
+            auto fromExisting = colDef.getFromExisting();
+            if (!fromExisting) continue;
+
+            auto arrAttr = fromExisting.dyn_cast<mlir::ArrayAttr>();
+            auto sourceRef = arrAttr ? arrAttr[0].cast<mlir::tuples::ColumnRefAttr>() : fromExisting.cast<mlir::tuples::ColumnRefAttr>();
+
+            auto colType = colDef.getColumn().type;
+            auto innerType = colType;
+            if (auto nullableType = colType.dyn_cast<mlir::db::NullableType>())
+               innerType = nullableType.getType();
+            bool isFloatCol = innerType.isa<mlir::FloatType>() ||
+                              innerType.isa<mlir::db::DecimalType>();
+
+            auto memberName = getUniqueMember(ctx, isFloatCol ? "val" : "keyval");
+
+            if (isFloatCol) {
+               mapValNames.push_back(builder.getStringAttr(memberName));
+               mapValTypes.push_back(mlir::TypeAttr::get(colType));
+               baseValRefs.push_back(sourceRef);
+            } else {
+               mapKeyNames.push_back(builder.getStringAttr(memberName));
+               mapKeyTypes.push_back(mlir::TypeAttr::get(colType));
+               keyTypesForCompare.push_back(colType);
+               baseKeyRefs.push_back(sourceRef);
+            }
+
+            // Scan mappings include both key and value members
+            auto resultDef = colManager.createDef(&colDef.getColumn());
+            mapScanMapping.push_back(builder.getNamedAttr(memberName, resultDef));
+
+            auto sourceDef = colManager.createDef(&sourceRef.getColumn());
+            innerScanMapping.push_back(builder.getNamedAttr(memberName, sourceDef));
+
+            // Working buffer mappings
+            auto wMember = workingHelper.lookupStateMemberForMaterializedColumn(&colDef.getColumn());
+            initialMappingWorking.push_back(builder.getNamedAttr(wMember, sourceRef));
+            auto wSourceDef = colManager.createDef(&sourceRef.getColumn());
+            workingScanMapping.push_back(builder.getNamedAttr(wMember, wSourceDef));
+         }
+
+         auto mapKeyMembers = mlir::subop::StateMembersAttr::get(ctx,
+            mlir::ArrayAttr::get(ctx, mapKeyNames), mlir::ArrayAttr::get(ctx, mapKeyTypes));
+         auto mapValMembers = mlir::subop::StateMembersAttr::get(ctx,
+            mlir::ArrayAttr::get(ctx, mapValNames), mlir::ArrayAttr::get(ctx, mapValTypes));
+         auto resultMapType = mlir::subop::MapType::get(ctx, mapKeyMembers, mapValMembers);
+
+         // Step column refs and mappings
+
+         std::vector<mlir::Attribute> stepKeyRefs;
+         std::vector<mlir::Attribute> stepValRefs;
+         std::vector<mlir::NamedAttribute> stepMappingWorking;
          if (auto projOp = stepReturnValue.getDefiningOp<mlir::relalg::ProjectionOp>()) {
             auto stepCols = projOp.getCols();
             for (size_t i = 0; i < resultColumns.size() && i < stepCols.size(); i++) {
                auto colDef = resultColumns[i].cast<mlir::tuples::ColumnDefAttr>();
-               auto memberName = helper.lookupStateMemberForMaterializedColumn(&colDef.getColumn());
-               stepMapping.push_back(builder.getNamedAttr(memberName, stepCols[i]));
+               auto colType = colDef.getColumn().type;
+               auto innerStepType = colType;
+               if (auto nt = colType.dyn_cast<mlir::db::NullableType>())
+                  innerStepType = nt.getType();
+               bool isFloatCol = innerStepType.isa<mlir::FloatType>() ||
+                                 innerStepType.isa<mlir::db::DecimalType>();
+               auto wMember = workingHelper.lookupStateMemberForMaterializedColumn(&colDef.getColumn());
+               stepMappingWorking.push_back(builder.getNamedAttr(wMember, stepCols[i]));
+               if (isFloatCol) {
+                  stepValRefs.push_back(stepCols[i]);
+               } else {
+                  stepKeyRefs.push_back(stepCols[i]);
+               }
             }
          } else {
-            stepMapping = initialMapping;
+            stepMappingWorking = initialMappingWorking;
+            stepKeyRefs = baseKeyRefs;
+            stepValRefs = baseValRefs;
          }
 
-         // Create result buffer and materialize base case
-         mlir::Value resultBuf = builder.create<mlir::subop::GenericCreateOp>(loc, bufType);
-         builder.create<mlir::subop::MaterializeOp>(loc, fixpointOp.getInitial(), resultBuf, builder.getDictionaryAttr(initialMapping));
 
-         // Create working buffer
-         mlir::Value workingBuf = builder.create<mlir::subop::GenericCreateOp>(loc, bufType);
-         builder.create<mlir::subop::MaterializeOp>(loc, fixpointOp.getInitial(), workingBuf, builder.getDictionaryAttr(initialMapping));
+         // Create result map and working buffer
+         mlir::Value resultMap = builder.create<mlir::subop::GenericCreateOp>(loc, resultMapType);
+         mlir::Value workingBuf = builder.create<mlir::subop::GenericCreateOp>(loc, workingBufType);
 
-         // Create scf.for loop
+         // Helper to build LookupOrInsertOp with partial-key dedup.
+         // For value members, we use a "fixpoint_value_columns" attribute that tells the
+         // SubOp-to-CF lowering to initialize values from the stream (first-write-wins).
+         auto buildLookupOrInsert = [&](mlir::Value stream, mlir::Value map,
+                                         llvm::ArrayRef<mlir::Attribute> keyRefs,
+                                         llvm::ArrayRef<mlir::Attribute> valRefs) -> mlir::Value {
+            auto [refDef, refRef] = createColumn(
+               mlir::subop::LookupEntryRefType::get(ctx, resultMapType), "lookup", "ref");
+            auto lookupOp = builder.create<mlir::subop::LookupOrInsertOp>(
+               loc, mlir::tuples::TupleStreamType::get(ctx),
+               stream, map, builder.getArrayAttr(keyRefs), refDef);
+
+            // InitFn: return zero-initialized values (used as fallback; the lowering
+            // will prefer stream values for new entries when fixpoint_value_columns is set)
+            auto* initBlock = new mlir::Block;
+            {
+               mlir::OpBuilder::InsertionGuard guard(builder);
+               builder.setInsertionPointToStart(initBlock);
+               std::vector<mlir::Value> initVals;
+               for (size_t i = 0; i < mapValTypes.size(); i++) {
+                  auto valType = mapValTypes[i].cast<mlir::TypeAttr>().getValue();
+                  auto baseType = valType;
+                  bool isNullable = false;
+                  if (auto nullableType = valType.dyn_cast<mlir::db::NullableType>()) {
+                     baseType = nullableType.getType();
+                     isNullable = true;
+                  }
+                  mlir::Value initVal;
+                  if (baseType.isa<mlir::FloatType>()) {
+                     initVal = builder.create<mlir::arith::ConstantOp>(loc,
+                        builder.getFloatAttr(baseType, 0.0));
+                  } else if (baseType.isa<mlir::db::DecimalType>()) {
+                     initVal = builder.create<mlir::db::ConstantOp>(loc,
+                        baseType, builder.getI64IntegerAttr(0));
+                  } else {
+                     initVal = builder.create<mlir::db::ConstantOp>(loc,
+                        baseType, builder.getI64IntegerAttr(0));
+                  }
+                  if (isNullable) {
+                     initVal = builder.create<mlir::db::AsNullableOp>(loc, valType, initVal);
+                  }
+                  initVals.push_back(initVal);
+               }
+               builder.create<mlir::tuples::ReturnOp>(loc, initVals);
+            }
+            lookupOp.getInitFn().push_back(initBlock);
+
+            // EqFn: compare all key columns
+            auto* eqBlock = new mlir::Block;
+            std::vector<mlir::Location> locs(keyTypesForCompare.size(), loc);
+            eqBlock->addArguments(keyTypesForCompare, locs);
+            eqBlock->addArguments(keyTypesForCompare, locs);
+            {
+               mlir::OpBuilder::InsertionGuard guard(builder);
+               builder.setInsertionPointToStart(eqBlock);
+               mlir::Value equal = compareKeys(builder,
+                  eqBlock->getArguments().drop_back(keyTypesForCompare.size()),
+                  eqBlock->getArguments().drop_front(keyTypesForCompare.size()),
+                  loc);
+               builder.create<mlir::tuples::ReturnOp>(loc, equal);
+            }
+            lookupOp.getEqFn().push_back(eqBlock);
+
+            // Set value column refs as a custom attribute for the lowering to use.
+            // The lowering will store stream values into value members for NEW entries only
+            // (first-write-wins semantics, preventing cross-epoch contamination).
+            if (!valRefs.empty()) {
+               lookupOp->setAttr("fixpoint_value_columns", builder.getArrayAttr(valRefs));
+            }
+
+            return lookupOp.getResult();
+         };
+
+         // Insert base case: baseCase → LookupOrInsert(resultMap) → MaterializeOp(workingBuf)
+         mlir::Value baseCaseStream = fixpointOp.getInitial();
+         auto baseDedupStream = buildLookupOrInsert(baseCaseStream, resultMap, baseKeyRefs, baseValRefs);
+         builder.create<mlir::subop::MaterializeOp>(loc, baseDedupStream, workingBuf,
+            builder.getDictionaryAttr(initialMappingWorking));
+
+         // Create ForOp with working buffer and result map as iter args
          int maxIter = fixpointOp.getMaxIterations();
          auto c0 = builder.create<mlir::arith::ConstantIndexOp>(loc, 0);
          auto cN = builder.create<mlir::arith::ConstantIndexOp>(loc, maxIter);
          auto c1 = builder.create<mlir::arith::ConstantIndexOp>(loc, 1);
 
-         auto forOp = builder.create<mlir::scf::ForOp>(loc, c0, cN, c1, mlir::ValueRange{workingBuf});
+         auto forOp = builder.create<mlir::scf::ForOp>(loc, c0, cN, c1, mlir::ValueRange{workingBuf, resultMap});
          auto* forBody = forOp.getBody();
          auto loopWorkingBuf = forOp.getRegionIterArg(0);
+         auto loopResultMap = forOp.getRegionIterArg(1);
 
          // Ensure the ForOp body has a yield terminator
          {
             builder.setInsertionPointToEnd(forBody);
             if (forBody->empty() || !forBody->back().hasTrait<mlir::OpTrait::IsTerminator>()) {
-               builder.create<mlir::scf::YieldOp>(loc, mlir::ValueRange{loopWorkingBuf});
+               builder.create<mlir::scf::YieldOp>(loc, mlir::ValueRange{loopWorkingBuf, loopResultMap});
             }
          }
 
-         // Create ScanOp at the start of forBody (before the yield)
-         builder.setInsertionPointToStart(forBody);
-         auto workingStream = builder.create<mlir::subop::ScanOp>(loc, loopWorkingBuf, builder.getDictionaryAttr(sourceScanMapping));
-
-         // Replace the step block argument with the scan result BEFORE moving
-         stepBlock->getArgument(0).replaceAllUsesWith(workingStream);
+         // Replace blockArg's single use with a ScanOp of the working buffer
+         // (previous iteration's output), matching standard recursive CTE semantics.
+         {
+            auto blockArg = stepBlock->getArgument(0);
+            llvm::SmallVector<mlir::OpOperand*> uses;
+            for (auto& use : blockArg.getUses())
+               uses.push_back(&use);
+            for (auto* use : uses) {
+               builder.setInsertionPointToStart(forBody);
+               auto scanOp = builder.create<mlir::subop::ScanOp>(loc, loopWorkingBuf,
+                  builder.getDictionaryAttr(workingScanMapping));
+               use->set(scanOp.getResult());
+            }
+         }
 
          // Move all operations from stepBlock (except terminator) into forBody before the yield
          auto& stepOps = stepBlock->getOperations();
@@ -3185,31 +3329,233 @@ class ExpandFixpointPass : public mlir::PassWrapper<ExpandFixpointPass, mlir::Op
             op.moveBefore(forBody, insertIt);
          }
 
-         // Now insert materialization before the yield
+         // Fix multi-use: CTE references like w_now may fan out to multiple consumers
+         // through a single ScanOp → RenamingOp chain. Each consumer needs its own ScanOp.
+         // NOTE: TmpOp (used for inner CTEs) already handles fan-out by materializing
+         // into a buffer and creating separate ScanOps for each result.
+         // This fix handles the case where there is NO TmpOp in the chain.
+         {
+            llvm::SmallVector<mlir::subop::ScanOp> fixpointScans;
+            for (auto& op : *forBody) {
+               if (auto scan = mlir::dyn_cast<mlir::subop::ScanOp>(&op)) {
+                  if (scan.getState() == loopResultMap)
+                     fixpointScans.push_back(scan);
+               }
+            }
+            for (auto scanOp : fixpointScans) {
+               mlir::Value multiUseVal;
+               llvm::SmallVector<mlir::Operation*> chainOps;
+               mlir::Value cur = scanOp.getResult();
+               while (true) {
+                  auto userCount = std::distance(cur.getUses().begin(), cur.getUses().end());
+                  if (userCount > 1) {
+                     multiUseVal = cur;
+                     break;
+                  }
+                  if (userCount == 0) break;
+                  auto* user = cur.getUses().begin()->getOwner();
+                  if (mlir::isa<mlir::relalg::RenamingOp>(user) || mlir::isa<mlir::relalg::ProjectionOp>(user)) {
+                     chainOps.push_back(user);
+                     cur = user->getResult(0);
+                  } else {
+                     break;
+                  }
+               }
+               if (!multiUseVal) continue;
+               llvm::SmallVector<mlir::OpOperand*> multiUses;
+               for (auto& use : multiUseVal.getUses())
+                  multiUses.push_back(&use);
+               for (size_t i = 1; i < multiUses.size(); i++) {
+                  builder.setInsertionPointToStart(forBody);
+                  mlir::Value newVal = builder.create<mlir::subop::ScanOp>(loc, loopResultMap,
+                     builder.getDictionaryAttr(innerScanMapping));
+                  for (auto* chainOp : chainOps) {
+                     builder.setInsertionPointAfterValue(newVal);
+                     auto* cloned = builder.clone(*chainOp);
+                     cloned->setOperand(0, newVal);
+                     newVal = cloned->getResult(0);
+                  }
+                  multiUses[i]->set(newVal);
+               }
+            }
+         }
+
+         // Insert dedup + materialization before the yield
          builder.setInsertionPoint(forBody->getTerminator());
 
-         // stepReturnValue is the step result (from the ProjectionOp/returned value)
          mlir::Value stepResult = stepReturnValue;
 
-         // Create new working buffer and materialize step result
-         mlir::Value newWorkingBuf = builder.create<mlir::subop::GenericCreateOp>(loc, bufType);
-         builder.create<mlir::subop::MaterializeOp>(loc, stepResult, newWorkingBuf, builder.getDictionaryAttr(stepMapping));
-         builder.create<mlir::subop::MaterializeOp>(loc, stepResult, resultBuf, builder.getDictionaryAttr(stepMapping));
+         // Cast nullable step key columns to non-nullable types matching the map key types.
+         // This happens when the step body produces nullable columns (e.g., from scalar subqueries
+         // like max(iter)+1) but the base case defines non-nullable key types.
+         {
+            std::vector<mlir::Attribute> castDefs;
+            std::vector<mlir::Attribute> origStepRefs; // original nullable column refs
+            std::vector<size_t> castKeyIndices;
+            for (size_t ki = 0; ki < stepKeyRefs.size(); ki++) {
+               auto stepRef = stepKeyRefs[ki].cast<mlir::tuples::ColumnRefAttr>();
+               auto stepColType = stepRef.getColumn().type;
+               auto mapKeyType = mapKeyTypes[ki].cast<mlir::TypeAttr>().getValue();
+               if (stepColType != mapKeyType && stepColType.isa<mlir::db::NullableType>() &&
+                   stepColType.cast<mlir::db::NullableType>().getType() == mapKeyType) {
+                  origStepRefs.push_back(stepRef);
+                  castKeyIndices.push_back(ki);
+                  auto [castDef, castRefAttr] = createColumn(mapKeyType, "cast", "key");
+                  castDefs.push_back(castDef);
+               }
+            }
+            if (!castDefs.empty()) {
+               auto* mapBlock = new mlir::Block;
+               auto tupleArg = mapBlock->addArgument(mlir::tuples::TupleType::get(ctx), loc);
+               {
+                  mlir::OpBuilder::InsertionGuard guard(builder);
+                  builder.setInsertionPointToStart(mapBlock);
+                  std::vector<mlir::Value> castVals;
+                  for (size_t ci = 0; ci < origStepRefs.size(); ci++) {
+                     auto stepRef = origStepRefs[ci].cast<mlir::tuples::ColumnRefAttr>();
+                     auto nullableVal = builder.create<mlir::tuples::GetColumnOp>(
+                        loc, stepRef.getColumn().type, stepRef, tupleArg);
+                     auto nonNullVal = builder.create<mlir::db::NullableGetVal>(loc, nullableVal);
+                     castVals.push_back(nonNullVal);
+                  }
+                  builder.create<mlir::tuples::ReturnOp>(loc, castVals);
+               }
+               auto castMapOp = builder.create<mlir::subop::MapOp>(
+                  loc, mlir::tuples::TupleStreamType::get(ctx),
+                  stepResult, builder.getArrayAttr(castDefs));
+               castMapOp.getFn().push_back(mapBlock);
+               stepResult = castMapOp.getResult();
 
-         // Replace the yield to pass new working buffer
+               // Update stepKeyRefs with the new non-nullable columns
+               for (size_t ci = 0; ci < castKeyIndices.size(); ci++) {
+                  auto newDef = castDefs[ci].cast<mlir::tuples::ColumnDefAttr>();
+                  auto newRef = colManager.createRef(&newDef.getColumn());
+                  size_t ki = castKeyIndices[ci];
+                  auto oldRef = stepKeyRefs[ki];
+                  stepKeyRefs[ki] = newRef;
+                  // Also update stepMappingWorking entries that used the old nullable column
+                  for (auto& nattr : stepMappingWorking) {
+                     if (nattr.getValue() == oldRef) {
+                        nattr = builder.getNamedAttr(nattr.getName(), newRef);
+                     }
+                  }
+               }
+            }
+         }
+
+         // Also cast nullable step VALUE columns to non-nullable to match map value types.
+         // This happens when step body produces nullable values (e.g., from avg()) but
+         // the base case defines non-nullable value types (e.g., 10::float).
+         {
+            std::vector<mlir::Attribute> castDefs;
+            std::vector<mlir::Attribute> origStepRefs;
+            std::vector<size_t> castValIndices;
+            for (size_t vi = 0; vi < stepValRefs.size(); vi++) {
+               auto stepRef = stepValRefs[vi].cast<mlir::tuples::ColumnRefAttr>();
+               auto stepColType = stepRef.getColumn().type;
+               auto mapValType = mapValTypes[vi].cast<mlir::TypeAttr>().getValue();
+               if (stepColType != mapValType && stepColType.isa<mlir::db::NullableType>() &&
+                   stepColType.cast<mlir::db::NullableType>().getType() == mapValType) {
+                  origStepRefs.push_back(stepRef);
+                  castValIndices.push_back(vi);
+                  auto [castDef, castRefAttr] = createColumn(mapValType, "cast", "val");
+                  castDefs.push_back(castDef);
+               }
+            }
+            if (!castDefs.empty()) {
+               auto* mapBlock = new mlir::Block;
+               auto tupleArg = mapBlock->addArgument(mlir::tuples::TupleType::get(ctx), loc);
+               {
+                  mlir::OpBuilder::InsertionGuard guard(builder);
+                  builder.setInsertionPointToStart(mapBlock);
+                  std::vector<mlir::Value> castVals;
+                  for (size_t ci = 0; ci < origStepRefs.size(); ci++) {
+                     auto stepRef = origStepRefs[ci].cast<mlir::tuples::ColumnRefAttr>();
+                     auto nullableVal = builder.create<mlir::tuples::GetColumnOp>(
+                        loc, stepRef.getColumn().type, stepRef, tupleArg);
+                     auto nonNullVal = builder.create<mlir::db::NullableGetVal>(loc, nullableVal);
+                     castVals.push_back(nonNullVal);
+                  }
+                  builder.create<mlir::tuples::ReturnOp>(loc, castVals);
+               }
+               auto castMapOp = builder.create<mlir::subop::MapOp>(
+                  loc, mlir::tuples::TupleStreamType::get(ctx),
+                  stepResult, builder.getArrayAttr(castDefs));
+               castMapOp.getFn().push_back(mapBlock);
+               stepResult = castMapOp.getResult();
+
+               for (size_t ci = 0; ci < castValIndices.size(); ci++) {
+                  auto newDef = castDefs[ci].cast<mlir::tuples::ColumnDefAttr>();
+                  auto newRef = colManager.createRef(&newDef.getColumn());
+                  size_t vi = castValIndices[ci];
+                  auto oldRef = stepValRefs[vi];
+                  stepValRefs[vi] = newRef;
+                  for (auto& nattr : stepMappingWorking) {
+                     if (nattr.getValue() == oldRef) {
+                        nattr = builder.getNamedAttr(nattr.getName(), newRef);
+                     }
+                  }
+               }
+            }
+         }
+
+         // Chain: stepResult → LookupOrInsert(resultMap, dedup) → MaterializeOp(newWorkingBuf)
+         auto stepDedupStream = buildLookupOrInsert(stepResult, loopResultMap, stepKeyRefs, stepValRefs);
+         mlir::Value newWorkingBuf = builder.create<mlir::subop::GenericCreateOp>(loc, workingBufType);
+         builder.create<mlir::subop::MaterializeOp>(loc, stepDedupStream, newWorkingBuf,
+            builder.getDictionaryAttr(stepMappingWorking));
+
+         // Replace the yield to pass new working buffer and result map
          auto* existingYield = forBody->getTerminator();
          builder.setInsertionPoint(existingYield);
-         builder.create<mlir::scf::YieldOp>(loc, mlir::ValueRange{newWorkingBuf});
+         builder.create<mlir::scf::YieldOp>(loc, mlir::ValueRange{newWorkingBuf, loopResultMap});
          existingYield->erase();
 
          // Erase the step terminator (ReturnOp)
          stepTerminator->erase();
 
-         // After the loop, scan the result buffer
+         // After the loop, scan the result map for final output
          builder.setInsertionPointAfter(forOp);
-         auto resultStream = builder.create<mlir::subop::ScanOp>(loc, resultBuf, helper.createStateColumnMapping());
+         auto finalResultMap = forOp.getResult(1);
+         auto resultStream = builder.create<mlir::subop::ScanOp>(loc, finalResultMap,
+            builder.getDictionaryAttr(mapScanMapping));
 
-         fixpointOp.getResult().replaceAllUsesWith(resultStream.getResult());
+         mlir::Value finalStream = resultStream.getResult();
+
+         // Check if the fixpoint result feeds into TmpOps (which handle multi-use CTE results).
+         // TmpOp's getAvailableColumns() won't work after we replace the fixpoint with SubOp ops,
+         // so we handle TmpOps here by creating proper buffers with column mappings.
+         llvm::SmallVector<mlir::relalg::TmpOp> tmpOps;
+         for (auto* user : fixpointOp.getResult().getUsers()) {
+            if (auto tmpOp = mlir::dyn_cast<mlir::relalg::TmpOp>(user)) {
+               tmpOps.push_back(tmpOp);
+            }
+         }
+         if (!tmpOps.empty()) {
+            // Create a buffer to hold the fixpoint result with proper column mappings
+            MaterializationHelper helper(resultColumns, ctx);
+            auto bufType = mlir::subop::BufferType::get(ctx, helper.createStateMembersAttr());
+            mlir::Value buf = builder.create<mlir::subop::GenericCreateOp>(loc, bufType);
+            builder.create<mlir::subop::MaterializeOp>(loc, finalStream, buf,
+               helper.createColumnstateMapping());
+
+            // For each TmpOp, create scans from the buffer to replace its results
+            for (auto tmpOp : tmpOps) {
+               std::vector<mlir::Value> scanResults;
+               for (size_t ri = 0; ri < tmpOp.getNumResults(); ri++) {
+                  auto scan = builder.create<mlir::subop::ScanOp>(loc, buf,
+                     helper.createStateColumnMapping());
+                  scanResults.push_back(scan.getResult());
+               }
+               tmpOp.replaceAllUsesWith(scanResults);
+               tmpOp.erase();
+            }
+            // Also replace any non-TmpOp direct users
+            fixpointOp.getResult().replaceAllUsesWith(
+               builder.create<mlir::subop::ScanOp>(loc, buf, helper.createStateColumnMapping()).getResult());
+         } else {
+            fixpointOp.getResult().replaceAllUsesWith(finalStream);
+         }
          fixpointOp.erase();
       }
    }

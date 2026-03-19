@@ -14,6 +14,8 @@ class ColumnFoldingPass : public mlir::PassWrapper<ColumnFoldingPass, mlir::Oper
    void runOnOperation() override {
       std::unordered_set<mlir::Operation*> alreadyHandled;
       getOperation()->walk([&](ColumnFoldable columnFoldable) {
+         // Skip ops inside FixpointOp step regions — their columns are used internally
+         if (columnFoldable->getParentOfType<mlir::relalg::FixpointOp>()) return;
          if (!alreadyHandled.contains(columnFoldable.getOperation())) {
 
             mlir::relalg::ColumnFoldInfo columnFoldInfo;
@@ -44,6 +46,8 @@ class ColumnFoldingPass : public mlir::PassWrapper<ColumnFoldingPass, mlir::Oper
          usedColumns.insert(mlir::relalg::ColumnSet::fromArrayAttr(op.getCols()));
       });
       getOperation()->walk([&](ColumnFoldable columnFoldable) {
+         // Skip ops inside FixpointOp step regions
+         if (columnFoldable->getParentOfType<mlir::relalg::FixpointOp>()) return;
          if (columnFoldable->getNumResults() != 1) {
             return;
          }

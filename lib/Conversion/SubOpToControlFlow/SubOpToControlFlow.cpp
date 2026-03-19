@@ -548,13 +548,100 @@ class SubOpRewriter {
       assert(false);
    }
    void rewrite(mlir::Block* block) {
+      // Phase 1: Walk PreOrder. Update ForOp block arg types and insert
+      // conversion casts for ForOp results. Rewrite SubOp ops.
       block->walk<WalkOrder::PreOrder>([this](mlir::Operation* op) {
+         if (auto forOp = mlir::dyn_cast<mlir::scf::ForOp>(op)) {
+            for (unsigned i = 0; i < forOp.getInitArgs().size(); i++) {
+               auto initArg = forOp.getInitArgs()[i];
+               mlir::Value mapped = initArg;
+               if (valueMapping.contains(initArg))
+                  mapped = valueMapping.lookup(initArg);
+               if (mapped.getType() != forOp.getRegionIterArg(i).getType())
+                  forOp.getRegionIterArg(i).setType(mapped.getType());
+               // Insert a type-bridge cast so post-loop ops see the converted
+               // type. Mark it so the walk skips it. Phase 3 will fold it.
+               if (mapped.getType() != forOp.getResult(i).getType()) {
+                  mlir::OpBuilder castBuilder(forOp->getBlock(),
+                                              std::next(forOp->getIterator()));
+                  auto cast = castBuilder.create<mlir::UnrealizedConversionCastOp>(
+                     forOp.getLoc(), mapped.getType(), forOp.getResult(i));
+                  cast->setAttr("fixpoint_type_bridge",
+                                castBuilder.getUnitAttr());
+                  valueMapping.map(forOp.getResult(i), cast.getResult(0));
+               }
+            }
+            return WalkResult::advance();
+         }
+         // Skip type-bridge casts — they are folded after Phase 3.
+         if (op->hasAttr("fixpoint_type_bridge"))
+            return WalkResult::advance();
          if (op->getDialect()->getNamespace() == "subop" || mlir::isa<mlir::UnrealizedConversionCastOp>(op)) {
             rewrite(op);
             return WalkResult::skip();
          }
          return WalkResult::advance();
       });
+
+      // Phase 2: Fix up operands of non-SubOp ops (scf.for, scf.yield, etc.)
+      // Skip type-bridge casts — their operands must stay as ForOp results.
+      block->walk([this](mlir::Operation* op) {
+         if (isErased.contains(op)) return;
+         if (op->hasAttr("fixpoint_type_bridge")) return;
+         for (auto& operand : op->getOpOperands()) {
+            if (valueMapping.contains(operand.get()))
+               operand.set(valueMapping.lookup(operand.get()));
+         }
+      });
+
+      // Phase 3: Rebuild ForOps whose result types don't match init arg types.
+      llvm::SmallVector<mlir::scf::ForOp> forOpsToRebuild;
+      block->walk([&forOpsToRebuild](mlir::scf::ForOp forOp) {
+         for (unsigned i = 0; i < forOp.getNumResults(); i++) {
+            if (forOp.getInitArgs()[i].getType() != forOp.getResult(i).getType()) {
+               forOpsToRebuild.push_back(forOp);
+               break;
+            }
+         }
+      });
+      for (auto oldForOp : forOpsToRebuild) {
+         mlir::OpBuilder b(oldForOp);
+         llvm::SmallVector<mlir::Value> initArgs(oldForOp.getInitArgs());
+         auto newForOp = b.create<mlir::scf::ForOp>(
+            oldForOp.getLoc(), oldForOp.getLowerBound(), oldForOp.getUpperBound(),
+            oldForOp.getStep(), initArgs);
+         if (!newForOp.getBody()->empty())
+            newForOp.getBody()->back().erase();
+
+         auto* oldBody = oldForOp.getBody();
+         auto* newBody = newForOp.getBody();
+         oldBody->getArgument(0).replaceAllUsesWith(newBody->getArgument(0));
+         for (unsigned i = 0; i < initArgs.size(); i++)
+            oldForOp.getRegionIterArg(i).replaceAllUsesWith(newForOp.getRegionIterArg(i));
+         newBody->getOperations().splice(newBody->end(), oldBody->getOperations());
+
+         // Update uses of old ForOp results → new ForOp results.
+         // This also updates the type-bridge cast inputs from Phase 1.
+         for (unsigned i = 0; i < oldForOp.getNumResults(); i++)
+            oldForOp.getResult(i).replaceAllUsesWith(newForOp.getResult(i));
+         oldForOp.erase();
+      }
+
+      // Fold identity type-bridge casts (input type == output type after rebuild).
+      llvm::SmallVector<mlir::UnrealizedConversionCastOp> castsToFold;
+      block->walk([&castsToFold](mlir::UnrealizedConversionCastOp castOp) {
+         if (castOp->hasAttr("fixpoint_type_bridge") &&
+             castOp.getNumOperands() == 1 && castOp.getNumResults() == 1 &&
+             castOp.getOperands()[0].getType() == castOp.getResultTypes()[0]) {
+            castsToFold.push_back(castOp);
+         }
+      });
+      for (auto castOp : castsToFold) {
+         castOp.getResult(0).replaceAllUsesWith(castOp.getOperands()[0]);
+         castOp.erase();
+      }
+
+      // Phase 4: Erase old SubOp ops.
       for (auto* op : toErase) {
          op->dropAllReferences();
          op->dropAllUses();
@@ -1688,7 +1775,14 @@ class ScanRefsVectorLowering : public SubOpConversionPattern<mlir::subop::ScanRe
 
    LogicalResult matchAndRewrite(mlir::subop::ScanRefsOp scanOp, OpAdaptor adaptor, SubOpRewriter& rewriter) const override {
       auto bufferType = scanOp.getState().getType().dyn_cast_or_null<mlir::subop::BufferType>();
-      if (!bufferType) return failure();
+      if (!bufferType) {
+         // State type may already be converted (e.g., ForOp iter arg from FixpointOp expansion).
+         // Fall back to extracting the buffer type from the ref attribute.
+         if (auto entryRefType = scanOp.getRef().getColumn().type.dyn_cast_or_null<mlir::subop::EntryRefType>()) {
+            bufferType = entryRefType.getState().dyn_cast_or_null<mlir::subop::BufferType>();
+         }
+         if (!bufferType) return failure();
+      }
       ColumnMapping mapping;
       auto elementType = EntryStorageHelper(bufferType.getMembers(), typeConverter).getStorageType();
 
@@ -1822,8 +1916,15 @@ class ScanHashMapLowering : public SubOpConversionPattern<mlir::subop::ScanRefsO
    using SubOpConversionPattern<mlir::subop::ScanRefsOp>::SubOpConversionPattern;
 
    LogicalResult matchAndRewrite(mlir::subop::ScanRefsOp scanRefsOp, OpAdaptor adaptor, SubOpRewriter& rewriter) const override {
-      if (!scanRefsOp.getState().getType().isa<mlir::subop::HashMapType>()) return failure();
-      auto hashMapType = scanRefsOp.getState().getType().cast<mlir::subop::HashMapType>();
+      auto hashMapType = scanRefsOp.getState().getType().dyn_cast_or_null<mlir::subop::HashMapType>();
+      if (!hashMapType) {
+         // State type may already be converted (e.g., ForOp iter arg from FixpointOp expansion).
+         // Fall back to extracting the type from the ref attribute.
+         if (auto entryRefType = scanRefsOp.getRef().getColumn().type.dyn_cast_or_null<mlir::subop::HashMapEntryRefType>()) {
+            hashMapType = entryRefType.getHashMap();
+         }
+         if (!hashMapType) return failure();
+      }
       ColumnMapping mapping;
       auto loc = scanRefsOp->getLoc();
       auto it = rt::Hashtable::createIterator(rewriter, loc)({adaptor.getState()})[0];
@@ -2510,7 +2611,19 @@ class MaterializeVectorLowering : public SubOpTupleStreamConsumerConversionPatte
 
    LogicalResult matchAndRewrite(mlir::subop::MaterializeOp materializeOp, OpAdaptor adaptor, SubOpRewriter& rewriter, ColumnMapping& mapping) const override {
       auto bufferType = materializeOp.getState().getType().dyn_cast_or_null<mlir::subop::BufferType>();
-      if (!bufferType) return failure();
+      if (!bufferType) {
+         // State type may already be converted (e.g., ForOp iter arg from FixpointOp expansion).
+         // Try to extract original BufferType from the ForOp's init arg.
+         if (auto blockArg = materializeOp.getState().dyn_cast<mlir::BlockArgument>()) {
+            if (auto forOp = mlir::dyn_cast<mlir::scf::ForOp>(blockArg.getOwner()->getParentOp())) {
+               unsigned iterArgIdx = blockArg.getArgNumber() - 1; // subtract 1 for induction var
+               if (iterArgIdx < forOp.getInitArgs().size()) {
+                  bufferType = forOp.getInitArgs()[iterArgIdx].getType().dyn_cast<mlir::subop::BufferType>();
+               }
+            }
+         }
+         if (!bufferType) return failure();
+      }
       EntryStorageHelper storageHelper(bufferType.getMembers(), typeConverter);
       mlir::Value ref = rt::GrowingBuffer::insert(rewriter, materializeOp->getLoc())({adaptor.getState()})[0];
       storageHelper.storeFromColumns(materializeOp.getMapping(), mapping, ref, rewriter, materializeOp->getLoc());
@@ -3117,8 +3230,15 @@ class LookupHashMapLowering : public SubOpTupleStreamConsumerConversionPattern<m
    public:
    using SubOpTupleStreamConsumerConversionPattern<mlir::subop::LookupOrInsertOp>::SubOpTupleStreamConsumerConversionPattern;
    LogicalResult matchAndRewrite(mlir::subop::LookupOrInsertOp lookupOp, OpAdaptor adaptor, SubOpRewriter& rewriter, ColumnMapping& mapping) const override {
-      if (!lookupOp.getState().getType().isa<mlir::subop::HashMapType>()) return failure();
-      mlir::subop::HashMapType htStateType = lookupOp.getState().getType().cast<mlir::subop::HashMapType>();
+      auto htStateType = lookupOp.getState().getType().dyn_cast_or_null<mlir::subop::HashMapType>();
+      if (!htStateType) {
+         // State type may already be converted (e.g., ForOp iter arg from FixpointOp expansion).
+         // Fall back to extracting the type from the ref attribute.
+         if (auto lookupRefType = lookupOp.getRef().getColumn().type.dyn_cast_or_null<mlir::subop::LookupEntryRefType>()) {
+            htStateType = lookupRefType.getState().dyn_cast_or_null<mlir::subop::HashMapType>();
+         }
+         if (!htStateType) return failure();
+      }
       EntryStorageHelper keyStorageHelper(htStateType.getKeyMembers(), typeConverter);
       EntryStorageHelper valStorageHelper(htStateType.getValueMembers(), typeConverter);
       auto lookupKey = mapping.resolve(lookupOp.getKeys());
@@ -3133,7 +3253,21 @@ class LookupHashMapLowering : public SubOpTupleStreamConsumerConversionPattern<m
          auto res = inlineBlock(&lookupOp.getEqFn().front(), rewriter, arguments);
          return res[0];
       };
-      auto initValBuilder = [&lookupOp, this](SubOpRewriter& rewriter) -> std::vector<mlir::Value> {
+      auto initValBuilder = [&lookupOp, this, &mapping](SubOpRewriter& rewriter) -> std::vector<mlir::Value> {
+         // Check for fixpoint_value_columns: use stream values for first-write-wins semantics
+         if (auto valColsAttr = lookupOp->getAttrOfType<mlir::ArrayAttr>("fixpoint_value_columns")) {
+            auto streamVals = mapping.resolve(valColsAttr);
+            std::vector<mlir::Value> res;
+            for (auto v : streamVals) {
+               auto convertedType = typeConverter->convertType(v.getType());
+               if (v.getType() != convertedType) {
+                  res.push_back(rewriter.create<mlir::UnrealizedConversionCastOp>(lookupOp->getLoc(), convertedType, v).getResult(0));
+               } else {
+                  res.push_back(v);
+               }
+            }
+            return res;
+         }
          std::vector<mlir::Value> res;
          rewriter.inlineBlock<mlir::tuples::ReturnOpAdaptor>(&lookupOp.getInitFn().front(), {}, [&](mlir::tuples::ReturnOpAdaptor adaptor) {
             res = std::vector<mlir::Value>{adaptor.getResults().begin(), adaptor.getResults().end()};

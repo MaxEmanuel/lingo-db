@@ -140,7 +140,6 @@ class NormalizeSubOpPass : public mlir::PassWrapper<NormalizeSubOpPass, mlir::Op
                   numEndUsers++;
                }
             }
-            //return false;
             if (numUsers == 1 && numEndUsers == 1) {
                //do not materialize
                unionStreamCount[op] = streams;

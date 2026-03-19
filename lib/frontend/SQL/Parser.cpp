@@ -902,22 +902,45 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                   }
                }
 
-               // Compile-time unrolling: translate recursive step maxIterations times
+               // Emit FixpointOp for runtime loop instead of compile-time unrolling
                auto loc = builder.getUnknownLoc();
 
-               // Accumulated result starts as base case
-               mlir::Value accumulated = subQuery;
-               TargetInfo accInfo = targetInfo;
+               // Build result_columns from base case targetInfo
+               std::vector<mlir::Attribute> fixpointResultCols;
+               auto fixpointScope = attrManager.getUniqueScope("fixpoint");
+               TargetInfo fixpointTargetInfo;
+               for (size_t i = 0; i < targetInfo.namedResults.size(); i++) {
+                  auto& [name, col] = targetInfo.namedResults[i];
+                  auto def = attrManager.createDef(fixpointScope, name,
+                     builder.getArrayAttr({attrManager.createRef(col)}));
+                  def.getColumn().type = col->type;
+                  fixpointResultCols.push_back(def);
+                  fixpointTargetInfo.map(name, &def.getColumn());
+               }
 
-               // Working table for feeding into next iteration
-               mlir::Value working = subQuery;
-               TargetInfo workingInfo = targetInfo;
+               // Create FixpointOp
+               auto fixpointOp = builder.create<mlir::relalg::FixpointOp>(
+                  loc, mlir::tuples::TupleStreamType::get(builder.getContext()),
+                  subQuery, builder.getI32IntegerAttr(maxIterations),
+                  builder.getArrayAttr(fixpointResultCols));
 
-               for (int iter = 0; iter < maxIterations; iter++) {
-                  // Set CTE to reference current working table
-                  ctes[cte->ctename_] = {working, workingInfo};
+               // Build step region
+               auto* stepBlock = new mlir::Block;
+               stepBlock->addArgument(mlir::tuples::TupleStreamType::get(builder.getContext()), loc);
+               fixpointOp.getStep().push_back(stepBlock);
 
-                  // Translate recursive step in a fresh scope
+               // Save insertion point, move into step region
+               auto savedInsertionPoint = builder.saveInsertionPoint();
+               builder.setInsertionPointToStart(stepBlock);
+
+               // The block argument is the working table (previous iteration's output)
+               mlir::Value workingArg = stepBlock->getArgument(0);
+
+               // Set CTE to reference the block argument with base case column info
+               ctes[cte->ctename_] = {workingArg, targetInfo};
+
+               // Translate recursive step inside the step region
+               {
                   auto iterScope = context.createResolverScope();
                   auto iterDefineScope = context.createDefineScope();
                   auto [stepResult, stepTargetInfo] = translateSelectStmt(builder,
@@ -932,85 +955,24 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                      }
                   }
 
-                  // Create UNION ALL with type casting (like translateSetOperation)
-                  auto unionScope = attrManager.getUniqueScope("setop");
-                  auto leftMapScope = attrManager.getUniqueScope("map");
-                  auto rightMapScope = attrManager.getUniqueScope("map");
-                  mlir::Block* leftMapBlock = new mlir::Block;
-                  mlir::Block* rightMapBlock = new mlir::Block;
-                  mlir::OpBuilder leftMapBuilder(builder.getContext());
-                  mlir::OpBuilder rightMapBuilder(builder.getContext());
-                  leftMapBuilder.setInsertionPointToStart(leftMapBlock);
-                  rightMapBuilder.setInsertionPointToStart(rightMapBlock);
-                  leftMapBlock->addArgument(mlir::tuples::TupleType::get(builder.getContext()), loc);
-                  rightMapBlock->addArgument(mlir::tuples::TupleType::get(builder.getContext()), loc);
-                  mlir::Value leftTuple = leftMapBlock->getArgument(0);
-                  mlir::Value rightTuple = rightMapBlock->getArgument(0);
-                  std::vector<mlir::Attribute> createdColsLeft, createdColsRight;
-                  std::vector<mlir::Value> leftMapResults, rightMapResults;
+                  // Add ProjectionOp to align step output columns for the lowering
+                  std::vector<mlir::Attribute> projCols;
+                  for (size_t i = 0; i < stepTargetInfo.namedResults.size(); i++) {
+                     projCols.push_back(attrManager.createRef(stepTargetInfo.namedResults[i].second));
+                  }
+                  auto projOp = builder.create<mlir::relalg::ProjectionOp>(loc,
+                     mlir::relalg::SetSemantic::all, stepResult,
+                     builder.getArrayAttr(projCols));
 
-                  std::vector<mlir::Attribute> unionCols;
-                  TargetInfo unionTargetInfo;
-                  for (size_t i = 0; i < accInfo.namedResults.size(); i++) {
-                     auto& name = accInfo.namedResults[i].first;
-                     const auto* leftCol = accInfo.namedResults[i].second;
-                     const auto* rightCol = stepTargetInfo.namedResults[i].second;
-                     auto leftType = leftCol->type;
-                     auto rightType = rightCol->type;
-                     auto commonType = SQLTypeInference::getCommonType(leftType, rightType);
-                     if (leftType != commonType) {
-                        auto attrDef = attrManager.createDef(leftMapScope, std::string("set_op") + std::to_string(i));
-                        attrDef.getColumn().type = commonType;
-                        auto attrRef = attrManager.createRef(leftCol);
-                        createdColsLeft.push_back(attrDef);
-                        mlir::Value expr = leftMapBuilder.create<mlir::tuples::GetColumnOp>(loc, attrRef.getColumn().type, attrRef, leftTuple);
-                        leftCol = &attrDef.getColumn();
-                        leftMapResults.push_back(SQLTypeInference::castValueToType(leftMapBuilder, expr, commonType));
-                     }
-                     if (rightType != commonType) {
-                        auto attrDef = attrManager.createDef(rightMapScope, std::string("set_op") + std::to_string(i));
-                        auto attrRef = attrManager.createRef(rightCol);
-                        attrDef.getColumn().type = commonType;
-                        createdColsRight.push_back(attrDef);
-                        mlir::Value expr = rightMapBuilder.create<mlir::tuples::GetColumnOp>(loc, attrRef.getColumn().type, attrRef, rightTuple);
-                        rightCol = &attrDef.getColumn();
-                        rightMapResults.push_back(SQLTypeInference::castValueToType(rightMapBuilder, expr, commonType));
-                     }
-                     auto newColDef = attrManager.createDef(unionScope, name,
-                        builder.getArrayAttr({attrManager.createRef(leftCol), attrManager.createRef(rightCol)}));
-                     newColDef.getColumn().type = commonType;
-                     unionCols.push_back(newColDef);
-                     unionTargetInfo.map(name, &newColDef.getColumn());
-                  }
-                  if (!leftMapResults.empty()) {
-                     auto mapOp = builder.create<mlir::relalg::MapOp>(loc, mlir::tuples::TupleStreamType::get(builder.getContext()), accumulated, builder.getArrayAttr(createdColsLeft));
-                     mapOp.getPredicate().push_back(leftMapBlock);
-                     leftMapBuilder.create<mlir::tuples::ReturnOp>(loc, leftMapResults);
-                     accumulated = mapOp.getResult();
-                  } else {
-                     delete leftMapBlock;
-                  }
-                  if (!rightMapResults.empty()) {
-                     auto mapOp = builder.create<mlir::relalg::MapOp>(loc, mlir::tuples::TupleStreamType::get(builder.getContext()), stepResult, builder.getArrayAttr(createdColsRight));
-                     mapOp.getPredicate().push_back(rightMapBlock);
-                     rightMapBuilder.create<mlir::tuples::ReturnOp>(loc, rightMapResults);
-                     stepResult = mapOp.getResult();
-                  } else {
-                     delete rightMapBlock;
-                  }
-                  accumulated = builder.create<mlir::relalg::UnionOp>(loc,
-                     mlir::relalg::SetSemanticAttr::get(builder.getContext(), mlir::relalg::SetSemantic::all),
-                     accumulated, stepResult,
-                     builder.getArrayAttr(unionCols));
-                  accInfo = unionTargetInfo;
-
-                  // Update working table for next iteration
-                  working = stepResult;
-                  workingInfo = stepTargetInfo;
+                  // Terminate step region with ReturnOp
+                  builder.create<mlir::tuples::ReturnOp>(loc, mlir::ValueRange{projOp.getResult()});
                }
 
-               subQuery = accumulated;
-               targetInfo = accInfo;
+               // Restore insertion point to after the FixpointOp
+               builder.restoreInsertionPoint(savedInsertionPoint);
+
+               subQuery = fixpointOp.getResult();
+               targetInfo = fixpointTargetInfo;
                ctes[cte->ctename_] = {subQuery, targetInfo};
 
             } else {
@@ -1127,7 +1089,9 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
          rightMapResults.push_back(SQLTypeInference::castValueToType(rightMapBuilder, expr, commonType));
       }
       auto newType = SQLTypeInference::getCommonType(leftType, rightType);
-      auto newColName = attrManager.getName(leftColumn).second;
+      // Use indexed name to avoid Column* aliasing when multiple columns share
+      // the same base name (e.g., SELECT m.j, n.j ... UNION ALL ...)
+      auto newColName = attrManager.getName(leftColumn).second + std::to_string(i);
       auto newColDef = attrManager.createDef(scopeName, newColName, builder.getArrayAttr({attrManager.createRef(leftColumn), attrManager.createRef(rightColumn)}));
       auto* newCol = &newColDef.getColumn();
       newCol->type = newType;
@@ -3020,6 +2984,32 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
    }
 
    if (having) {
+      // Replace sub-expressions in HAVING that match GROUP BY expressions
+      // with FakeNode references to the computed group-by columns.
+      std::function<Node*(Node*)> replaceGrouped = [&](Node* node) -> Node* {
+         if (!node) return node;
+         if (!containsFakeNode(node)) {
+            auto fp = fingerprint(node);
+            if (!fp.empty() && groupedExpressions.contains(fp)) {
+               auto* fakeNode = createFakeNode("", node);
+               auto& col = groupedExpressions[fp].cast<mlir::tuples::ColumnRefAttr>().getColumn();
+               context.mapAttribute(scope, fakeNode->colId, &col);
+               return fakeNode;
+            }
+         }
+         if (node->type == T_A_Expr) {
+            auto* expr = reinterpret_cast<A_Expr*>(node);
+            expr->lexpr_ = replaceGrouped(expr->lexpr_);
+            expr->rexpr_ = replaceGrouped(expr->rexpr_);
+         } else if (node->type == T_BoolExpr) {
+            auto* boolExpr = reinterpret_cast<BoolExpr*>(node);
+            for (auto* cell = boolExpr->args_->head; cell != nullptr; cell = cell->next) {
+               cell->data.ptr_value = replaceGrouped(reinterpret_cast<Node*>(cell->data.ptr_value));
+            }
+         }
+         return node;
+      };
+      having = replaceGrouped(having);
       mlir::Block* pred = translatePredicate(builder, having, context);
       auto sel = builder.create<mlir::relalg::SelectionOp>(builder.getUnknownLoc(), mlir::tuples::TupleStreamType::get(builder.getContext()), tree);
       sel.getPredicate().push_back(pred);
@@ -3046,7 +3036,7 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
          std::vector<mlir::Attribute> createdCols;
          mlir::Value expr; //todo
          auto attrDef = attrManager.createDef(groupByName, fakeNode->colId);
-         if (funcName == "rank") {
+         if (funcName == "rank" || funcName == "row_number") {
             expr = windowBuilder.create<mlir::relalg::RankOp>(builder.getUnknownLoc(), builder.getI64Type(), relation);
 
          } else if (funcName == "count*") {

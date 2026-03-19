@@ -1,5 +1,6 @@
 #include "mlir/Dialect/SubOperator/SubOperatorInterfaces.h"
 #include "mlir/Dialect/SubOperator/Transforms/StateUsageTransformer.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
 using namespace mlir::subop;
 mlir::Type SubOpStateUsageTransformer::getNewRefType(mlir::Operation* op, mlir::Type oldRefType) {
@@ -14,6 +15,20 @@ void SubOpStateUsageTransformer::updateValue(mlir::Value oldValue, mlir::Type ne
          if (callBeforeFn) { callBeforeFn(stateUsingSubOp.getOperation()); }
          stateUsingSubOp.updateStateType(*this, oldValue, newType);
          if (callAfterFn) { callAfterFn(stateUsingSubOp.getOperation()); }
+      } else if (auto forOp = mlir::dyn_cast<mlir::scf::ForOp>(user)) {
+         // Handle ForOp iter args (from FixpointOp expansion)
+         for (unsigned i = 0; i < forOp.getInitArgs().size(); i++) {
+            if (forOp.getInitArgs()[i] == oldValue) {
+               // Update users before setting the type (so updateStateType sees type mismatch)
+               updateValue(forOp.getRegionIterArg(i), newType);
+               forOp.getRegionIterArg(i).setType(newType);
+               forOp.getResult(i).setType(newType);
+               updateValue(forOp.getResult(i), newType);
+               break;
+            }
+         }
+      } else if (auto yieldOp = mlir::dyn_cast<mlir::scf::YieldOp>(user)) {
+         // scf.yield just passes through — no type update needed on the op itself
       } else {
          user->dump();
          assert(false);

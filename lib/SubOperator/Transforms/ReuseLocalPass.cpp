@@ -309,6 +309,27 @@ class ReuseHashtable : public mlir::RewritePattern {
                      return mlir::Type();
                   });
             });
+            // Validate all lookupOps before mutating IR
+            for (auto lookupOp : lookupOps) {
+               std::vector<mlir::tuples::Column*> lookupHashedColumns;
+               for (auto c : lookupOp.getKeys()) {
+                  lookupHashedColumns.push_back(&c.cast<mlir::tuples::ColumnRefAttr>().getColumn());
+               }
+               if (lookupHashedColumns.size() != hashedColumns.size()) return mlir::failure();
+               for (auto z : llvm::zip(lookupHashedColumns, hashedColumns)) {
+                  // Check that all hashedColumns are reachable via column mapping
+               }
+               for (auto keyMember : htType.getKeyMembers().getNames()) {
+                  auto memberStr = keyMember.cast<mlir::StringAttr>().str();
+                  auto it1 = keyMemberToColumn.find(memberStr);
+                  if (it1 == keyMemberToColumn.end()) return mlir::failure();
+                  std::unordered_map<mlir::tuples::Column*, mlir::tuples::Column*> tmpMapping;
+                  for (auto z : llvm::zip(lookupHashedColumns, hashedColumns)) {
+                     tmpMapping.insert({std::get<1>(z), std::get<0>(z)});
+                  }
+                  if (tmpMapping.find(it1->second) == tmpMapping.end()) return mlir::failure();
+               }
+            }
             rewriter.eraseOp(insertOp);
             transformer.mapMembers(memberMapping);
             for (auto lookupOp : lookupOps) {
@@ -316,14 +337,14 @@ class ReuseHashtable : public mlir::RewritePattern {
                for (auto c : lookupOp.getKeys()) {
                   lookupHashedColumns.push_back(&c.cast<mlir::tuples::ColumnRefAttr>().getColumn());
                }
-               if (lookupHashedColumns.size() != hashedColumns.size()) return mlir::failure();
                std::unordered_map<mlir::tuples::Column*, mlir::tuples::Column*> columnMapping;
                for (auto z : llvm::zip(lookupHashedColumns, hashedColumns)) {
                   columnMapping.insert({std::get<1>(z), std::get<0>(z)});
                }
                std::vector<mlir::Attribute> lookupColumns;
                for (auto keyMember : htType.getKeyMembers().getNames()) {
-                  auto* col = columnMapping.at(keyMemberToColumn.at(keyMember.cast<mlir::StringAttr>().str()));
+                  auto memberStr = keyMember.cast<mlir::StringAttr>().str();
+                  auto* col = columnMapping.at(keyMemberToColumn.at(memberStr));
                   lookupColumns.push_back(colManager.createRef(col));
                }
                rewriter.setInsertionPointAfter(lookupOp);

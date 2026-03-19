@@ -61,6 +61,15 @@ class RelAlgLoweringStep : public LoweringStep {
       auto endLowerRelAlg = std::chrono::high_resolution_clock::now();
       timing["lowerRelAlg"] = std::chrono::duration_cast<std::chrono::microseconds>(endLowerRelAlg - startLowerRelAlg).count() / 1000.0;
 
+      // TEMP: dump IR after RelAlg lowering
+      {
+         static int dbgCounter = 0;
+         std::string fname = "/tmp/dbg_after_relalg_" + std::to_string(dbgCounter++) + ".mlir";
+         std::error_code ec;
+         llvm::raw_fd_ostream os(fname, ec);
+         if (!ec) moduleOp.print(os);
+      }
+
       // Load the required tables/indices for the query
       moduleOp.walk([&](mlir::Operation* op) {
          if (auto getExternalOp = mlir::dyn_cast_or_null<mlir::subop::GetExternalOp>(*op)) {

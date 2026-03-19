@@ -23,6 +23,7 @@ class IntroduceTmp : public mlir::PassWrapper<IntroduceTmp, mlir::OperationPass<
    }
    void runOnOperation() override {
       getOperation().walk([&](Operator op) {
+         auto useCount = std::distance(op->getUses().begin(), op->getUses().end());
          if (!op->use_empty() && !op->hasOneUse()) {
             mlir::OpBuilder builder(&getContext());
             builder.setInsertionPointAfter(op.getOperation());

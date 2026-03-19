@@ -279,10 +279,16 @@ int main(int argc, char** argv) {
          continue;
       }
 
-      // Read multi-line query until semicolon
+      // Read multi-line query until semicolon (not inside a -- comment)
       std::stringstream query;
       query << input;
-      while (!input.empty() && input.back() != ';') {
+      while (true) {
+         // Check if current line ends with ';' outside a comment
+         auto commentPos = input.find("--");
+         auto semiPos = input.rfind(';');
+         if (semiPos != std::string::npos && (commentPos == std::string::npos || semiPos < commentPos)) {
+            break;
+         }
          char* cont = readline("  -> ");
          if (!cont) break;
          input = std::string(cont);
