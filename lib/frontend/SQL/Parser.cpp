@@ -3548,9 +3548,9 @@ mlir::Value frontend::sql::Parser::translateArrayArithmetic(mlir::OpBuilder& bui
          throw std::runtime_error("Array Arithmetic: The combination of given types is not supported");
       }
       if (opType == frontend::sql::ExpressionType::OPERATOR_MINUS || opType == frontend::sql::ExpressionType::OPERATOR_DIVIDE) {
-         return builder.create<mlir::db::RuntimeCall>(loc, returnType, funcName, mlir::ValueRange({left, arrayTypeParam, right, scalarIsLeftParam})).getRes();
+         return builder.create<mlir::db::RuntimeCall>(loc, returnType, funcName, mlir::ValueRange({right, arrayTypeParam, left, scalarIsLeftParam})).getRes();
       }
-      return builder.create<mlir::db::RuntimeCall>(loc, returnType, funcName, mlir::ValueRange({left, arrayTypeParam, right})).getRes();
+      return builder.create<mlir::db::RuntimeCall>(loc, returnType, funcName, mlir::ValueRange({right, arrayTypeParam, left})).getRes();
    }
    throw std::runtime_error("Array Arithmetic: Given types not supported");
 }
