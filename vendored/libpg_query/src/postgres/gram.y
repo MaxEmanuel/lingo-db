@@ -184,7 +184,7 @@ static Node *makeLambdaExpr(List *param, Node *body, int location);
 %}
 
 %pure-parser
-%expect 0
+%expect 1
 %name-prefix="base_yy"
 %locations
 
@@ -12155,6 +12155,10 @@ c_expr:		columnref								{ $$ = $1; }
 					$$ = makeRangeVar(NULL, $3, @1);
 				}
 			| LAMBDA '{' ColId_list '}' '(' a_expr ')'
+				{
+					$$ = makeLambdaExpr($3, $6, @1);
+				}
+			| LAMBDA '(' ColId_list ')' '(' a_expr ')'
 				{
 					$$ = makeLambdaExpr($3, $6, @1);
 				}

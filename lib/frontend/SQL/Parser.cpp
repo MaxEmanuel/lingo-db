@@ -3557,8 +3557,13 @@ mlir::Value frontend::sql::Parser::translateArrayArithmetic(mlir::OpBuilder& bui
 
 mlir::Value frontend::sql::Parser::translateTableFunction(Node* node, mlir::OpBuilder& builder, mlir::Location loc, TranslationContext& context, TranslationContext::ResolverScope& scope) {
    auto* funcCall = reinterpret_cast<FuncCall*>(node);
-   std::string funcName = reinterpret_cast<value*>(funcCall->funcname_->head->data.ptr_value)->val_.str_;
-   if (funcName == "derivatebackwards" || funcName == "derivateforwards") {
+   // Build full function name (handles schema-qualified names like umbra.derivation)
+   std::string funcName;
+   for (auto* cell = funcCall->funcname_->head; cell != nullptr; cell = cell->next) {
+      if (!funcName.empty()) funcName += ".";
+      funcName += reinterpret_cast<value*>(cell->data.ptr_value)->val_.str_;
+   }
+   if (funcName == "derivatebackwards" || funcName == "derivateforwards" || funcName == "umbra.derivation") {
       // load arguments
       for(auto cell = funcCall->args_->head; cell != funcCall->args_->tail; cell = cell->next) {
          Node* variableNode = reinterpret_cast<Node*>(cell->data.ptr_value);
@@ -3582,7 +3587,7 @@ mlir::Value frontend::sql::Parser::translateTableFunction(Node* node, mlir::OpBu
        *  backward mode: true  
        *  forward mode: false
        */
-      bool backwardMode = (funcName == "derivatebackwards");
+      bool backwardMode = (funcName != "derivateforwards");
       // evaluate LambdaExpression
       auto results = mapDerivatesToAttributes(context, builder, scope, body, inputTable, backwardMode);
       // add results to table
