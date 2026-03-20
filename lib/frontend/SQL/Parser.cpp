@@ -652,6 +652,24 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
          }
       }
       case ExpressionType::OPERATOR_POWER: {
+         // Handle array case: element-wise power via repeated multiply
+         if (getBaseType(left.getType()).isa<mlir::db::ArrayType>()) {
+            int expVal = 0;
+            if (auto constOp = right.getDefiningOp<mlir::db::ConstantOp>()) {
+               if (auto intAttr = constOp.getValue().dyn_cast<mlir::IntegerAttr>()) {
+                  expVal = intAttr.getInt();
+               }
+            }
+            if (expVal >= 1) {
+               mlir::Value result = left;
+               for (int i = 1; i < expVal; i++) {
+                  result = translateArrayArithmetic(builder, result, left, ExpressionType::OPERATOR_MULTIPLY);
+               }
+               return result;
+            }
+            throw std::runtime_error("Array power: only positive integer constant exponents are supported");
+         }
+         // Handle scalar case
          if (!getBaseType(left.getType()).isa<mlir::db::ArrayType>() && !getBaseType(right.getType()).isa<mlir::db::ArrayType>()) {
             auto cast = SQLTypeInference::toCommonBaseTypes(builder, {left, right});
             if(getBaseType(cast[0].getType()).isa<mlir::IntegerType>()) {
@@ -668,6 +686,7 @@ mlir::Value frontend::sql::Parser::translateBinaryExpression(mlir::OpBuilder& bu
                return builder.create<mlir::db::RuntimeCall>(loc, leftF.getType(), "PowerFloat", mlir::ValueRange({leftF, rightF})).getRes();
             }
          }
+         throw std::runtime_error("Power: unsupported type combination");
       }
       case ExpressionType::OPERATOR_MOD:
          return builder.create<mlir::db::ModOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonNumber(builder, {left, right}));
@@ -3855,33 +3874,30 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
                partList = calculatePartialDerivatesBackwards(builder, context, right, partList, tmpSeedR);
                break;
             }
-            mlir::Value tmpSeedL;
-            if(getBaseType(seed.getType()).isa<mlir::db::ArrayType>() || getBaseType(leftValue.getType()).isa<mlir::db::ArrayType>()) {
-               if (getBaseType(seed.getType()).isa<mlir::db::DecimalType>()) {
-                  seed = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), seed);
-               }
-               if (getBaseType(leftValue.getType()).isa<mlir::db::DecimalType>()) {
-                  leftValue = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), leftValue);
-               }
-               tmpSeedL = translateArrayArithmetic(builder, leftValue, seed, ExpressionType::OPERATOR_MULTIPLY);
-            } else {
-               tmpSeedL = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, leftValue}));
-            }
-            partList = calculatePartialDerivatesBackwards(builder, context, right, partList, tmpSeedL);
+            // Matrix multiply: left ** right
+            // d_left = seed ** transpose(right)
+            // d_right = transpose(seed) ** left
+            {
+               auto rightArrayType = getBaseType(rightValue.getType()).dyn_cast_or_null<mlir::db::ArrayType>();
+               auto seedArrayType = getBaseType(seed.getType()).dyn_cast_or_null<mlir::db::ArrayType>();
+               auto leftArrayType = getBaseType(leftValue.getType()).dyn_cast_or_null<mlir::db::ArrayType>();
 
-            mlir::Value tmpSeedR;
-            if(getBaseType(seed.getType()).isa<mlir::db::ArrayType>() || getBaseType(rightValue.getType()).isa<mlir::db::ArrayType>()) {
-               if (getBaseType(seed.getType()).isa<mlir::db::DecimalType>()) {
-                  seed = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), seed);
-               }
-               if (getBaseType(rightValue.getType()).isa<mlir::db::DecimalType>()) {
-                  rightValue = builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), rightValue);
-               }
-               tmpSeedR = translateArrayArithmetic(builder, rightValue, seed, ExpressionType::OPERATOR_MULTIPLY);
-            } else {
-               tmpSeedR = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, rightValue}));
+               auto rightTypeParam = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getI32IntegerAttr(rightArrayType.getType()));
+               auto seedTypeParam = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getI32IntegerAttr(seedArrayType.getType()));
+               auto leftTypeParam = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getI32IntegerAttr(leftArrayType.getType()));
+
+               // d_left = seed ** transpose(right)
+               auto transposedRight = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), rightValue.getType(), "ArrayTranspose", mlir::ValueRange({rightValue, rightTypeParam})).getRes();
+               auto returnTypeL = seed.getType().isa<mlir::db::NullableType>() ? seed.getType() : leftValue.getType();
+               auto seedForLeft = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), returnTypeL, "ArrayMMul", mlir::ValueRange({seed, transposedRight, seedTypeParam, rightTypeParam})).getRes();
+               partList = calculatePartialDerivatesBackwards(builder, context, left, partList, seedForLeft);
+
+               // d_right = transpose(seed) ** left
+               auto transposedSeed = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), seed.getType(), "ArrayTranspose", mlir::ValueRange({seed, seedTypeParam})).getRes();
+               auto returnTypeR = seed.getType().isa<mlir::db::NullableType>() ? seed.getType() : rightValue.getType();
+               auto seedForRight = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), returnTypeR, "ArrayMMul", mlir::ValueRange({transposedSeed, leftValue, seedTypeParam, leftTypeParam})).getRes();
+               partList = calculatePartialDerivatesBackwards(builder, context, right, partList, seedForRight);
             }
-            partList = calculatePartialDerivatesBackwards(builder, context, left, partList, tmpSeedR);
             break;
          }
          // derivating / expressions, e.g. x / y => d_x = seed * (1 / y); d_y = seed * (-(x / y^2))
@@ -3905,9 +3921,26 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
          // derivating ^ expressions, e.g. x ^ y => d_x = seed * (y * (x ^ (y - 1))); d_y = seed * (x ^ y * log(x))
          case ExpressionType::OPERATOR_POWER: {
             auto base = translateExpression(builder, left, context);
-            auto exp = translateExpression(builder, right, context);
+            auto exponent = translateExpression(builder, right, context);
 
-            auto partsCasted = SQLTypeInference::toCommonBaseTypes(builder, {base, exp});
+            // Array case: element-wise power
+            if (getBaseType(base.getType()).isa<mlir::db::ArrayType>()) {
+               // d_base = seed * exp * base^(exp-1)
+               // Compute base^exp (forward value) and base^(exp-1) = forward_value / base
+               auto forwardValue = translateExpression(builder, node, context);
+               auto baseExpMinusOne = translateArrayArithmetic(builder, forwardValue, base, ExpressionType::OPERATOR_DIVIDE);
+               // exp * base^(exp-1) (scalar * array)
+               auto expF64 = !getBaseType(exponent.getType()).isa<mlir::Float64Type>() ?
+                  builder.create<mlir::db::CastOp>(builder.getUnknownLoc(), mlir::FloatType::getF64(builder.getContext()), exponent).getRes() : exponent;
+               auto expTimesBaseExpMinusOne = translateArrayArithmetic(builder, baseExpMinusOne, expF64, ExpressionType::OPERATOR_MULTIPLY);
+               // d_base = seed * (exp * base^(exp-1))
+               auto tmpSeed = translateArrayArithmetic(builder, seed, expTimesBaseExpMinusOne, ExpressionType::OPERATOR_MULTIPLY);
+               partList = calculatePartialDerivatesBackwards(builder, context, left, partList, tmpSeed);
+               break;
+            }
+
+            // Scalar case
+            auto partsCasted = SQLTypeInference::toCommonBaseTypes(builder, {base, exponent});
             mlir::Value expMinusOne;
             mlir::Value val;
             mlir::Value log;
@@ -3935,7 +3968,7 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
                throw std::runtime_error("Datatype not supported in power derivation.");
             }
             // d_x = seed * (y * (x ^ (y - 1)))
-            auto powL = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {exp, expMinusOne}));
+            auto powL = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {exponent, expMinusOne}));
             auto tmpSeedL = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, powL}));
             partList = calculatePartialDerivatesBackwards(builder, context, left, partList, tmpSeedL);
             // d_y = seed * (x ^ y * ln(x))
@@ -3993,6 +4026,22 @@ std::vector<std::pair<std::string, mlir::Value>> frontend::sql::Parser::calculat
          auto type = getBaseType(seed.getType()).dyn_cast_or_null<mlir::db::ArrayType>();
          auto typeParam = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getI32IntegerAttr(type.getType()));
          tmpSeed = builder.create<mlir::db::RuntimeCall>(builder.getUnknownLoc(), seed.getType(), "ArrayTranspose", mlir::ValueRange({seed, typeParam})).getRes();
+      // derivating sig, e.g. sig(x) => d_x = seed * sig(x) * (1 - sig(x))
+      } else if (funcName == "sig") {
+         auto sigVal = translateExpression(builder, node, context);
+         if (getBaseType(sigVal.getType()).isa<mlir::db::ArrayType>()) {
+            // Array case: element-wise sig(x) * (1 - sig(x))
+            auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(1.0));
+            auto oneMinusSig = translateArrayArithmetic(builder, one, sigVal, ExpressionType::OPERATOR_MINUS);
+            auto sigTimesOneMinusSig = translateArrayArithmetic(builder, sigVal, oneMinusSig, ExpressionType::OPERATOR_MULTIPLY);
+            tmpSeed = translateArrayArithmetic(builder, seed, sigTimesOneMinusSig, ExpressionType::OPERATOR_MULTIPLY);
+         } else {
+            // Scalar case
+            auto one = builder.create<mlir::db::ConstantOp>(builder.getUnknownLoc(), builder.getF64Type(), builder.getF64FloatAttr(1.0));
+            auto oneMinusSig = builder.create<mlir::db::SubOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {one, sigVal}));
+            auto sigTimesOneMinusSig = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {sigVal, oneMinusSig}));
+            tmpSeed = builder.create<mlir::db::MulOp>(builder.getUnknownLoc(), SQLTypeInference::toCommonBaseTypes(builder, {seed, sigTimesOneMinusSig}));
+         }
       } else {
          throw std::runtime_error("Derivation of this function is not supported, yet.");
       }
