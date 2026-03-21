@@ -1,0 +1,6 @@
+add_executable(sql-web sql-web.cpp)
+target_compile_options(sql-web PRIVATE -fexceptions)
+target_link_libraries(sql-web PUBLIC runner utility runtime mlir-support ${LIBS} MLIRSQLFrontend pg_query::pg_query pthread)
+target_link_options(sql-web PUBLIC -Wl,--export-dynamic)
+set_target_properties(sql-web PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+target_link_directories(sql-web PUBLIC ${CMAKE_BINARY_DIR}/lib/execution/cranelift/rust-cranelift/release)
