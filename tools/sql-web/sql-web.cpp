@@ -251,7 +251,7 @@ static const char* HTML_PAGE = R"HTML(<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>lingodb — SQL & MLIR Explorer</title>
+<title>∂SQL — SQL & MLIR Explorer</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 :root{
@@ -417,12 +417,11 @@ header .subtitle{font-size:12px;color:var(--muted);}
 <body>
 
 <header>
-  <h1>lingodb</h1>
+  <h1>∂SQL</h1>
   <span class="sep">—</span>
   <span class="subtitle">SQL &amp; MLIR Explorer</span>
   <div class="toolbar">
-    <button class="btn-primary" onclick="executeQuery()" title="Ctrl+Enter">&#9654; Run</button>
-    <button class="btn-secondary" onclick="loadPipeline()">Pipeline</button>
+    <button class="btn-primary" onclick="runAll()" title="Ctrl+Enter">&#9654; Run</button>
     <button class="btn-secondary" onclick="compareMode()">Compare F/B</button>
     <button class="btn-secondary" id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">&#9788; Light</button>
   </div>
@@ -756,7 +755,7 @@ function removeTab(idx){
 
 // ── Keyboard Shortcuts ─────────────────────────────────────────────
 editorEl.addEventListener('keydown', (e) => {
-  if(e.ctrlKey && e.key === 'Enter'){ e.preventDefault(); executeQuery(); }
+  if(e.ctrlKey && e.key === 'Enter'){ e.preventDefault(); runAll(); }
   // Tab key inserts spaces
   if(e.key === 'Tab'){
     e.preventDefault();
@@ -766,36 +765,36 @@ editorEl.addEventListener('keydown', (e) => {
   }
 });
 
-// ── Execute Query ──────────────────────────────────────────────────
-async function executeQuery(){
+// ── Run All (Execute + Pipeline in parallel) ──────────────────────
+async function runAll(){
+  exitCompareMode();
   tabs[activeTab].content = editorEl.value;
   const sql = editorEl.value.trim();
   if(!sql) return;
-  statusEl.textContent = 'Executing…';
+  statusEl.textContent = 'Running…';
   timingEl.textContent = '';
   document.getElementById('results-container').innerHTML = '<div class="loading">Executing query…</div>';
   document.getElementById('timing-container').innerHTML = '<div class="loading">Waiting for results…</div>';
+  document.getElementById('code-output').textContent = 'Loading pipeline…';
 
   try {
     const t0 = performance.now();
-    const resp = await fetch('/api/execute', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({sql})
-    });
-    const data = await resp.json();
+    const [execResp, pipeResp] = await Promise.all([
+      fetch('/api/execute', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sql})}),
+      fetch('/api/pipeline', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sql})})
+    ]);
+    const data = await execResp.json();
+    const pipeData = await pipeResp.json();
     const wall = (performance.now()-t0).toFixed(1);
 
+    // ── Results ──
     if(data.error){
       document.getElementById('results-container').innerHTML = '<div class="error">'+escapeHtml(data.error)+'</div>';
       document.getElementById('timing-container').innerHTML = '';
       renderPlot(null, null);
       statusEl.textContent = 'Error';
       timingEl.textContent = wall+' ms (wall)';
-      return;
-    }
-
-    // Results table
-    if(data.columns && data.columns.length > 0){
+    } else if(data.columns && data.columns.length > 0){
       let h = '<table class="results-table"><thead><tr>';
       data.columns.forEach(c => h += '<th>'+escapeHtml(c)+'</th>');
       h += '</tr></thead><tbody>';
@@ -808,18 +807,28 @@ async function executeQuery(){
       document.getElementById('results-container').innerHTML = h;
       statusEl.textContent = data.rows.length + ' row(s)';
       renderPlot(data.columns, data.rows);
+      timingEl.textContent = wall + ' ms (wall)';
+      if(data.timing && Object.keys(data.timing).length > 0) renderTiming(data.timing);
+      else document.getElementById('timing-container').innerHTML = '<div class="info">No timing data.</div>';
     } else {
       document.getElementById('results-container').innerHTML = '<div class="info">Statement executed. No rows returned.</div>';
       statusEl.textContent = 'OK';
       renderPlot(null, null);
+      timingEl.textContent = wall + ' ms (wall)';
     }
-    timingEl.textContent = wall + ' ms (wall)';
 
-    // Timing breakdown
-    if(data.timing && Object.keys(data.timing).length > 0){
-      renderTiming(data.timing);
+    // ── Pipeline stages ──
+    if(!pipeData.error){
+      pipelineStages = pipeData.stages || [];
+      populateStageDropdown();
+      if(pipelineStages.length > 0){
+        const idx = (optCheck.checked && pipelineStages.length > 1) ? 1 : 0;
+        stageSelEl.value = idx;
+        showStage(idx);
+      }
+      if(!data.error) statusEl.textContent += ' — ' + pipelineStages.length + ' stage(s)';
     } else {
-      document.getElementById('timing-container').innerHTML = '<div class="info">No timing data available.</div>';
+      document.getElementById('code-output').textContent = pipeData.error;
     }
   } catch(err){
     document.getElementById('results-container').innerHTML = '<div class="error">'+escapeHtml(err.message)+'</div>';
@@ -994,40 +1003,6 @@ function renderPlot(columns, rows) {
 }
 
 // ── Pipeline Stages ────────────────────────────────────────────────
-async function loadPipeline(){
-  tabs[activeTab].content = editorEl.value;
-  const sql = editorEl.value.trim();
-  if(!sql) return;
-  exitCompareMode();
-  statusEl.textContent = 'Generating pipeline stages…';
-  document.getElementById('code-output').textContent = 'Loading pipeline…';
-
-  try {
-    const resp = await fetch('/api/pipeline', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({sql})
-    });
-    const data = await resp.json();
-    if(data.error){
-      document.getElementById('code-output').textContent = data.error;
-      statusEl.textContent = 'Error';
-      return;
-    }
-    pipelineStages = data.stages || [];
-    populateStageDropdown();
-    if(pipelineStages.length > 0){
-      // If "Optimized" is checked, show stage 1 (optimized), else stage 0 (canonical)
-      const idx = (optCheck.checked && pipelineStages.length > 1) ? 1 : 0;
-      stageSelEl.value = idx;
-      showStage(idx);
-    }
-    statusEl.textContent = pipelineStages.length + ' pipeline stage(s) loaded';
-  } catch(err){
-    document.getElementById('code-output').textContent = 'Error: ' + err.message;
-    statusEl.textContent = 'Error';
-  }
-}
-
 function populateStageDropdown(){
   stageSelEl.innerHTML = '';
   if(!pipelineStages || pipelineStages.length === 0){
@@ -1542,7 +1517,7 @@ int main(int argc, char** argv) {
       }
    });
 
-   std::cout << "lingodb web interface starting on http://localhost:" << port << std::endl;
+   std::cout << "∂SQL web interface starting on http://localhost:" << port << std::endl;
    std::cout << "Database: " << dbDir << std::endl;
    std::cout << "Press Ctrl-C to stop." << std::endl;
 
