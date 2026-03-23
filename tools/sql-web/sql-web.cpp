@@ -252,6 +252,8 @@ static const char* HTML_PAGE = R"HTML(<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>∂SQL — SQL & MLIR Explorer</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 :root{
@@ -408,6 +410,13 @@ header .subtitle{font-size:12px;color:var(--muted);}
 
 /* Cursor-linked highlighting */
 .mlir-line{display:block;}
+
+/* Lambda math display */
+.lambda-math-panel{padding:6px 12px;background:var(--surface);border-top:1px solid var(--overlay);font-size:13px;min-height:28px;display:flex;align-items:center;gap:8px;flex-shrink:0;overflow-x:auto;}
+.lambda-math-panel .math-label{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
+.lambda-math-panel .math-content{color:var(--text);flex:1;min-width:0;}
+.lambda-math-panel .math-content .katex{font-size:14px;}
+.lambda-math-panel .math-placeholder{color:var(--muted);font-size:11px;font-style:italic;}
 .mlir-line.cursor-match{background:rgba(249,226,175,0.22);outline:1px solid rgba(249,226,175,0.35);border-radius:2px;}
 [data-theme="light"] .mlir-line.cursor-match{background:rgba(223,142,29,0.12);outline:1px solid rgba(223,142,29,0.25);}
 .mlir-line.hl-deriv-line.cursor-match{background:rgba(203,166,247,0.28);outline-color:rgba(203,166,247,0.4);}
@@ -435,6 +444,10 @@ header .subtitle{font-size:12px;color:var(--muted);}
     <div class="editor-wrap">
       <pre id="sql-highlight" aria-hidden="true"></pre>
       <textarea class="sql-editor" id="sql-editor" placeholder="Enter SQL query here...&#10;&#10;Ctrl+Enter to execute" spellcheck="false"></textarea>
+    </div>
+    <div class="lambda-math-panel" id="lambda-math-panel">
+      <span class="math-label">&#955;</span>
+      <span class="math-content" id="lambda-math-content"><span class="math-placeholder">No lambda expression detected</span></span>
     </div>
   </div>
 
@@ -612,6 +625,7 @@ function syncHighlight(){
   highlightEl.innerHTML = highlightSQL(editorEl.value);
   highlightEl.scrollTop = editorEl.scrollTop;
   highlightEl.scrollLeft = editorEl.scrollLeft;
+  updateLambdaMath(editorEl.value);
 }
 
 editorEl.addEventListener('input', syncHighlight);
@@ -619,6 +633,222 @@ editorEl.addEventListener('scroll', () => {
   highlightEl.scrollTop = editorEl.scrollTop;
   highlightEl.scrollLeft = editorEl.scrollLeft;
 });
+
+// ── Lambda → LaTeX rendering ──────────────────────────────────────
+const lambdaMathEl = document.getElementById('lambda-math-content');
+
+function extractLambdaBody(sql) {
+  // Find LAMBDA (param) (body) — case-insensitive
+  const m = sql.match(/lambda\s*\(\s*(\w+)\s*\)\s*\(/i);
+  if (!m) return null;
+  const param = m[1];
+  const start = m.index + m[0].length;
+  // Match balanced parens to find body end
+  let depth = 1, i = start;
+  while (i < sql.length && depth > 0) {
+    if (sql[i] === '(') depth++;
+    else if (sql[i] === ')') depth--;
+    i++;
+  }
+  if (depth !== 0) return null;
+  return { param, body: sql.substring(start, i - 1).trim() };
+}
+
+// Tokenizer for lambda expressions
+function tokenizeLambda(s) {
+  const tokens = [];
+  let i = 0;
+  while (i < s.length) {
+    if (/\s/.test(s[i])) { i++; continue; }
+    // Two-char operators
+    if (s[i] === '*' && s[i+1] === '*') { tokens.push({type:'op',val:'**'}); i+=2; continue; }
+    // Single-char operators and parens
+    if ('+-*/^(),'.includes(s[i])) { tokens.push({type:'op',val:s[i]}); i++; continue; }
+    // Numbers
+    if (/[0-9.]/.test(s[i])) {
+      let n = '';
+      while (i < s.length && /[0-9.eE+-]/.test(s[i]) && !(s[i]==='-' && n.length>0 && !/[eE]$/.test(n)))
+        { n += s[i]; i++; }
+      tokens.push({type:'num',val:n}); continue;
+    }
+    // Identifiers (x.col or func name)
+    if (/[a-zA-Z_]/.test(s[i])) {
+      let id = '';
+      while (i < s.length && /[a-zA-Z0-9_.]/.test(s[i])) { id += s[i]; i++; }
+      tokens.push({type:'id',val:id}); continue;
+    }
+    i++; // skip unknown
+  }
+  return tokens;
+}
+
+// Recursive descent parser: expr → term ((+|-) term)*
+// term → factor ((*|/|**) factor)* , pow → unary (^ unary)*
+function parseLambda(tokens, param) {
+  let pos = 0;
+  function peek() { return pos < tokens.length ? tokens[pos] : null; }
+  function consume() { return tokens[pos++]; }
+
+  function parseExpr() {
+    let left = parseTerm();
+    while (peek() && peek().type==='op' && (peek().val==='+' || peek().val==='-')) {
+      const op = consume().val;
+      const right = parseTerm();
+      left = {type:'binop', op, left, right};
+    }
+    return left;
+  }
+
+  function parseTerm() {
+    let left = parsePow();
+    while (peek() && peek().type==='op' && (peek().val==='*' || peek().val==='/' || peek().val==='**')) {
+      const op = consume().val;
+      const right = parsePow();
+      left = {type:'binop', op, left, right};
+    }
+    return left;
+  }
+
+  function parsePow() {
+    let base = parseUnary();
+    if (peek() && peek().type==='op' && peek().val==='^') {
+      consume();
+      const exp = parseUnary();
+      return {type:'binop', op:'^', left:base, right:exp};
+    }
+    return base;
+  }
+
+  function parseUnary() {
+    if (peek() && peek().type==='op' && peek().val==='-') {
+      consume();
+      return {type:'neg', child: parseUnary()};
+    }
+    return parseAtom();
+  }
+
+  function parseAtom() {
+    const t = peek();
+    if (!t) return {type:'num', val:'?'};
+
+    // Parenthesized expression
+    if (t.type==='op' && t.val==='(') {
+      consume();
+      const inner = parseExpr();
+      if (peek() && peek().val===')') consume();
+      return inner;
+    }
+
+    // Number
+    if (t.type==='num') { consume(); return {type:'num', val:t.val}; }
+
+    // Identifier: function call or column reference
+    if (t.type==='id') {
+      consume();
+      // Function call: name(args)
+      if (peek() && peek().val==='(') {
+        consume(); // (
+        const args = [];
+        if (!(peek() && peek().val===')')) {
+          args.push(parseExpr());
+          while (peek() && peek().val===',') { consume(); args.push(parseExpr()); }
+        }
+        if (peek() && peek().val===')') consume();
+        return {type:'call', name:t.val, args};
+      }
+      // Column ref: param.col → just col
+      const name = t.val.startsWith(param+'.') ? t.val.substring(param.length+1) : t.val;
+      return {type:'var', name};
+    }
+
+    consume();
+    return {type:'num', val:'?'};
+  }
+
+  return parseExpr();
+}
+
+// AST → LaTeX string
+function astToLatex(node) {
+  if (!node) return '?';
+  switch (node.type) {
+    case 'num': return node.val;
+    case 'var': {
+      const n = node.name;
+      if (/^w_/.test(n)) return '\\mathbf{W}_{' + n.substring(2).replace(/_/g,'') + '}';
+      if (n === 'one_hot') return '\\mathbf{y}';
+      if (n === 'img') return '\\mathbf{x}';
+      if (/^(w_|img|one_hot)/.test(n)) return '\\mathbf{' + n.replace(/_/g, '\\_') + '}';
+      return n.length === 1 ? n : '\\text{' + n.replace(/_/g, '\\_') + '}';
+    }
+    case 'neg': return '-' + astToLatex(node.child);
+    case 'binop': {
+      const l = astToLatex(node.left);
+      const r = astToLatex(node.right);
+      switch (node.op) {
+        case '+': return l + ' + ' + r;
+        case '-': return l + ' - ' + r;
+        case '*': {
+          const lp = needsParens(node.left, '*') ? '\\left(' + l + '\\right)' : l;
+          const rp = needsParens(node.right, '*') ? '\\left(' + r + '\\right)' : r;
+          return lp + ' \\cdot ' + rp;
+        }
+        case '/': return '\\frac{' + l + '}{' + r + '}';
+        case '^': {
+          const base = needsParens(node.left, '^') ? '\\left(' + l + '\\right)' : l;
+          return base + '^{' + r + '}';
+        }
+        case '**': return l + ' \\cdot ' + r;
+      }
+      return '?';
+    }
+    case 'call': {
+      const fname = node.name.toLowerCase();
+      const a = node.args.map(x => astToLatex(x));
+      switch (fname) {
+        case 'sig': case 'sigmoid':
+          return '\\sigma\\!\\left(' + a.join(', ') + '\\right)';
+        case 'exp': return 'e^{' + a[0] + '}';
+        case 'log': case 'ln': return '\\ln\\!\\left(' + a[0] + '\\right)';
+        case 'sqrt': return '\\sqrt{' + a[0] + '}';
+        case 'sin': return '\\sin\\!\\left(' + a[0] + '\\right)';
+        case 'cos': return '\\cos\\!\\left(' + a[0] + '\\right)';
+        case 'transpose': return a[0] + '^{\\top}';
+        case 'abs': return '\\left|' + a[0] + '\\right|';
+        default: return '\\text{' + fname + '}(' + a.join(', ') + ')';
+      }
+    }
+    default: return '?';
+  }
+}
+
+function needsParens(node, parentOp) {
+  if (!node || node.type !== 'binop') return false;
+  if (parentOp === '^') return node.op === '+' || node.op === '-' || node.op === '*' || node.op === '/';
+  if (parentOp === '*') return node.op === '+' || node.op === '-';
+  return false;
+}
+
+function updateLambdaMath(sql) {
+  if (typeof katex === 'undefined') {
+    // KaTeX not loaded yet — retry once after a short delay
+    setTimeout(() => updateLambdaMath(sql), 500);
+    return;
+  }
+  const result = extractLambdaBody(sql);
+  if (!result) {
+    lambdaMathEl.innerHTML = '<span class="math-placeholder">No lambda expression detected</span>';
+    return;
+  }
+  try {
+    const tokens = tokenizeLambda(result.body);
+    const ast = parseLambda(tokens, result.param);
+    const latex = '\\mathcal{L} = ' + astToLatex(ast);
+    katex.render(latex, lambdaMathEl, { throwOnError: false, displayMode: false });
+  } catch(e) {
+    lambdaMathEl.innerHTML = '<span class="math-placeholder">Could not parse lambda</span>';
+  }
+}
 
 // ── Cursor-linked MLIR highlighting ───────────────────────────────
 const SQL_KW_SET = new Set(['select','from','where','group','by','order','as','and','or','not',
